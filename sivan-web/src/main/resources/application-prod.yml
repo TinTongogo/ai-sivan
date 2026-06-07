@@ -1,0 +1,14 @@
+# ── 生产环境配置 ──
+# 所有密钥强制从环境变量读取，无默认值。
+# 缺失任一变量 Spring Boot 启动即抛异常，防止使用弱凭据上线。
+
+spring:
+  datasource:
+    password: ${DB_PASSWORD}
+
+jwt:
+  secret: ${JWT_SECRET}
+
+sivan:
+  encryption:
+    master-key: ${ENCRYPTION_MASTER_KEY}

@@ -1,0 +1,93 @@
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.0-pg16
+    container_name: sivan-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: sivan
+      POSTGRES_USER: sivan
+      POSTGRES_PASSWORD: sivan
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sivan -d sivan"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  qwen3-embedding:
+    image: vllm/vllm-openai:latest
+    container_name: sivan-qwen3-embedding
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN:-}
+      VLLM_API_KEY: ${VLLM_API_KEY:-}
+    volumes:
+      - model_cache:/root/.cache/huggingface
+    command:
+      - --model
+      - Qwen/Qwen3-Embedding-2B
+      - --task
+      - embedding
+      - --port
+      - "8000"
+      - --block-size
+      - "16"
+      - --max-model-len
+      - "8192"
+      - --gpu-memory-utilization
+      - "0.9"
+      - --enforce-eager
+      - --api-key
+      - ${VLLM_API_KEY:-}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  qwen3-reranker:
+    image: vllm/vllm-openai:latest
+    container_name: sivan-qwen3-reranker
+    restart: unless-stopped
+    ports:
+      - "8001:8000"
+    environment:
+      HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN:-}
+      VLLM_API_KEY: ${VLLM_API_KEY:-}
+    volumes:
+      - model_cache:/root/.cache/huggingface
+    command:
+      - --model
+      - Qwen/Qwen3-Reranker-2B
+      - --task
+      - reranker
+      - --port
+      - "8000"
+      - --block-size
+      - "16"
+      - --max-model-len
+      - "8192"
+      - --gpu-memory-utilization
+      - "0.9"
+      - --enforce-eager
+      - --api-key
+      - ${VLLM_API_KEY:-}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+volumes:
+  postgres_data:
+  model_cache:

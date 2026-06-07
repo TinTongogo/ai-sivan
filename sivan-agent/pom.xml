@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.icusu.sivan</groupId>
+        <artifactId>ai-sivan</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>sivan-agent</artifactId>
+    <description>集成、Agent 工厂、路由引擎、AgentResolver、MCP</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.icusu.sivan</groupId>
+            <artifactId>sivan-core-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.icusu.sivan</groupId>
+            <artifactId>sivan-infrastructure</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.icusu.sivan</groupId>
+            <artifactId>sivan-memory</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.modelcontextprotocol.sdk</groupId>
+            <artifactId>mcp-core</artifactId>
+            <version>0.17.0</version>
+        </dependency>
+        <dependency>
+            <groupId>io.modelcontextprotocol.sdk</groupId>
+            <artifactId>mcp-json-jackson2</artifactId>
+            <version>0.17.0</version>
+        </dependency>
+
+        <!-- Test -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

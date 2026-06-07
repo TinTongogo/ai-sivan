@@ -1,0 +1,110 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: sivan
+  profiles:
+    active: dev
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/sivan_v2
+    username: sivan
+    password: sivan_dev
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 50
+        order_inserts: true
+        order_updates: true
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    date-format: yyyy-MM-dd'T'HH:mm:ss.SSSXXX
+    time-zone: UTC
+
+  # WebFlux 请求体大小限制（默认 256KB 过小，上传文档/图片时不够）
+  codec:
+    max-in-memory-size: 10MB
+
+# JWT 配置
+jwt:
+  secret: sivan-jwt-secret-key-change-in-production-minimum-256-bits
+  expiration: 86400000  # 24 小时
+
+# API 密钥加密（AES-256-GCM），必须通过环境变量 ENCRYPTION_MASTER_KEY 设置
+sivan:
+  encryption:
+    master-key: ${ENCRYPTION_MASTER_KEY}
+
+  # ── 认证 / 速率限制 ──
+  auth:
+    rate-limit:
+      max-requests: 10                    # 每分钟最大请求数
+      window-seconds: 60                  # 限流窗口（秒）
+
+# 日志
+logging:
+  level:
+    org.springdoc: INFO
+    com.icusu.sivan: DEBUG
+    org.springframework.security: INFO
+    org.springframework.web.reactive.resource.ResourceHandlerUtils: ERROR
+    org.hibernate.SQL: WARN
+
+---
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+sivan:
+  encryption:
+    master-key: dev-master-key-change-in-production
+  file:
+    storage-path: ${user.home}/uploads
+    root-path: ${user.home}/sivan
+    quarantine-path: ${user.home}/sivan/.quarantine
+  cors:
+    allowed-origins: http://localhost:5173,http://localhost:3000
+
+  # ── Agent 执行策略 ──
+  agent:
+    max-rounds: 200                     # ReAct 安全阀（极少触发，实际由上下文预算控制）
+    max-consecutive-same-tool: 15       # 连续相同工具调用上限
+    max-failed-rounds: 3                # 连续工具失败上限
+    context-budget-ratio: 0.7           # 上下文预算占模型窗口比例 (0.0~1.0)
+    context-compress-keep-rounds: 5     # 超预算压缩时保留最近 N 轮 ToolResult
+
+  # ── Bash 沙箱 ──
+  bash:
+    allow-network: false                # 是否允许 bash 出站网络连接
+  sandbox:
+    require: false                      # true = 无 OS 级沙箱时阻止 bash 执行
+
+  # ── 自主目标执行 ──
+  goal:
+    execution-timeout-ms: 7200000       # Goal 总超时（默认 2 小时）
+
+  # ── 编排 ──
+  orchestration:
+    hitl:
+      auto-resume: true                 # HITL 超时后自动继续执行
+
+
