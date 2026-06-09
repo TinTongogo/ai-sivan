@@ -3,6 +3,7 @@ import { ref, computed, watch, onUnmounted } from 'vue'
 import { renderMarkdown } from '../../utils/markdown'
 import { useI18n } from '../../utils/i18n'
 import { fetchAuthBlob, downloadAuthFile } from '../../utils/auth-fetch'
+import PhaseCard from '../orchestration/PhaseCard.vue'
 const { t } = useI18n()
 
 const props = defineProps<{
@@ -13,12 +14,13 @@ const props = defineProps<{
     chain?: string
     images?: string[]; attachments?: { fileId: string; fileName: string; mimeType: string; fileSize: number; url?: string }[]
     generationGroup?: string; generationIndex?: number; generationTotal?: number
-    orchestration?: { executionId?: string; squadName?: string; status: 'running' | 'completed' | 'failed'; phases: { name: string; status: string; agentCount?: number }[]; currentStep?: string; currentMessage?: string; phaseCount?: number; agentCount?: number; errorMessage?: string }
+    sections?: any[]
   }
   meta?: { duration?: string; tokens?: number; model?: string; thinkingTokens?: number }
   streaming?: boolean
   hideExtra?: 'none' | 'thinking-toggle' | 'user-footer' | 'both'
   thinkingOpen?: boolean
+  showSections?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -32,7 +34,6 @@ const emit = defineEmits<{
   'update:thinkingOpen': [value: boolean]
   showPipeline: []
   showRoutingDecision: [routingDecisionId: string]
-  viewMonitor: [executionId: string]
 }>()
 
 const _internalThinkingOpen = ref(false)
@@ -306,14 +307,25 @@ function formatFileSize(bytes: number): string {
       </div>
 
       <!-- 底部元信息（仅 AI） -->
-      <div v-if="message.role === 'assistant' && (meta?.duration || meta?.tokens != null || meta?.model || message.messageId || message.orchestration)" class="bubble__meta">
-        <!-- 编排：运行中引导查看监控，完成后可看流水线 -->
-        <span v-if="message.orchestration?.executionId && message.orchestration.status === 'running'" class="meta__item meta__orch-link" @click.stop="emit('viewMonitor', message.orchestration.executionId!)">{{ t('viewMonitor') }}</span>
+      <div v-if="message.role === 'assistant' && (meta?.duration || meta?.tokens != null || meta?.model || message.messageId)" class="bubble__meta">
         <span v-if="message.chain && message.chain.includes('-')" class="meta__item meta__routing-btn" @click.stop="emit('showRoutingDecision', message.chain)">{{ t('routingDecision') }}</span>
         <span v-if="message.messageId" class="meta__item meta__pipeline-btn" @click.stop="emit('showPipeline')">{{ t('viewPipeline') }}</span>
         <span v-if="meta?.duration" class="meta__item">{{ meta.duration }}</span>
         <span v-if="meta?.tokens != null" class="meta__item">{{ meta.tokens.toLocaleString() }} tokens</span>
         <span v-if="meta?.model" class="meta__item">{{ meta.model }}</span>
+      </div>
+
+      <!-- 编排阶段详情（仅 AI 消息，有 sections 时展示） -->
+      <div v-if="message.role === 'assistant' && message.sections?.length" class="bubble__sections">
+        <div class="bubble__sections-title">{{ t('phaseDetails') }}</div>
+        <PhaseCard
+          v-for="(section, idx) in message.sections"
+          :key="idx"
+          :phase="section"
+          :live="section.status === 'RUNNING'"
+          @copy="(text) => emit('copy', text)"
+          @save-to-kb="(text) => emit('saveToKb', text)"
+        />
       </div>
 
       <!-- 操作栏（AI：悬停显示，思考折叠按钮合并在此行） -->
@@ -771,13 +783,6 @@ function formatFileSize(bytes: number): string {
 .meta__routing-btn:hover {
   opacity: 0.75;
 }
-.meta__orch-link {
-  color: var(--clr-accent);
-  cursor: pointer;
-  font-weight: var(--fw-medium);
-  transition: opacity 0.15s;
-}
-.meta__orch-link:hover { opacity: 0.75; }
 .meta__pipeline-btn + .meta__item::before {
   content: ' · ';
   color: var(--clr-quaternary);

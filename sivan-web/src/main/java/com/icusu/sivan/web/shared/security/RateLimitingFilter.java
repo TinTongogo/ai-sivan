@@ -2,6 +2,8 @@ package com.icusu.sivan.web.shared.security;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.MessageSource;
+import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
@@ -15,6 +17,7 @@ import reactor.core.publisher.Mono;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -28,6 +31,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class RateLimitingFilter implements WebFilter {
 
     private final ConcurrentHashMap<String, Window> windows = new ConcurrentHashMap<>();
+    private final MessageSource messageSource;
+
+    public RateLimitingFilter(MessageSource messageSource) {
+        this.messageSource = messageSource;
+    }
 
     @Value("${sivan.auth.rate-limit.max-requests:10}")
     private int maxRequests;
@@ -66,7 +74,9 @@ public class RateLimitingFilter implements WebFilter {
         exchange.getResponse().setStatusCode(HttpStatus.TOO_MANY_REQUESTS);
         exchange.getResponse().getHeaders().add("Retry-After", String.valueOf(windowSeconds));
         exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
-        byte[] body = ("{\"code\":429,\"message\":\"请求过于频繁，请稍后再试\"}").getBytes(StandardCharsets.UTF_8);
+        Locale locale = LocaleContextHolder.getLocale();
+        String msg = messageSource.getMessage("error.rate-limit.exceeded", null, "请求过于频繁，请稍后再试", locale);
+        byte[] body = ("{\"code\":429,\"message\":\"" + msg + "\"}").getBytes(StandardCharsets.UTF_8);
         return exchange.getResponse()
                 .writeWith(Mono.just(exchange.getResponse().bufferFactory().wrap(body)));
     }

@@ -56,6 +56,12 @@ public class Message {
     /** 生成组（同一组内不同 generationIndex 表示同一位置的多次生成结果） */
     private UUID generationGroup;
 
+    /** 编排阶段详情 JSONB（V2 编排功能） */
+    private String sections;
+
+    /** 运行时进度状态 JSONB（流完成后清除） */
+    private String progress;
+
     private LocalDateTime createdAt;
 
     public void complete(String content, String thinking, String model, int tokens, int durationMs) {

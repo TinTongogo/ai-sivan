@@ -1,4 +1,4 @@
-package com.icusu.sivan.web.agent.service;
+package com.icusu.sivan.web.service;
 
 import com.icusu.sivan.common.enums.AgentStatus;
 import com.icusu.sivan.common.enums.AgentType;
@@ -25,7 +25,6 @@ public class AgentService {
     private final IAgentRepository agentRepository;
 
     /** 创建智能体。 */
-    @Transactional
     public AgentResponse create(UUID accountId, CreateAgentRequest request) {
         if (agentRepository.findByAccountAndName(accountId, request.getAgentName()).isPresent()) {
             throw DomainException.conflict("智能体名称已存在");
@@ -78,7 +77,6 @@ public class AgentService {
     }
 
     /** 删除智能体。 */
-    @Transactional
     public void delete(UUID accountId, UUID agentId) {
         AgentDefinition config = findOwned(accountId, agentId);
         agentRepository.delete(config.getAgentId());

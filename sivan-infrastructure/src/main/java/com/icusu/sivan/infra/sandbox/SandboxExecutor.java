@@ -50,6 +50,14 @@ public class SandboxExecutor {
     }
 
     public String execute(String command, String projectPath) {
+        return execute(command, projectPath, false);
+    }
+
+    public String execute(String command, String projectPath, boolean allowNetwork) {
+        if (allowNetwork) {
+            log.debug("网络已开放，跳过 OS 级沙箱");
+            return new FallbackSandboxBackend(false).execute(command, projectPath);
+        }
         return backend.execute(command, projectPath);
     }
 }

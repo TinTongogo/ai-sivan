@@ -25,47 +25,6 @@ public class TimingAspect {
         return measure(pjp, "1-streamMessage");
     }
 
-    // ===== 意图解析 =====
-
-    @Around("execution(* com.icusu.sivan.orch.executor.SquadOrchestrator.resolveIntent(..))")
-    public Object measureResolveIntent(ProceedingJoinPoint pjp) throws Throwable {
-        return measure(pjp, "2-resolveIntent");
-    }
-
-    @Around("execution(* com.icusu.sivan.orch.topology.ExecutionPathResolver.resolve(..))")
-    public Object measureResolve(ProceedingJoinPoint pjp) throws Throwable {
-        return measure(pjp, "2a-resolveTemplate");
-    }
-
-    // ===== 编排调度 =====
-
-    @Around("execution(* com.icusu.sivan.orch.executor.SquadOrchestrator.orchestrateStream(..))")
-    public Object measureOrchestrate(ProceedingJoinPoint pjp) throws Throwable {
-        return measure(pjp, "3-orchestrateStream");
-    }
-
-    @Around("execution(* com.icusu.sivan.orch.executor.OrchestrationDispatcher.dispatch(..))")
-    public Object measureDispatch(ProceedingJoinPoint pjp) throws Throwable {
-        return measure(pjp, "3a-dispatcher");
-    }
-
-    // ===== 策略执行 =====
-
-    @Around("execution(* com.icusu.sivan.orch.strategy.ChatFallbackStrategy.execute(..))")
-    public Object measureChatStrategy(ProceedingJoinPoint pjp) throws Throwable {
-        return measure(pjp, "4-chatStrategy");
-    }
-
-    @Around("execution(* com.icusu.sivan.orch.strategy.SingleAgentStrategy.execute(..))")
-    public Object measureSingleAgentStrategy(ProceedingJoinPoint pjp) throws Throwable {
-        return measure(pjp, "4-singleAgentStrategy");
-    }
-
-    @Around("execution(* com.icusu.sivan.orch.strategy.SquadStrategy.execute(..))")
-    public Object measureSquadStrategy(ProceedingJoinPoint pjp) throws Throwable {
-        return measure(pjp, "4-squadStrategy");
-    }
-
     @Around("execution(* com.icusu.sivan.agent.strategy.ReActExecutionStrategy.execute(..))")
     public Object measureReAct(ProceedingJoinPoint pjp) throws Throwable {
         return measure(pjp, "4a-reActExecute");
@@ -110,11 +69,6 @@ public class TimingAspect {
     @Around("execution(* com.icusu.sivan.infra.shared.sse.StreamManager.create(..))")
     public Object measureStreamCreate(ProceedingJoinPoint pjp) throws Throwable {
         return measure(pjp, "7-streamCreate");
-    }
-
-    @Around("execution(* com.icusu.sivan.web.conversation.service.StreamingMessageEngine.register(..))")
-    public Object measureEngineRegister(ProceedingJoinPoint pjp) throws Throwable {
-        return measure(pjp, "7a-engineRegister");
     }
 
     private Object measure(ProceedingJoinPoint pjp, String stage) throws Throwable {

@@ -1,12 +1,62 @@
+/** 阶段工具调用摘要 */
+export interface ToolSummary {
+  name: string
+  count: number
+  status: 'ok' | 'partial' | 'failed'
+}
+
+/** 编排阶段信息 */
+export interface SectionPhase {
+  /** 阶段名称 */
+  phase: string
+  /** 执行 AI 名称（叶子阶段） */
+  agent?: string
+  /** 编排模式（非叶子阶段，含 children 时） */
+  mode?: string
+  /** 阶段状态 */
+  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED'
+  /** 思考内容 */
+  thinking?: string
+  /** 正文内容 */
+  content?: string
+  /** 工具调用摘要 */
+  toolSummary?: ToolSummary[]
+  /** 嵌套子阶段 */
+  children?: SectionPhase[]
+  /** token 用量 */
+  tokens?: number
+  /** 耗时 ms */
+  durationMs?: number
+  /** 使用的模型 */
+  model?: string
+}
+
+/** 编排进度状态 */
+export interface ProgressState {
+  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED'
+  totalPhases: number
+  completedPhases: number
+  currentPhase?: string
+  phases: Array<{
+    name: string
+    status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED'
+    agent?: string
+    progress?: number
+  }>
+  elapsedMs: number
+  totalTokens: number
+}
+
 /** SSE 事件负载类型 */
 export type SseEvent =
-  | { type: 'response'; content: string }
-  | { type: 'thinking'; content: string }
+  | { type: 'response'; content: string; phase?: string }
+  | { type: 'thinking'; content: string; phase?: string }
   | { type: 'meta'; model?: string; totalTokens?: number; durationMs?: number; thinkingDurationMs?: number; thinkingTokens?: number; messageId?: string; chain?: string; generationGroup?: string; generationTotal?: number }
-  | { type: 'step_start'; step?: string; message?: string; executionId?: string; squadName?: string; agentCount?: number }
-  | { type: 'step_end'; step?: string; agentCount?: number }
-  | { type: 'final' }
   | { type: 'error'; message?: string; content?: string }
+  // 编排事件
+  | { type: 'phase_start'; phase: string; agent?: string; mode?: string; phaseIndex: number; totalPhases: number }
+  | { type: 'phase_end'; phase: string; agent?: string; tokens?: number; durationMs?: number; model?: string }
+  | { type: 'progress'; data: ProgressState }
 
 /** 助手消息对象接口 */
 export interface AssistantMessage {
@@ -21,15 +71,8 @@ export interface AssistantMessage {
   chain?: string
   generationGroup?: string
   generationTotal?: number
-  orchestration?: {
-    status: string
-    phases: { name: string; status: string; agentCount?: number }[]
-    executionId?: string
-    squadName?: string
-    currentStep?: string
-    currentMessage?: string
-    agentCount?: number
-  }
+  /** 编排阶段详情（仅复杂任务） */
+  sections?: SectionPhase[]
 }
 
 /** 处理 SSE 事件，更新助手消息对象。 */
@@ -57,32 +100,13 @@ export function applySseEvent(parsed: SseEvent, asst: AssistantMessage | null | 
       if (parsed.generationGroup) asst.generationGroup = parsed.generationGroup
       if (parsed.generationTotal != null) asst.generationTotal = parsed.generationTotal
       break
-    case 'step_start':
-      if (!asst.orchestration) asst.orchestration = { status: 'running', phases: [] }
-      asst.orchestration.currentStep = parsed.step
-      asst.orchestration.currentMessage = parsed.message
-      if (parsed.executionId) asst.orchestration.executionId = parsed.executionId
-      if (parsed.squadName) asst.orchestration.squadName = parsed.squadName
-      if (!asst.orchestration.phases.some(p => p.name === parsed.step)) {
-        asst.orchestration.phases.push({ name: parsed.step || '', status: 'running', agentCount: parsed.agentCount || 1 })
-      } else {
-        const existing = asst.orchestration.phases.find(p => p.name === parsed.step)
-        if (existing) existing.status = 'running'
-      }
-      break
-    case 'step_end':
-      if (!asst.orchestration) asst.orchestration = { status: 'running', phases: [] }
-      const phase = asst.orchestration.phases.find(p => p.name === parsed.step)
-      if (phase) phase.status = 'completed'
-      if (parsed.agentCount) asst.orchestration.agentCount = parsed.agentCount
-      break
-    case 'final':
-      if (!asst.orchestration) asst.orchestration = { status: 'completed', phases: [] }
-      asst.orchestration.status = 'completed'
-      break
     case 'error':
-      if (asst.orchestration) asst.orchestration.status = 'failed'
       asst.content += parsed.message || parsed.content || ''
+      break
+    // 编排事件 — sse-parser 仅透传，由 useOrchestrationStore 消费
+    case 'phase_start':
+    case 'phase_end':
+    case 'progress':
       break
   }
 }

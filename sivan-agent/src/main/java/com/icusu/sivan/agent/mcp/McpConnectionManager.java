@@ -5,6 +5,7 @@ import com.icusu.sivan.agent.tool.ToolRegistryImpl;
 import com.icusu.sivan.common.util.UrlValidator;
 import com.icusu.sivan.domain.tool.McpServerConfig;
 import com.icusu.sivan.domain.tool.IMcpServerConfigRepository;
+import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -48,6 +49,24 @@ public class McpConnectionManager {
         this.toolRegistry = toolRegistry;
     }
 
+    @PostConstruct
+    public void init() {
+        // 启动时同步连接所有活跃服务器，确保首条消息即可使用 MCP 工具
+        mcpServerConfigRepository.findAllActive().forEach(config -> {
+            if (!isInCooldown(config.getServerId()) && !isConnected(config.getServerId())) {
+                try {
+                    McpClientWrapper client = doConnect(config);
+                    connectedClients.put(config.getServerId(), client);
+                    log.info("MCP 服务器已启动时连接: {} ({})", config.getName(), config.getServerUrl());
+                } catch (Exception e) {
+                    cooldowns.put(config.getServerId(), Instant.now());
+                    log.warn("MCP 启动连接失败 ({}s 冷却): {} — {}",
+                            COOLDOWN.toSeconds(), config.getName(), e.getMessage());
+                }
+            }
+        });
+    }
+
     @PreDestroy
     public void shutdown() {
         disconnectAll();
@@ -79,6 +98,28 @@ public class McpConnectionManager {
         mcpServerConfigRepository.findAllActive().forEach(config -> {
             if (!isInCooldown(config.getServerId()) && !isConnected(config.getServerId())) {
                 connectAsync(config);
+            }
+        });
+    }
+
+    /**
+     * 同步连接服务器，阻塞直到连接完成或失败。
+     * 用于消息发送前确保工具已就绪。
+     */
+    public void connectSync(UUID serverId) {
+        if (isConnected(serverId)) return;
+        if (isInCooldown(serverId)) return;
+        mcpServerConfigRepository.findById(serverId).ifPresent(config -> {
+            if (!Boolean.TRUE.equals(config.getActive())) return;
+            try {
+                McpClientWrapper client = doConnect(config);
+                connectedClients.put(config.getServerId(), client);
+                cooldowns.remove(config.getServerId());
+                log.info("MCP 服务器已同步连接: {} ({})", config.getName(), config.getServerUrl());
+            } catch (Exception e) {
+                cooldowns.put(config.getServerId(), Instant.now());
+                log.warn("MCP 同步连接失败 ({}s 冷却): {} — {}",
+                        COOLDOWN.toSeconds(), config.getName(), e.getMessage());
             }
         });
     }

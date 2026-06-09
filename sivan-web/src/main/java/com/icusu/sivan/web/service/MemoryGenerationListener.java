@@ -1,6 +1,5 @@
-package com.icusu.sivan.web.memory.service;
+package com.icusu.sivan.web.service;
 
-import com.icusu.sivan.domain.conversation.Message;
 import com.icusu.sivan.domain.conversation.IMessageRepository;
 import com.icusu.sivan.domain.shared.event.MessageCompletedEvent;
 import lombok.RequiredArgsConstructor;
@@ -25,10 +24,7 @@ public class MemoryGenerationListener {
     @EventListener
     public void onMessageCompleted(MessageCompletedEvent event) {
         try {
-            Message assistantMsg = messageRepository.findById(event.messageId()).orElse(null);
-            if (assistantMsg != null) {
-                memoryService.createFromConversation(event.accountId(), event.conversationId(), event.projectId(), assistantMsg);
-            }
+            messageRepository.findById(event.messageId()).ifPresent(assistantMsg -> memoryService.createFromConversation(event.accountId(), event.conversationId(), event.projectId(), assistantMsg));
             log.debug("记忆生成完成: conversationId={}", event.conversationId());
         } catch (Exception e) {
             log.warn("记忆生成异常: conversationId={}, {}", event.conversationId(), e.getMessage());

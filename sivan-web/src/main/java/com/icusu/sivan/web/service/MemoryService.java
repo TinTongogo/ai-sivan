@@ -1,4 +1,4 @@
-package com.icusu.sivan.web.memory.service;
+package com.icusu.sivan.web.service;
 
 import com.icusu.sivan.agent.prompt.MemoryPrompts;
 import com.icusu.sivan.common.dto.PageResponse;
@@ -321,7 +321,6 @@ public class MemoryService {
     /**
      * 删除记忆条目。
      */
-    @Transactional
     public void delete(UUID accountId, UUID memoryId) {
         MemoryEntry entry = findOwned(accountId, memoryId);
         memoryRepository.delete(entry.getMemoryId());

@@ -3,6 +3,7 @@ package com.icusu.sivan.web.conversation.service.compress;
 import com.icusu.sivan.domain.conversation.CompressResult;
 import com.icusu.sivan.domain.conversation.IMessageRepository;
 import com.icusu.sivan.domain.conversation.Message;
+import com.icusu.sivan.web.conversation.service.PromptContextService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -489,8 +490,7 @@ public class ConversationCompressor {
     }
 
     int estimateTokens(String text) {
-        if (text == null || text.isEmpty()) return 0;
-        return (int) Math.ceil(text.length() / 2.0);
+        return PromptContextService.estimateTokens(text);
     }
 
     // ====== 内部记录 ======

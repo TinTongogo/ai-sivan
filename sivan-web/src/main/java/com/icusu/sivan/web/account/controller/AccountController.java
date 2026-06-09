@@ -14,7 +14,7 @@ import com.icusu.sivan.web.account.dto.ProfileResponse;
 import com.icusu.sivan.web.account.dto.UpdateProfileRequest;
 import com.icusu.sivan.web.account.dto.UpdateUserProfileRequest;
 import com.icusu.sivan.web.account.dto.UserProfileResponse;
-import com.icusu.sivan.web.account.service.AuthService;
+import com.icusu.sivan.web.service.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;

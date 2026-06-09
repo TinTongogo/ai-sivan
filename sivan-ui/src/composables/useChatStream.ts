@@ -3,6 +3,7 @@ import api from '../api'
 import { useMessage } from '../utils/message'
 import { useI18n } from '../utils/i18n'
 import { applySseEvent } from '../utils/sse-parser'
+import { useOrchestrationStore } from '../stores/orchestration'
 import type { useMessageStore } from './useMessageStore'
 import type { useScrollScheduler } from './useScrollScheduler'
 
@@ -122,6 +123,8 @@ export function useChatStream(deps: {
               const parsed = JSON.parse(data)
               const asst = findAsst()
               applySseEvent(parsed, asst, (msgId) => handlePendingCancel(msgId))
+              // 编排事件分发到 orchestration store
+              handleOrchestrationEvent(parsed, asst)
             } catch {
               const a = findAsst()
               if (a) a.content += data
@@ -133,6 +136,36 @@ export function useChatStream(deps: {
       return true
     } finally {
       clearTimeout(stallTimer)
+    }
+  }
+
+  /** 处理编排事件 — 将 SSE 编排事件分发给 orchestration store */
+  function handleOrchestrationEvent(parsed: any, asst: any) {
+    if (!parsed || !parsed.type) return
+
+    const orchStore = useOrchestrationStore()
+
+    switch (parsed.type) {
+      case 'progress':
+        if (parsed.data) {
+          orchStore.setProgress(parsed.data)
+        }
+        break
+      case 'phase_start':
+        // 有新编排开始，重置 store
+        if (asst) {
+          orchStore.reset()
+        }
+        break
+      case 'phase_end':
+        // 阶段结束，无额外操作
+        break
+      case 'meta':
+        // 编排完成（最终 meta 事件到达时）
+        if (parsed.messageId && orchStore.isOrchestrating) {
+          orchStore.complete()
+        }
+        break
     }
   }
 
@@ -205,7 +238,6 @@ export function useChatStream(deps: {
     try {
       const token = localStorage.getItem('token')
       const body: any = { content: text, stream: payload?.stream !== false }
-      if ((payload as any)?.forceIntent) body.forceIntent = (payload as any).forceIntent
       if ((payload as any)?.targetAgent) body.targetAgent = (payload as any).targetAgent
       else if (selectedAgentId.value) body.targetAgent = selectedAgentId.value
       if (currentProjectContext.value) body.projectId = currentProjectContext.value

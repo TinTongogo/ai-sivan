@@ -1,6 +1,7 @@
-package com.icusu.sivan.web.account.service;
+package com.icusu.sivan.web.service;
 
 import com.icusu.sivan.common.exception.BusinessException;
+import com.icusu.sivan.common.exception.DomainException;
 import com.icusu.sivan.common.exception.ResourceNotFoundException;
 import com.icusu.sivan.domain.account.Account;
 import com.icusu.sivan.domain.account.IAccountRepository;
@@ -51,7 +52,7 @@ public class AuthService {
     /** 用户注册，自动创建默认知识库。 */
     public AuthResponse register(RegisterRequest request) {
         if (accountRepository.existsByUsername(request.getUsername())) {
-            throw BusinessException.conflict("用户名已存在");
+            throw new DomainException(409, "error.auth.username-exists");
         }
 
         String shortId = generateAccountShortId();
@@ -105,14 +106,14 @@ public class AuthService {
     /** 用户登录，生成 JWT。 */
     public AuthResponse login(LoginRequest request) {
         Account account = accountRepository.findByUsername(request.getUsername())
-                .orElseThrow(() -> BusinessException.badRequest("用户名或密码错误"));
+                .orElseThrow(() -> new DomainException(400, "error.auth.invalid-credentials"));
 
         if (!account.isActive()) {
-            throw BusinessException.forbidden("账户已被禁用，请联系管理员");
+            throw new DomainException(403, "error.auth.account-disabled");
         }
 
         if (!passwordEncoder.matches(request.getPassword(), account.getPasswordHash())) {
-            throw BusinessException.badRequest("用户名或密码错误");
+            throw new DomainException(400, "error.auth.invalid-credentials");
         }
 
         String token = generateToken(account.getAccountId(), account.getUsername());
@@ -132,7 +133,7 @@ public class AuthService {
                 .orElseThrow(() -> new ResourceNotFoundException("用户不存在"));
 
         if (!passwordEncoder.matches(request.getOldPassword(), account.getPasswordHash())) {
-            throw BusinessException.badRequest("旧密码错误");
+            throw new DomainException(400, "error.auth.old-password-wrong");
         }
 
         account.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
@@ -159,7 +160,7 @@ public class AuthService {
     /** 生成密码重置令牌，打印到日志（无邮件服务时的替代方案）。 */
     public String generatePasswordResetToken(String username) {
         Account account = accountRepository.findByUsername(username)
-                .orElseThrow(() -> BusinessException.badRequest("用户名不存在"));
+                .orElseThrow(() -> new DomainException(400, "error.auth.username-not-found"));
         String token = randomUUID().toString().replace("-", "") + randomUUID().toString().replace("-", "");
         resetTokens.put(token, new PasswordResetEntry(account.getAccountId(), Instant.now().plus(Duration.ofMinutes(30))));
         return token;
@@ -169,14 +170,14 @@ public class AuthService {
     public void resetPassword(String token, String newPassword) {
         PasswordResetEntry entry = resetTokens.get(token);
         if (entry == null) {
-            throw BusinessException.badRequest("重置令牌无效或已使用");
+            throw new DomainException(400, "error.auth.reset-token-invalid");
         }
         if (Instant.now().isAfter(entry.expiresAt())) {
             resetTokens.remove(token);
-            throw BusinessException.badRequest("重置令牌已过期，请重新申请");
+            throw new DomainException(400, "error.auth.reset-token-expired");
         }
         Account account = accountRepository.findById(entry.accountId())
-                .orElseThrow(() -> BusinessException.badRequest("账户不存在"));
+                .orElseThrow(() -> new DomainException(400, "error.auth.account-not-found"));
         account.setPasswordHash(passwordEncoder.encode(newPassword));
         account.setTokenVersion(account.getTokenVersion() + 1);
         accountRepository.save(account);

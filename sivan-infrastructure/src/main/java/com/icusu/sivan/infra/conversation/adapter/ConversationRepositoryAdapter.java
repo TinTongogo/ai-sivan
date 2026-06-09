@@ -68,7 +68,6 @@ public class ConversationRepositoryAdapter implements IConversationRepository {
         entity.setProjectId(conversation.getProjectId());
         entity.setKnowledgeBaseIds(toJsonArray(conversation.getKnowledgeBaseIds()));
         entity.setMcpServerIds(toJsonArray(conversation.getMcpServerIds()));
-        entity.setGoalId(conversation.getGoalId());
         entity.setCompressedContext(conversation.getCompressedContext());
         entity.setCompressedUpToMsgId(conversation.getCompressedUpToMsgId());
         entity.setMessageCount(conversation.getMessageCount() != null ? conversation.getMessageCount() : entity.getMessageCount());
@@ -103,7 +102,6 @@ public class ConversationRepositoryAdapter implements IConversationRepository {
                 .messageCount(entity.getMessageCount())
                 .knowledgeBaseIds(toList(entity.getKnowledgeBaseIds()))
                 .mcpServerIds(toList(entity.getMcpServerIds()))
-                .goalId(entity.getGoalId())
                 .compressedContext(entity.getCompressedContext())
                 .compressedUpToMsgId(entity.getCompressedUpToMsgId())
                 .lastMessageAt(entity.getLastMessageAt() != null ? entity.getLastMessageAt().toLocalDateTime() : null)
@@ -121,7 +119,6 @@ public class ConversationRepositoryAdapter implements IConversationRepository {
         entity.setTitle(conversation.getTitle() != null ? conversation.getTitle() : "新对话");
         entity.setKnowledgeBaseIds(toJsonArray(conversation.getKnowledgeBaseIds()));
         entity.setMcpServerIds(toJsonArray(conversation.getMcpServerIds()));
-        entity.setGoalId(conversation.getGoalId());
         entity.setCompressedContext(conversation.getCompressedContext());
         entity.setCompressedUpToMsgId(conversation.getCompressedUpToMsgId());
         entity.setMessageCount(conversation.getMessageCount() != null ? conversation.getMessageCount() : 0);

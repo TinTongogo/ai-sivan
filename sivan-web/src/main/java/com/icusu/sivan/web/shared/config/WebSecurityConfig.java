@@ -5,6 +5,8 @@ import com.icusu.sivan.web.shared.filter.JwtAuthenticationFilter;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.MessageSource;
+import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
@@ -26,6 +28,7 @@ import reactor.core.publisher.Mono;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 
 @Slf4j
 @Configuration
@@ -52,8 +55,9 @@ public class WebSecurityConfig {
     @Bean
     public SecurityWebFilterChain filterChain(ServerHttpSecurity http,
                                               ServerSecurityContextRepository repo,
-                                              IAccountRepository accountRepository) {
-        JwtAuthenticationFilter jwtFilter = new JwtAuthenticationFilter(jwtSecret, repo, accountRepository);
+                                              IAccountRepository accountRepository,
+                                              MessageSource messageSource) {
+        JwtAuthenticationFilter jwtFilter = new JwtAuthenticationFilter(jwtSecret, repo, accountRepository, messageSource);
         return http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(ServerHttpSecurity.CsrfSpec::disable)
@@ -62,9 +66,11 @@ public class WebSecurityConfig {
                 .securityContextRepository(repo)
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint((exchange, e) -> {
+                            Locale locale = LocaleContextHolder.getLocale();
+                            String message = messageSource.getMessage("error.auth.token-expired", null, "未登录或登录已过期", locale);
                             exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
                             exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
-                            byte[] body = "{\"code\":401,\"message\":\"未登录或登录已过期\",\"data\":null}".getBytes(StandardCharsets.UTF_8);
+                            byte[] body = ("{\"code\":401,\"message\":\"" + message + "\",\"data\":null}").getBytes(StandardCharsets.UTF_8);
                             return exchange.getResponse().writeWith(Mono.just(exchange.getResponse().bufferFactory().wrap(body)));
                         })
                         .accessDeniedHandler(new HttpStatusServerAccessDeniedHandler(HttpStatus.FORBIDDEN))

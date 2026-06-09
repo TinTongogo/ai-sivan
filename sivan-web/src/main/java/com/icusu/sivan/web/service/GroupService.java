@@ -1,4 +1,4 @@
-package com.icusu.sivan.web.agent.service;
+package com.icusu.sivan.web.service;
 
 import com.icusu.sivan.common.exception.DomainException;
 import com.icusu.sivan.domain.account.Account;
@@ -10,7 +10,6 @@ import com.icusu.sivan.web.file.dto.FileEntryResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
 import java.nio.file.*;
@@ -51,19 +50,16 @@ public class GroupService {
     }
 
     /** 保存分组（供其他 Service 调用）。 */
-    @Transactional
     public ProjectEntity save(ProjectEntity entity) {
         return projectJpaRepository.save(entity);
     }
 
     /** 创建分组。 */
-    @Transactional
     public ProjectEntity create(UUID accountId, String name) {
         return create(accountId, name, true);
     }
 
     /** 创建分组（可选自动创建本地目录）。 */
-    @Transactional
     public ProjectEntity create(UUID accountId, String name, boolean autoCreateDir) {
         long count = projectJpaRepository.countByAccountId(accountId);
         String shortId = generateShortIdForAccount(accountId);
@@ -85,7 +81,6 @@ public class GroupService {
     }
 
     /** 重命名分组。 */
-    @Transactional
     public ProjectEntity rename(UUID accountId, UUID groupId, String name) {
         ProjectEntity entity = findOwned(accountId, groupId);
         entity.setName(name);
@@ -93,13 +88,11 @@ public class GroupService {
     }
 
     /** 删除分组（默认保留文件）。 */
-    @Transactional
     public void delete(UUID accountId, UUID groupId) {
         delete(accountId, groupId, false);
     }
 
     /** 删除分组，可选同步清理本地文件目录。 */
-    @Transactional
     public void delete(UUID accountId, UUID groupId, boolean removeFiles) {
         ProjectEntity entity = findOwned(accountId, groupId);
         log.info("项目删除: name={} shortId={} localPath={} removeFiles={}", entity.getName(), entity.getShortId(), entity.getLocalPath(), removeFiles);
@@ -110,7 +103,6 @@ public class GroupService {
     }
 
     /** 更新本地路径。 */
-    @Transactional
     public ProjectEntity updateLocalPath(UUID accountId, UUID groupId, String localPath) {
         ProjectEntity entity = findOwned(accountId, groupId);
         if (localPath != null && !localPath.isBlank()) {
@@ -181,7 +173,6 @@ public class GroupService {
     }
 
     /** 归档项目：设为只读，不允许创建新对话或修改文件。 */
-    @Transactional
     public ProjectEntity archive(UUID accountId, UUID groupId) {
         ProjectEntity entity = findOwned(accountId, groupId);
         if (Boolean.TRUE.equals(entity.getArchived())) {
@@ -193,7 +184,6 @@ public class GroupService {
     }
 
     /** 取消归档：恢复读写。 */
-    @Transactional
     public ProjectEntity unarchive(UUID accountId, UUID groupId) {
         ProjectEntity entity = findOwned(accountId, groupId);
         if (!Boolean.TRUE.equals(entity.getArchived())) {

@@ -21,20 +21,17 @@ const decision = ref<RoutingDecision | null>(null)
 const strategyMap: Record<string, { label: string; cls: string }> = {
   CHAT: { label: 'CHAT', cls: 'tag-info' },
   SINGLE_AGENT: { label: 'SINGLE_AGENT', cls: 'tag-info' },
-  SQUAD: { label: 'SQUAD', cls: 'tag-accent' },
   INTENT_CLASSIFICATION: { label: 'INTENT_CLASSIFICATION', cls: 'tag-info' },
   FORCE_INTENT: { label: 'FORCE_INTENT', cls: 'tag-warning' },
   TEMPLATE_MATCH: { label: 'TEMPLATE_MATCH', cls: 'tag-info' },
-  SQUAD_MATCH: { label: 'SQUAD_MATCH', cls: 'tag-accent' },
   AUTO_CREATE: { label: 'AUTO_CREATE', cls: 'tag-warning' },
-  SQUAD_AUTO_CREATE: { label: 'SQUAD_AUTO_CREATE', cls: 'tag-accent' },
 }
 
 /** 将 strategy 归类为三种最终策略之一 */
 const displayStrategy = computed(() => {
   if (!decision.value?.strategy) return '—'
   const s = decision.value.strategy
-  if (s === 'CHAT' || s === 'SINGLE_AGENT' || s === 'SQUAD') return s
+  if (s === 'CHAT' || s === 'SINGLE_AGENT') return s
   const entry = strategyMap[s]
   return entry?.label || s
 })
@@ -42,8 +39,8 @@ const displayStrategy = computed(() => {
 const strategyTagCls = computed(() => {
   if (!decision.value?.strategy) return ''
   const s = decision.value.strategy
-  if (s === 'CHAT' || s === 'SINGLE_AGENT' || s === 'SQUAD') {
-    return s === 'SQUAD' ? 'tag-accent' : 'tag-info'
+  if (s === 'CHAT' || s === 'SINGLE_AGENT') {
+    return 'tag-info'
   }
   const entry = strategyMap[s]
   return entry?.cls || ''
@@ -53,7 +50,7 @@ const strategyTagCls = computed(() => {
 const agentList = computed<string[]>(() => {
   if (!decision.value) return []
   const ctx = decision.value.context
-  // SQUAD 模式：优先从上下文取 agentNames 数组
+  // 多智能体模式：优先从上下文取 agentNames 数组
   if (ctx && Array.isArray(ctx.agentNames) && ctx.agentNames.length > 0) {
     return ctx.agentNames.filter(Boolean)
   }

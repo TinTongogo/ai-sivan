@@ -7,6 +7,8 @@ import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.MessageSource;
+import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -24,6 +26,7 @@ import reactor.core.scheduler.Schedulers;
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 /**
@@ -40,12 +43,14 @@ public class JwtAuthenticationFilter implements WebFilter {
     private final SecretKey secretKey;
     private final ServerSecurityContextRepository securityContextRepository;
     private final IAccountRepository accountRepository;
+    private final MessageSource messageSource;
 
     public JwtAuthenticationFilter(String jwtSecret, ServerSecurityContextRepository securityContextRepository,
-                                   IAccountRepository accountRepository) {
+                                   IAccountRepository accountRepository, MessageSource messageSource) {
         this.secretKey = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
         this.securityContextRepository = securityContextRepository;
         this.accountRepository = accountRepository;
+        this.messageSource = messageSource;
     }
 
     @Override
@@ -61,7 +66,7 @@ public class JwtAuthenticationFilter implements WebFilter {
         String token = extractToken(exchange);
         if (token == null) {
             log.debug("[JWT] {} — 无 Token，返回 401", path);
-            return writeUnauthorized(exchange, "未登录或登录已过期，请重新登录");
+            return writeUnauthorized(exchange, "error.auth.token-expired");
         }
 
         try {
@@ -82,13 +87,13 @@ public class JwtAuthenticationFilter implements WebFilter {
                     .flatMap(accountOpt -> {
                         if (accountOpt.isEmpty() || !accountOpt.get().isActive()) {
                             log.warn("[JWT] {} — 账户不存在或已禁用: {}", path, accountId);
-                            return writeUnauthorized(exchange, "账户不存在或已被禁用");
+                            return writeUnauthorized(exchange, "error.auth.account-not-exists");
                         }
 
                         // token version 校验：改密码后旧版本 token 自动失效
                         if (jwtTver != null && jwtTver < accountOpt.get().getTokenVersion()) {
                             log.warn("[JWT] {} — Token 版本过期(需重新登录): accountId={}", path, accountId);
-                            return writeUnauthorized(exchange, "密码已修改，请重新登录");
+                            return writeUnauthorized(exchange, "error.auth.password-changed");
                         }
 
                         List<SimpleGrantedAuthority> authorities = List.of(
@@ -112,16 +117,18 @@ public class JwtAuthenticationFilter implements WebFilter {
                     });
         } catch (ExpiredJwtException e) {
             log.warn("[JWT] {} — Token 已过期", path);
-            return writeUnauthorized(exchange, "登录已过期，请重新登录");
+            return writeUnauthorized(exchange, "error.auth.login-expired");
         } catch (io.jsonwebtoken.security.SecurityException |
                  io.jsonwebtoken.MalformedJwtException | io.jsonwebtoken.UnsupportedJwtException |
                  IllegalArgumentException e) {
             log.warn("[JWT] {} — Token 无效: {} {}", path, e.getClass().getSimpleName(), e.getMessage());
-            return writeUnauthorized(exchange, "Token 无效，请重新登录");
+            return writeUnauthorized(exchange, "error.auth.token-invalid");
         }
     }
 
-    private Mono<Void> writeUnauthorized(ServerWebExchange exchange, String message) {
+    private Mono<Void> writeUnauthorized(ServerWebExchange exchange, String messageCode) {
+        Locale locale = LocaleContextHolder.getLocale();
+        String message = messageSource.getMessage(messageCode, null, messageCode, locale);
         exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
         exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
         byte[] body = ("{\"code\":401,\"message\":\"" + message + "\",\"data\":null}")

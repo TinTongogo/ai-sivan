@@ -18,8 +18,6 @@ public class SendMessageRequest {
     private String contentType = "text";
     /** 显式指定目标智能体（@agent 快捷指令），跳过路由决策 */
     private String targetAgent;
-    /** 强制意图类型，跳过 IntentClassifier：SQUAD / SINGLE_AGENT */
-    private String forceIntent;
     private UUID replyToId;
 
     /** 图片文件 ID 或 base64 data URI 的列表 */

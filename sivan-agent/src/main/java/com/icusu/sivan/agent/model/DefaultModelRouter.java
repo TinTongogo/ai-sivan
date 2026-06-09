@@ -2,6 +2,7 @@ package com.icusu.sivan.agent.model;
 
 import com.icusu.sivan.common.exception.DomainException;
 import com.icusu.sivan.core.model.Model;
+import com.icusu.sivan.core.model.ModelAccessor;
 import com.icusu.sivan.domain.model.LlmProvider;
 import com.icusu.sivan.domain.model.ILlmProviderRepository;
 import com.icusu.sivan.domain.model.ModelCapability;
@@ -17,7 +18,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Component
-public class DefaultModelRouter implements ModelRouter {
+public class DefaultModelRouter implements ModelRouter, ModelAccessor {
     private final ILlmProviderRepository providerRepository;
     private final ModelCapabilityRegistry capabilityRegistry;
     private final Map<UUID, CacheEntry> modelCache = new ConcurrentHashMap<>();
@@ -48,13 +49,21 @@ public class DefaultModelRouter implements ModelRouter {
     @Override
     public LlmProvider getDefaultProvider(UUID accountId) {
         return findProviderByTag(accountId, "chat")
-                .orElseThrow(() -> new DomainException("未配置对话类型的 LLM 提供商"));
+                .orElseThrow(() -> new DomainException(400, "error.llm.provider.not-configured", "对话"));
     }
 
     @Override
     public LlmProvider getEmbeddingProvider(UUID accountId) {
         return findProviderByTag(accountId, "embedding")
-                .orElseThrow(() -> new DomainException("未配置 Embedding 类型的 LLM 提供商"));
+                .orElseThrow(() -> new DomainException(400, "error.llm.provider.not-configured", "Embedding"));
+    }
+
+    @Override
+    public Model getLightModel(UUID accountId) {
+        // 优先使用 tag=light 的轻量模型，未配置时降级到默认对话模型
+        return findProviderByTag(accountId, "light")
+                .map(this::resolveModel)
+                .orElseGet(() -> getDefaultModel(accountId));
     }
 
     @Override

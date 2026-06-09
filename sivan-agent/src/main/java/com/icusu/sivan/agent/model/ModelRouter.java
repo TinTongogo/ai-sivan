@@ -21,6 +21,8 @@ public interface ModelRouter {
     Model getEmbeddingModel(UUID accountId);
     /** 获取 Embedding 提供商（tag 包含 "embedding"） */
     LlmProvider getEmbeddingProvider(UUID accountId);
+    /** 获取轻量模型（tag 包含 "light"），未配置时降级到默认对话模型 */
+    Model getLightModel(UUID accountId);
     /** 清除模型缓存 */
     void evictCache(UUID providerId);
 }

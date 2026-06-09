@@ -63,7 +63,7 @@ public class ContextForest {
             if (budget <= 0) continue;
             String context = tree.buildContext(scene, budget);
             if (context != null && !context.isBlank()) {
-                if (sb.length() > 0) sb.append("\n\n");
+                if (!sb.isEmpty()) sb.append("\n\n");
                 sb.append(context);
             }
         }

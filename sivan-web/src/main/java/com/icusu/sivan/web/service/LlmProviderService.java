@@ -1,4 +1,4 @@
-package com.icusu.sivan.web.model.service;
+package com.icusu.sivan.web.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -95,14 +95,14 @@ public class LlmProviderService {
         boolean needsChat = tags != null && tags.contains("chat");
         String caps = request.getCapabilities();
         if (needsChat && (caps == null || caps.isBlank())) {
-            throw new DomainException("用途标签为「对话」时，必须指定模型能力（capabilities）");
+            throw new DomainException(400, "error.llm.provider.capabilities-required");
         }
 
-        // SSRF 防护：baseUrl 入库前校验（DNS 解析 + 私有地址白名单）
+        // baseUrl 入库前校验（协议白名单、字符安全）
         if (request.getBaseUrl() != null && !request.getBaseUrl().isBlank()) {
-            var urlCheck = UrlValidator.validatePrivateAccess(request.getBaseUrl());
+            var urlCheck = UrlValidator.validate(request.getBaseUrl());
             if (!urlCheck.valid()) {
-                throw new DomainException("baseUrl 无效: " + urlCheck.errorMessage());
+                throw new DomainException(400, "error.llm.provider.url-invalid", urlCheck.errorMessage());
             }
         }
 
@@ -148,11 +148,11 @@ public class LlmProviderService {
     public LlmProviderResponse update(UUID accountId, UUID providerId, UpdateLlmProviderRequest request) {
         LlmProvider provider = findOwned(accountId, providerId);
 
-        // SSRF 防护：baseUrl 入库前校验（DNS 解析 + 私有地址白名单）
+        // baseUrl 入库前校验（协议白名单、字符安全）
         if (request.getBaseUrl() != null && !request.getBaseUrl().isBlank()) {
-            var urlCheck = UrlValidator.validatePrivateAccess(request.getBaseUrl());
+            var urlCheck = UrlValidator.validate(request.getBaseUrl());
             if (!urlCheck.valid()) {
-                throw new DomainException("baseUrl 无效: " + urlCheck.errorMessage());
+                throw new DomainException(400, "error.llm.provider.url-invalid", urlCheck.errorMessage());
             }
         }
 
@@ -187,7 +187,6 @@ public class LlmProviderService {
 
     /** 删除 LLM 提供商。 */
     @CacheEvict(cacheNames = "llmProviders", allEntries = true)
-    @Transactional
     public void delete(UUID accountId, UUID providerId) {
         LlmProvider provider = findOwned(accountId, providerId);
         llmProviderRepository.delete(provider.getProviderId());
@@ -238,8 +237,8 @@ public class LlmProviderService {
      * 测试 LLM 提供商连通性。
      */
     public LlmTestResult testConnection(String providerType, String apiKey, String baseUrl) {
-        // SSRF 防护：DNS 解析 + 私有地址白名单校验
-        var urlCheck = UrlValidator.validatePrivateAccess(baseUrl);
+        // baseUrl 基础校验（协议白名单、字符安全）
+        var urlCheck = UrlValidator.validate(baseUrl);
         if (!urlCheck.valid()) {
             return LlmTestResult.builder()
                     .success(false)
@@ -293,10 +292,10 @@ public class LlmProviderService {
      * 获取 LLM 提供商可用的模型列表。
      */
     public LlmModelListResult fetchModels(String providerType, String apiKey, String baseUrl) {
-        // SSRF 防护：DNS 解析 + 私有地址白名单校验
-        var urlCheck = UrlValidator.validatePrivateAccess(baseUrl);
+        // baseUrl 基础校验（协议白名单、字符安全）
+        var urlCheck = UrlValidator.validate(baseUrl);
         if (!urlCheck.valid()) {
-            throw new DomainException("URL 无效: " + urlCheck.errorMessage());
+            throw new DomainException(400, "error.llm.provider.url-check-failed", urlCheck.errorMessage());
         }
 
         List<String> models = new ArrayList<>();
@@ -320,7 +319,7 @@ public class LlmProviderService {
             }
         } catch (Exception e) {
             log.warn("获取模型列表失败: {}", e.getMessage());
-            throw new DomainException("获取模型列表失败: " + e.getMessage());
+            throw new DomainException(400, "error.llm.provider.models-fetch-failed", e.getMessage());
         }
 
         return LlmModelListResult.builder().models(models).build();
@@ -329,9 +328,9 @@ public class LlmProviderService {
     /** 构建 LLM 提供商 HTTP 请求的 Header 和 URL。不同提供商的鉴权路径各异。 */
     private ProviderRequest buildProviderRequest(String providerType, String apiKey, String baseUrl) {
         // SSRF 防护：所有外部请求 URL 须经 DNS 解析 + 私有地址白名单校验
-        var urlCheck = UrlValidator.validatePrivateAccess(baseUrl);
+        var urlCheck = UrlValidator.validate(baseUrl);
         if (!urlCheck.valid()) {
-            throw new DomainException("baseUrl 无效: " + urlCheck.errorMessage());
+            throw new DomainException(400, "error.llm.provider.url-invalid", urlCheck.errorMessage());
         }
 
         HttpHeaders headers = new HttpHeaders();
@@ -357,8 +356,8 @@ public class LlmProviderService {
         String primaryModel = modelName.split(",")[0].trim();
 
         if (apiKey != null && !apiKey.isBlank() && baseUrl != null && !baseUrl.isBlank()) {
-            // SSRF 防护：DNS 解析 + 私有地址白名单校验
-            var urlCheck = UrlValidator.validatePrivateAccess(baseUrl);
+            // baseUrl 基础校验（协议白名单、字符安全）
+            var urlCheck = UrlValidator.validate(baseUrl);
             if (!urlCheck.valid()) {
                 log.debug("resolveContextLength 跳过 — URL 校验失败: {}", urlCheck.errorMessage());
                 return null;
@@ -434,13 +433,12 @@ public class LlmProviderService {
 
     /** 创建或更新系统级提供商。 */
     @CacheEvict(cacheNames = "llmProviders", allEntries = true)
-    @Transactional
     public void upsertSystemProvider(String providerType, String baseUrl, String models) {
-        // SSRF 防护：系统级提供商 URL 入库前校验（DNS 解析 + 私有地址白名单）
+        // baseUrl 入库前校验（协议白名单、字符安全）
         if (baseUrl != null && !baseUrl.isBlank()) {
-            var urlCheck = UrlValidator.validatePrivateAccess(baseUrl);
+            var urlCheck = UrlValidator.validate(baseUrl);
             if (!urlCheck.valid()) {
-                throw new DomainException("baseUrl 无效: " + urlCheck.errorMessage());
+                throw new DomainException(400, "error.llm.provider.url-invalid", urlCheck.errorMessage());
             }
         }
 

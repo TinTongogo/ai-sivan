@@ -5,7 +5,7 @@ import com.icusu.sivan.common.dto.PageResponse;
 import com.icusu.sivan.web.memory.dto.CreateMemoryRequest;
 import com.icusu.sivan.web.memory.dto.UpdateMemoryRequest;
 import com.icusu.sivan.web.memory.dto.MemoryResponse;
-import com.icusu.sivan.web.memory.service.MemoryService;
+import com.icusu.sivan.web.service.MemoryService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;

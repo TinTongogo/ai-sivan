@@ -75,7 +75,7 @@ public class BashService {
             Pattern.compile("\\bwget\\s+.*(--post-data|--post-file|--header)"),
             Pattern.compile("\\bn(c|cat)\\s+.*(<|--send-only)"),
             Pattern.compile("/dev/tcp/"),
-            // 无载荷出站（仅 allowNetwork=false 时启用）
+            // 无载荷出站（仅 allowNetwork=false 时启用）·
             Pattern.compile("<<network-block>>")
     );
 
@@ -191,8 +191,8 @@ public class BashService {
         }
 
         // 层 2+3：OS 沙箱 + 资源限制（委托 SandboxExecutor）
-        log.debug("bash 执行: commandLen={}", command.length());
-        return sandboxExecutor.execute(command, fileRootPath);
+        log.debug("bash 执行: commandLen={} allowNetwork={}", command.length(), allowNetwork);
+        return sandboxExecutor.execute(command, fileRootPath, allowNetwork);
     }
 
     /** 剥离 heredoc 正文，只保留命令骨架供安全检测。 */

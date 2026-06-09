@@ -9,7 +9,7 @@ import com.icusu.sivan.domain.conversation.CompressResult;
 import com.icusu.sivan.domain.conversation.IMessageRepository;
 import com.icusu.sivan.domain.conversation.Message;
 import com.icusu.sivan.domain.memory.MemoryEntry;
-import com.icusu.sivan.web.memory.service.MemoryService;
+import com.icusu.sivan.web.service.MemoryService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;

@@ -75,7 +75,7 @@ public class FlashbackScanner implements MemoryRetrievalStrategy<FlashbackCandid
 
         if (!candidates.isEmpty()) {
             log.debug("情境闪现: {} 候选, 最高相关度={}", candidates.size(),
-                    candidates.get(0).getRelevanceScore());
+                    candidates.getFirst().getRelevanceScore());
         }
 
         return candidates;

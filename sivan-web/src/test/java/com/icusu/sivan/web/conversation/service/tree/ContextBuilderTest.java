@@ -8,11 +8,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.icusu.sivan.common.enums.ExecutionStatus;
-import com.icusu.sivan.domain.memory.MemoryEntry;
-import com.icusu.sivan.domain.orchestration.PhaseNode;
-import com.icusu.sivan.domain.orchestration.Squad;
-import com.icusu.sivan.domain.orchestration.SquadExecution;
 import com.icusu.sivan.domain.context.ContextForest;
 import com.icusu.sivan.domain.context.ContextTree;
 import java.util.List;
@@ -87,63 +82,6 @@ class ContextBuilderTest {
         String text = builder.build(UUID.randomUUID(), result, 1000);
 
         assertEquals("降级摘要文本", text);
-    }
-
-    @Test
-    /** buildForSquad 空 SquadTree 时返回空（外部 fallback 兜底）。 */
-    void buildForSquad_withoutSquadTree_returnsEmpty() {
-        ContextBuilder builder = new ContextBuilder(messageRepository, conversationTree);
-        CompressResult result = new CompressResult("摘要", List.of(), List.of(), null, false);
-
-        String text = builder.buildForSquad(UUID.randomUUID(), result, 1000, null, null);
-
-        // 没有 SquadTree 时返回空，由调用方兜底到 toSummaryText
-        assertTrue(text == null || text.isEmpty());
-    }
-
-    @Test
-    /** buildForSquad 含 SquadTree 时输出 Squad 执行状态。 */
-    void buildForSquad_withSquadTree_containsSquadInfo() {
-        ContextBuilder builder = new ContextBuilder(messageRepository, conversationTree);
-        CompressResult result = new CompressResult("摘要", List.of(), List.of(), null, false);
-
-        Squad squad = Squad.builder().name("测试Squad").phases(List.of(
-                PhaseNode.builder().phase(0).name("分析").build()
-        )).build();
-        SquadExecution exec = SquadExecution.builder()
-                .status(ExecutionStatus.RUNNING).currentPhase(0).taskDescription("测试").build();
-
-        SquadTree squadTree = new SquadTree()
-                .withSquad(squad).withExecution(exec);
-
-        String text = builder.buildForSquad(UUID.randomUUID(), result, 1000, squadTree, null);
-
-        assertNotNull(text);
-        assertTrue(text.contains("测试Squad"), "should contain squad name, got: " + text);
-    }
-
-    @Test
-    /** buildForSquad 含 MemoryTree 时输出记忆上下文。 */
-    void buildForSquad_withMemories_containsMemory() {
-        ContextBuilder builder = new ContextBuilder(messageRepository, conversationTree);
-        CompressResult result = new CompressResult("摘要", List.of(), List.of(), null, false);
-
-        List<MemoryEntry> memories = List.of(
-                MemoryEntry.builder().content("用户偏好Python").important(true).build()
-        );
-
-        Squad squad = Squad.builder().name("Test").phases(List.of(
-                PhaseNode.builder().phase(0).name("P0").build()
-        )).build();
-        SquadExecution exec = SquadExecution.builder()
-                .status(ExecutionStatus.RUNNING).currentPhase(0).taskDescription("t").build();
-
-        SquadTree squadTree = new SquadTree().withSquad(squad).withExecution(exec);
-
-        String text = builder.buildForSquad(UUID.randomUUID(), result, 1000, squadTree, memories);
-
-        assertNotNull(text);
-        assertTrue(text.contains("用户偏好Python") || text.contains("Test"));
     }
 
     @Test

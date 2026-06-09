@@ -43,4 +43,8 @@ public class MessageResponse {
     private List<String> images;
     private List<String> audios;
     private List<Map<String, Object>> attachments;
+    /** 编排阶段详情 */
+    private List<Map<String, Object>> sections;
+    /** 运行时进度状态 */
+    private Map<String, Object> progress;
 }

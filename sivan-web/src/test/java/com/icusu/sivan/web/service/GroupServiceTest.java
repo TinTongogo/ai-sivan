@@ -1,4 +1,4 @@
-package com.icusu.sivan.web.agent.service;
+package com.icusu.sivan.web.service;
 
 import com.icusu.sivan.common.exception.DomainException;
 import com.icusu.sivan.domain.account.Account;

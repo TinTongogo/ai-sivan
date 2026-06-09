@@ -13,4 +13,5 @@ public class UpdateConversationRequest {
     private String title;
     private UUID projectId;
     private List<String> knowledgeBaseIds;
+    private List<String> mcpServerIds;
 }

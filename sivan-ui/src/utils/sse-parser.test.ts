@@ -1,5 +1,5 @@
 import {describe, expect, it, vi} from 'vitest'
-import {applySseEvent, type AssistantMessage} from './sse-parser'
+import {applySseEvent, type AssistantMessage, type ProgressState} from './sse-parser'
 
 function createMsg(overrides?: Partial<AssistantMessage>): AssistantMessage {
   return { content: '', ...overrides }
@@ -35,56 +35,59 @@ describe('applySseEvent', () => {
     expect(onId).toHaveBeenCalledWith('msg-1')
   })
 
-  it('should handle step_start with new phase', () => {
-    const msg = createMsg()
-    applySseEvent({ type: 'step_start', step: '分析', message: '正在分析...' }, msg)
-    expect(msg.orchestration?.status).toBe('running')
-    expect(msg.orchestration?.currentStep).toBe('分析')
-    expect(msg.orchestration?.phases).toHaveLength(1)
-    expect(msg.orchestration?.phases[0].name).toBe('分析')
-    expect(msg.orchestration?.phases[0].status).toBe('running')
-  })
-
-  it('should handle step_start with executionId', () => {
-    const msg = createMsg()
-    applySseEvent({ type: 'step_start', step: '编排', executionId: 'exec-1', squadName: '测试Squad' }, msg)
-    expect(msg.orchestration?.executionId).toBe('exec-1')
-    expect(msg.orchestration?.squadName).toBe('测试Squad')
-  })
-
-  it('should update existing phase on step_start', () => {
-    const msg = createMsg({ orchestration: { status: 'running', phases: [{ name: '分析', status: 'pending' }] } })
-    applySseEvent({ type: 'step_start', step: '分析' }, msg)
-    expect(msg.orchestration?.phases[0].status).toBe('running')
-  })
-
-  it('should handle step_end', () => {
-    const msg = createMsg({ orchestration: { status: 'running', phases: [{ name: '分析', status: 'running' }] } })
-    applySseEvent({ type: 'step_end', step: '分析' }, msg)
-    expect(msg.orchestration?.phases[0].status).toBe('completed')
-  })
-
-  it('should handle final event', () => {
-    const msg = createMsg({ orchestration: { status: 'running', phases: [] } })
-    applySseEvent({ type: 'final' }, msg)
-    expect(msg.orchestration?.status).toBe('completed')
-  })
-
-  it('should create orchestration on final if missing', () => {
-    const msg = createMsg()
-    applySseEvent({ type: 'final' }, msg)
-    expect(msg.orchestration?.status).toBe('completed')
-  })
-
   it('should handle error event', () => {
-    const msg = createMsg({ orchestration: { status: 'running', phases: [] } })
+    const msg = createMsg()
     applySseEvent({ type: 'error', message: '出错了' }, msg)
-    expect(msg.orchestration?.status).toBe('failed')
     expect(msg.content).toContain('出错了')
   })
 
   it('should be safe when asst is null', () => {
     expect(() => applySseEvent({ type: 'response', content: 'x' }, null)).not.toThrow()
     expect(() => applySseEvent({ type: 'response', content: 'x' }, undefined)).not.toThrow()
+  })
+
+  // ── 编排事件：透传，不修改 asst ──
+
+  it('should ignore phase_start event (not modify asst)', () => {
+    const msg = createMsg()
+    applySseEvent({ type: 'phase_start', phase: '需求分析', agent: '分析师', phaseIndex: 0, totalPhases: 3 }, msg)
+    expect(msg.content).toBe('')
+    expect(msg.sections).toBeUndefined()
+  })
+
+  it('should ignore phase_end event (not modify asst)', () => {
+    const msg = createMsg()
+    applySseEvent({ type: 'phase_end', phase: '需求分析', agent: '分析师', tokens: 450, durationMs: 3200 }, msg)
+    expect(msg.content).toBe('')
+  })
+
+  it('should ignore progress event (not modify asst)', () => {
+    const msg = createMsg()
+    const progress: ProgressState = {
+      status: 'RUNNING', totalPhases: 3, completedPhases: 1,
+      currentPhase: '代码实现',
+      phases: [
+        { name: '需求分析', status: 'COMPLETED', agent: '分析师' },
+        { name: '代码实现', status: 'RUNNING', agent: '工程师', progress: 45 },
+        { name: '测试', status: 'PENDING', agent: 'QA' },
+      ],
+      elapsedMs: 8500, totalTokens: 650,
+    }
+    applySseEvent({ type: 'progress', data: progress }, msg)
+    expect(msg.content).toBe('')
+  })
+
+  // ── response/thinking 可携带 phase 字段 ──
+
+  it('should handle response with phase field', () => {
+    const msg = createMsg()
+    applySseEvent({ type: 'response', content: '答案', phase: '分析' }, msg)
+    expect(msg.content).toBe('答案')  // 仍追加到 content
+  })
+
+  it('should handle thinking with phase field', () => {
+    const msg = createMsg()
+    applySseEvent({ type: 'thinking', content: '思考', phase: '分析' }, msg)
+    expect(msg.thinking).toBe('思考')
   })
 })

@@ -1,4 +1,4 @@
-package com.icusu.sivan.web.memory.service;
+package com.icusu.sivan.web.service;
 
 import com.icusu.sivan.common.enums.MemoryLevel;
 import com.icusu.sivan.common.exception.DomainException;

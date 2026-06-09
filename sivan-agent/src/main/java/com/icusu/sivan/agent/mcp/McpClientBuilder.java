@@ -16,8 +16,11 @@ import java.time.Duration;
 @Slf4j
 public class McpClientBuilder {
 
+    /** 默认超时 120 秒（批量操作的 MCP 工具如 read_articles_batch 可能需要较长时间）。 */
+    private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(120);
+
     private final String name;
-    private Duration timeout = Duration.ofSeconds(60);
+    private Duration timeout = DEFAULT_TIMEOUT;
     private String sseUrl;
     private String streamableHttpUrl;
     private String headerKey;

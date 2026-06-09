@@ -3,12 +3,8 @@ package com.icusu.sivan.agent.mcp;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.icusu.sivan.agent.resolver.AgentResolver;
-import com.icusu.sivan.domain.agent.AgentDefinition;
 import com.icusu.sivan.domain.knowledge.KnowledgeBase;
-import com.icusu.sivan.domain.agent.IAgentRepository;
 import com.icusu.sivan.domain.knowledge.IKnowledgeBaseRepository;
-import com.icusu.sivan.domain.orchestration.ISquadRepository;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -31,19 +27,10 @@ public class McpServer {
     private final Map<String, McpToolDefinition> tools = new ConcurrentHashMap<>();
     private final ObjectMapper mapper = new ObjectMapper();
 
-    private final IAgentRepository agentRepository;
     private final IKnowledgeBaseRepository knowledgeBaseRepository;
-    private final ISquadRepository squadRepository;
-    private final AgentResolver agentResolver;
 
-    public McpServer(IAgentRepository agentRepository,
-                     IKnowledgeBaseRepository knowledgeBaseRepository,
-                     ISquadRepository squadRepository,
-                     AgentResolver agentResolver) {
-        this.agentRepository = agentRepository;
+    public McpServer(IKnowledgeBaseRepository knowledgeBaseRepository) {
         this.knowledgeBaseRepository = knowledgeBaseRepository;
-        this.squadRepository = squadRepository;
-        this.agentResolver = agentResolver;
     }
 
     /**
@@ -51,47 +38,6 @@ public class McpServer {
      */
     @PostConstruct
     public void init() {
-        registerTool(McpToolDefinition.builder()
-                .name("list_agents")
-                .description("列出当前用户的所有 AI 智能体")
-                .inputSchema(McpToolDefinition.simpleSchema(Map.of()))
-                .handler((params, accountId) -> {
-                    List<AgentDefinition> agents = agentRepository.findAllByAccount(accountId);
-                    try {
-                        String json = mapper.writeValueAsString(agents.stream()
-                                .map(a -> Map.of(
-                                        "name", a.getAgentName(),
-                                        "displayName", a.getDisplayName(),
-                                        "description", a.getDescription() != null ? a.getDescription() : "",
-                                        "type", a.getAgentType() != null ? a.getAgentType().name() : "USER"
-                                )).toList());
-                        return Mono.just(json);
-                    } catch (Exception e) {
-                        return Mono.error(e);
-                    }
-                })
-                .build());
-
-        registerTool(McpToolDefinition.builder()
-                .name("route_agent")
-                .description("根据任务描述自动选择最合适的 Agent")
-                .inputSchema(McpToolDefinition.simpleSchema(Map.of("task", "string")))
-                .handler((params, accountId) -> {
-                    String task = (String) params.get("task");
-                    if (task == null || task.isBlank()) {
-                        return Mono.just("{\"error\": \"task 参数不能为空\"}");
-                    }
-                    return agentResolver.resolve(task, accountId, null)
-                            .map(selected -> {
-                                try {
-                                    return mapper.writeValueAsString(Map.of("selectedAgent", selected));
-                                } catch (Exception e) {
-                                    throw new RuntimeException(e);
-                                }
-                            });
-                })
-                .build());
-
         registerTool(McpToolDefinition.builder()
                 .name("list_knowledge_bases")
                 .description("列出当前用户的所有知识库")
@@ -103,25 +49,6 @@ public class McpServer {
                                 .map(kb -> Map.of(
                                         "kbName", kb.getKbName(),
                                         "description", kb.getDescription() != null ? kb.getDescription() : ""
-                                )).toList()));
-                    } catch (Exception e) {
-                        return Mono.error(e);
-                    }
-                })
-                .build());
-
-        registerTool(McpToolDefinition.builder()
-                .name("list_squads")
-                .description("列出当前用户的所有 Squad（智能体编排）")
-                .inputSchema(McpToolDefinition.simpleSchema(Map.of()))
-                .handler((params, accountId) -> {
-                    var squads = squadRepository.findAllByAccount(accountId);
-                    try {
-                        return Mono.just(mapper.writeValueAsString(squads.stream()
-                                .map(s -> Map.of(
-                                        "squadId", s.getSquadId().toString(),
-                                        "name", s.getName(),
-                                        "mode", s.getMode() != null ? s.getMode() : ""
                                 )).toList()));
                     } catch (Exception e) {
                         return Mono.error(e);

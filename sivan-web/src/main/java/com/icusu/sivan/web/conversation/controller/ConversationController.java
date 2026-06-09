@@ -3,7 +3,6 @@ package com.icusu.sivan.web.conversation.controller;
 import com.icusu.sivan.common.dto.BaseResponse;
 import com.icusu.sivan.web.conversation.dto.*;
 import com.icusu.sivan.web.conversation.service.ConversationService;
-import com.icusu.sivan.web.orchestration.dto.PipelineStepResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -13,6 +12,7 @@ import reactor.core.publisher.Flux;
 
 import com.icusu.sivan.web.shared.security.CurrentAccountId;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -117,6 +117,15 @@ public class ConversationController {
     }
 
     /**
+     * 获取消息编排进度（用于断连恢复）。
+     */
+    @GetMapping("/{conversationId}/messages/{messageId}/progress")
+    public BaseResponse<Map<String, Object>> getMessageProgress(@PathVariable UUID conversationId,
+                                                                 @PathVariable UUID messageId, @CurrentAccountId UUID accountId) {
+                return BaseResponse.success(conversationService.getMessageProgress(accountId, conversationId, messageId));
+    }
+
+    /**
      * 获取会话消息列表，支持分页。
      */
     @GetMapping("/{conversationId}/messages")
@@ -161,15 +170,6 @@ public class ConversationController {
     public BaseResponse<MessageResponse> rateMessage(@PathVariable UUID messageId,
                                                      @RequestParam String rating, @CurrentAccountId UUID accountId) {
                 return BaseResponse.success(conversationService.rateMessage(accountId, messageId, rating));
-    }
-
-    /**
-     * 获取消息的编排流水线步骤。
-     */
-    @GetMapping("/messages/{messageId}/pipeline-steps")
-    public BaseResponse<List<PipelineStepResponse>> getPipelineSteps(
-            @PathVariable UUID messageId, @CurrentAccountId UUID accountId) {
-        return BaseResponse.success(conversationService.getPipelineSteps(accountId, messageId));
     }
 
 }

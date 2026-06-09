@@ -1,4 +1,4 @@
-package com.icusu.sivan.web.file.service;
+package com.icusu.sivan.web.service;
 
 import com.icusu.sivan.common.exception.ResourceNotFoundException;
 import com.icusu.sivan.common.util.OwnershipValidator;

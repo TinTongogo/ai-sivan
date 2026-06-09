@@ -6,7 +6,7 @@ import com.icusu.sivan.domain.knowledge.KnowledgeBase;
 import com.icusu.sivan.domain.knowledge.IKnowledgeBaseRepository;
 import com.icusu.sivan.domain.shared.vo.SearchResult;
 import com.icusu.sivan.infra.knowledge.EmbeddingService;
-import com.icusu.sivan.web.file.service.FileStorageService;
+import com.icusu.sivan.web.service.FileStorageService;
 import com.icusu.sivan.web.knowledge.dto.CreateKnowledgeBaseRequest;
 import com.icusu.sivan.web.knowledge.dto.SearchRequest;
 import com.icusu.sivan.web.knowledge.dto.UpdateKnowledgeBaseRequest;

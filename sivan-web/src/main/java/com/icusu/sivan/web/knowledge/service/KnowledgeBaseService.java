@@ -100,7 +100,6 @@ public class KnowledgeBaseService {
     }
 
     /** 删除知识库。 */
-    @Transactional
     public void delete(UUID accountId, String kbName) {
         KnowledgeBase kb = findOwned(accountId, kbName);
         knowledgeBaseRepository.deleteByNameAndAccount(kbName, kb.getAccountId());
@@ -132,7 +131,6 @@ public class KnowledgeBaseService {
     }
 
     /** 创建文档到知识库（文本），自动分块并建立向量索引。 */
-    @Transactional
     public KbDocumentResponse createDocument(UUID accountId, String kbName, String filename, String textContent) {
         findOwned(accountId, kbName);
         String ext = filename.contains(".") ? filename.substring(filename.lastIndexOf('.') + 1).toLowerCase() : "txt";
@@ -150,7 +148,6 @@ public class KnowledgeBaseService {
     }
 
     /** 更新文档（文件名 + 内容），重新建立向量索引。 */
-    @Transactional
     public KbDocumentResponse updateDocument(UUID accountId, UUID docId, String filename, String textContent) {
         KbDocument doc = knowledgeBaseRepository.findDocumentById(docId)
                 .orElseThrow(() -> ResourceNotFoundException.notFound("文档", docId));
@@ -241,7 +238,6 @@ public class KnowledgeBaseService {
     /**
      * 上传文本文件到知识库，自动分块并建立向量索引。
      */
-    @Transactional
     public KbDocumentResponse uploadDocument(UUID accountId, String kbName, String filename, String textContent) {
         findOwned(accountId, kbName);
         if (filename == null || filename.isBlank()) {
@@ -271,7 +267,6 @@ public class KnowledgeBaseService {
      * @param fileId FileStorageService 返回的文件 ID
      * @param mimeType 图片 MIME 类型
      */
-    @Transactional
     public KbDocumentResponse uploadImageDocument(UUID accountId, String kbName, String filename, UUID fileId, String mimeType) {
         findOwned(accountId, kbName);
         String ext = filename.contains(".") ? filename.substring(filename.lastIndexOf('.') + 1).toLowerCase() : "png";
@@ -292,7 +287,6 @@ public class KnowledgeBaseService {
     /**
      * 重建知识库向量索引：清空所有分块，对全部文档重新分块并建立向量索引。
      */
-    @Transactional
     public void rebuildIndex(UUID accountId, String kbName) {
         findOwned(accountId, kbName);
         List<KbDocument> documents = knowledgeBaseRepository.findDocumentsByKb(kbName, accountId);
@@ -330,7 +324,6 @@ public class KnowledgeBaseService {
     /**
      * 批量移动文档到目标知识库。
      */
-    @Transactional
     public void moveDocuments(UUID accountId, String sourceKbName, List<UUID> docIds, String targetKbName) {
         // 验证源和目标知识库存在且属于当前用户
         findOwned(accountId, sourceKbName);

@@ -1,4 +1,4 @@
-package com.icusu.sivan.web.model.service;
+package com.icusu.sivan.web.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.icusu.sivan.agent.model.ModelCapabilityRegistry;
@@ -11,6 +11,7 @@ import com.icusu.sivan.web.model.dto.CreateLlmProviderRequest;
 import com.icusu.sivan.web.model.dto.LlmProviderResponse;
 import com.icusu.sivan.web.model.dto.ModelCapabilityInfo;
 import com.icusu.sivan.web.model.dto.UpdateLlmProviderRequest;
+import com.icusu.sivan.web.service.LlmProviderService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

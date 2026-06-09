@@ -44,9 +44,6 @@ public class ConversationEntity extends BaseEntity {
     @Builder.Default
     private String mcpServerIds = "[]";
 
-    @Column(name = "goal_id")
-    private UUID goalId;
-
     @Column(name = "message_count")
     @Builder.Default
     private Integer messageCount = 0;

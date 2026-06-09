@@ -5,7 +5,7 @@ import com.icusu.sivan.domain.memory.IInstinctPatternRepository;
 import com.icusu.sivan.domain.memory.ISharedTemplateRepository;
 import com.icusu.sivan.domain.memory.InstinctPattern;
 import com.icusu.sivan.domain.memory.SharedTemplate;
-import com.icusu.sivan.orch.topology.SharedTemplateService;
+import com.icusu.sivan.memory.shared.SharedTemplateService;
 import com.icusu.sivan.web.memory.dto.PatternResponse;
 import com.icusu.sivan.web.memory.dto.ShareRequest;
 import com.icusu.sivan.web.memory.dto.SharedTemplateResponse;

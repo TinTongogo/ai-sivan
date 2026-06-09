@@ -23,10 +23,6 @@ const router = createRouter({
         { path: 'patterns', name: 'Patterns', component: () => import('../views/patterns/index.vue') },
         { path: 'routing-decisions', name: 'RoutingDecisions', component: () => import('../views/routing-decisions/index.vue') },
         { path: 'token-usage', name: 'TokenUsage', component: () => import('../views/token-usage/index.vue') },
-        // Squad 路由（全链路重构后）
-        { path: 'squads', name: 'Squads', component: () => import('../views/squads/SquadHome.vue') },
-        { path: 'squads/orchestration', name: 'SquadOrchestration', component: () => import('../views/squads/SquadOrchestration.vue') },
-        { path: 'squads/executions/:execId', name: 'SquadExecutionDetail', component: () => import('../views/squad-executions/ExecutionMonitor.vue') },
         { path: '/:pathMatch(.*)*', redirect: '/conversations' },
       ],
     },

@@ -1,6 +1,5 @@
 package com.icusu.sivan.domain.memory;
 
-import com.icusu.sivan.domain.task.ExecutionShape;
 import com.icusu.sivan.domain.task.PatternFeatureVector;
 import com.icusu.sivan.domain.task.TaskFeatures;
 import org.junit.jupiter.api.Test;
@@ -59,48 +58,5 @@ class InstinctPatternTest {
         pattern.recordOutcome(false);
         assertNull(pattern.getSuccessCount());
         assertEquals(1, pattern.getTotalCount());
-    }
-
-    @Test
-    void toExecutionPathShouldReturnSquad() {
-        var pattern = new InstinctPattern();
-        pattern.setPatternId(java.util.UUID.randomUUID());
-        pattern.setExecutionMode("SQUAD");
-        pattern.setTopologyJson("{\"phases\":[]}");
-
-        var path = pattern.toExecutionPath();
-
-        assertEquals(ExecutionShape.SQUAD, path.shape());
-        assertEquals("{\"phases\":[]}", path.topologyJson());
-    }
-
-    @Test
-    void toExecutionPathShouldReturnChat() {
-        var pattern = new InstinctPattern();
-        pattern.setExecutionMode("CHAT");
-
-        var path = pattern.toExecutionPath();
-
-        assertEquals(ExecutionShape.CHAT, path.shape());
-    }
-
-    @Test
-    void toExecutionPathShouldReturnSingleAgent() {
-        var pattern = new InstinctPattern();
-        pattern.setExecutionMode("SINGLE_AGENT");
-
-        var path = pattern.toExecutionPath();
-
-        assertEquals(ExecutionShape.SINGLE_AGENT, path.shape());
-    }
-
-    @Test
-    void toExecutionPathShouldDefaultToSquadWhenModeNull() {
-        var pattern = new InstinctPattern();
-        pattern.setExecutionMode(null);
-
-        var path = pattern.toExecutionPath();
-
-        assertEquals(ExecutionShape.SQUAD, path.shape());
     }
 }

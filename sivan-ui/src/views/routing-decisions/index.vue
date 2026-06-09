@@ -4,21 +4,11 @@ import { useI18n } from '../../utils/i18n'
 import { useMessage } from '../../utils/message'
 import { formatTime } from '../../utils/time'
 import api from '../../api'
-import { fetchStrategyPerformance, resetStrategyPerformance, type StrategyPerformance } from '../../api/routing'
 import PaginatedTable from '../../components/common/PaginatedTable.vue'
 
 const { t } = useI18n()
 
-const performanceData = ref<StrategyPerformance[]>([])
-
-const perfStrategyKeys = ['INTENT_CLASSIFICATION', 'SQUAD_MATCH', 'AUTO_CREATE', 'CHAT', 'SINGLE_AGENT', 'SQUAD', 'CREATE_SQUAD', 'FORCE_INTENT']
-
-const perfCards = computed(() => {
-  const map = new Map(performanceData.value.map(p => [p.strategy, p]))
-  return perfStrategyKeys.map(key => map.get(key) || { id: '', strategy: key, total: 0, success: 0, avgConfidence: 0, successRate: 0, updatedAt: '' })
-})
-
-/** 解析 agent 列表：优先从 context.agentNames 取（SQUAD 多智能体），否则取 selectedAgentName */
+/** 解析 agent 列表：优先从 context.agentNames 取（多智能体），否则取 selectedAgentName */
 function resolveAgentNames(row: RoutingDecision): string[] {
   if (row.context && Array.isArray(row.context.agentNames) && row.context.agentNames.length > 0) {
     return row.context.agentNames.filter(Boolean)
@@ -75,11 +65,8 @@ const strategyMap = computed<Record<string, { label: string; cls: string }>>(() 
   fallback: { label: t('routingStrategyFallback'), cls: 'tag-error' },
   CHAT: { label: t('routingStrategyChat'), cls: 'tag-info' },
   SINGLE_AGENT: { label: t('routingStrategySingleAgent'), cls: 'tag-info' },
-  SQUAD: { label: t('routingStrategySquad'), cls: 'tag-accent' },
-  CREATE_SQUAD: { label: t('routingStrategyCreateSquad'), cls: 'tag-accent' },
   FORCE_INTENT: { label: t('routingStrategyForceIntent'), cls: 'tag-warning' },
   INTENT_CLASSIFICATION: { label: t('routingStrategyIntentClassification'), cls: 'tag-info' },
-  SQUAD_MATCH: { label: t('routingStrategySquadMatch'), cls: 'tag-accent' },
   AUTO_CREATE: { label: t('routingStrategyAutoCreate'), cls: 'tag-warning' },
 }))
 
@@ -138,30 +125,7 @@ watch(strategyFilter, () => {
   fetch()
 })
 
-const resetting = ref(false)
-
-async function loadPerformance() {
-  try {
-    const res: any = await fetchStrategyPerformance()
-    performanceData.value = res.data || []
-  } catch { /* noop */ }
-}
-
-async function resetPerformance() {
-  if (!confirm(t('resetPerformanceConfirm'))) return
-  resetting.value = true
-  try {
-    await resetStrategyPerformance()
-    await loadPerformance()
-    message.success(t('resetPerformanceSuccess'))
-  } catch (e: any) {
-    message.error(e.response?.data?.message || t('operationFailed'))
-  } finally {
-    resetting.value = false
-  }
-}
-
-onMounted(() => { fetch(); loadPerformance() })
+onMounted(() => { fetch() })
 
 async function fetch() {
   loading.value = true
@@ -227,26 +191,6 @@ function onPageSizeChange(size: number) {
 
 <template>
   <div class="page-layout">
-    <!-- 策略表现统计 -->
-    <div class="perf-bar">
-      <span class="perf-title">{{ t('strategyPerformance') }}</span>
-      <span class="perf-hint">{{ t('strategyPerformanceHint') }}</span>
-      <button class="btn btn-sm btn-danger" :disabled="resetting" @click="resetPerformance">{{ t('resetPerformance') }}</button>
-      <div class="perf-cards">
-        <div v-for="p in perfCards" :key="p.strategy" class="perf-card">
-          <div class="perf-card__name">{{ strategyMap[p.strategy]?.label || p.strategy }}</div>
-          <div class="perf-card__row">
-            <span>{{ t('spTotal') }}: <b>{{ p.total }}</b></span>
-            <span>{{ t('spSuccess') }}: <b>{{ p.success }}</b></span>
-          </div>
-          <div class="perf-card__row">
-            <span>{{ t('spSuccessRate') }}: <b>{{ (p.successRate * 100).toFixed(0) }}%</b></span>
-            <span>{{ t('spAvgConfidence') }}: <b>{{ p.avgConfidence.toFixed(2) }}</b></span>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <PaginatedTable
       :current-page="page"
       :total-pages="data.totalPages"
@@ -397,53 +341,6 @@ function onPageSizeChange(size: number) {
 </template>
 
 <style scoped>
-.perf-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-.perf-title {
-  font-size: var(--fs-headline);
-  font-weight: var(--fw-semibold);
-  color: var(--clr-label);
-}
-.perf-hint {
-  font-size: var(--fs-caption);
-  color: var(--clr-tertiary);
-}
-.perf-cards {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  width: 100%;
-  margin-top: 4px;
-}
-.perf-card {
-  flex: 1;
-  min-width: 140px;
-  padding: 8px 12px;
-  border: 1px solid var(--clr-hairline);
-  border-radius: var(--rad-md);
-  background: var(--clr-bg);
-}
-.perf-card__name {
-  font-size: var(--fs-caption);
-  font-weight: var(--fw-semibold);
-  color: var(--clr-accent);
-  margin-bottom: 4px;
-}
-.perf-card__row {
-  display: flex;
-  gap: 12px;
-  font-size: var(--fs-caption);
-  color: var(--clr-secondary);
-}
-.perf-card__row b {
-  font-weight: var(--fw-semibold);
-  color: var(--clr-label);
-}
-
 .header-extra { display: flex; gap: 8px; align-items: center; }
 
 .table-clickable .clickable-row { cursor: pointer; }

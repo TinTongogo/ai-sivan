@@ -10,6 +10,7 @@ import SaveToKbModal from '../../components/chat/SaveToKbModal.vue'
 import RateModal from '../../components/chat/RateModal.vue'
 import PipelineDialog from '../../components/chat/PipelineDialog.vue'
 import RoutingDecisionDialog from '../../components/chat/RoutingDecisionDialog.vue'
+import PhaseProgressBar from '../../components/orchestration/PhaseProgressBar.vue'
 import { useMessage } from '../../utils/message'
 import { relativeTime } from '../../utils/time'
 import { useI18n } from '../../utils/i18n'
@@ -17,6 +18,7 @@ import { useMessageStore, type Message } from '../../composables/useMessageStore
 import { useScrollScheduler } from '../../composables/useScrollScheduler'
 import { useChatStream } from '../../composables/useChatStream'
 import { useSidebar } from '../../composables/useSidebar'
+import { useOrchestrationStore } from '../../stores/orchestration'
 
 const ChatInput = defineAsyncComponent(() => import('../../components/chat/ChatInput.vue'))
 
@@ -144,12 +146,16 @@ async function selectGroup(id: string) {
 
 async function enterConversation(convId: string) {
   autoScroll.value = true
-  // 双重锁：禁止 init 期间触发 loadMore
   initialScrollDone.value = false
   _topLoaded = true
   await store.fetchLatest(convId)
   for (const m of messages.value) {
-    if (m.status === 'RUNNING') { chatStream.resumeStream(m); break }
+    if (m.status === 'RUNNING') {
+      // 断连恢复：先拉取 progress 重建状态，再续接 SSE 流
+      recoverOrchestrationProgress(m.messageId)
+      chatStream.resumeStream(m)
+      break
+    }
   }
   await nextTick()
   await schedule({ type: 'bottom' })
@@ -173,6 +179,21 @@ async function selectConversation(id: string) {
   await sidebar.loadGroupSettings(gid)
   await enterConversation(id)
   loadingMessages.value = false
+}
+
+/** 断连恢复：从 REST 接口拉取编排进度，重建 OrchestrationStore 状态 */
+async function recoverOrchestrationProgress(msgId?: string) {
+  if (!msgId) return
+  try {
+    const res: any = await api.get(`/conversations/${currentConversationId.value}/messages/${msgId}/progress`)
+    const progressData = res.data
+    if (progressData && Object.keys(progressData).length > 0) {
+      const orchStore = useOrchestrationStore()
+      orchStore.setProgress(progressData as any)
+    }
+  } catch {
+    // 静默失败 — 没有进度也不影响主流程
+  }
 }
 
 async function newConversation() {
@@ -561,11 +582,12 @@ onMounted(async () => {
       </div>
 
       <!-- 虚拟滚动消息列表 -->
-      <div class="messages-scroll" v-if="messages.length > 0 || loadingMessages">
-        <div v-if="loadingMessages" class="messages-loading-overlay">
-          <div class="chat__loading-spinner" />
-        </div>
-        <div v-if="messages.length > 0" ref="scrollRef" class="dynamic-scroller" @scroll="onScrollerScroll">
+      <template v-if="messages.length > 0 || loadingMessages">
+        <div class="messages-scroll">
+          <div v-if="loadingMessages" class="messages-loading-overlay">
+            <div class="chat__loading-spinner" />
+          </div>
+          <div v-if="messages.length > 0" ref="scrollRef" class="dynamic-scroller" @scroll="onScrollerScroll">
           <div :style="{ height: `${virtualizer.getTotalSize()}px`, width: '100%', position: 'relative', paddingBottom: '80px' }">
             <div v-for="virtualRow in virtualItems"
               :key="messages[virtualRow.index]?._key ?? virtualRow.index"
@@ -606,7 +628,6 @@ onMounted(async () => {
                 @switch-generation="switchGeneration(messages[virtualRow.index], virtualRow.index)"
                 @show-pipeline="handleShowPipeline(messages[virtualRow.index])"
                 @show-routing-decision="handleShowRoutingDecision"
-                @view-monitor="(execId: string) => $router.push('/squads/executions/' + execId)"
               >
                 <template v-if="messages[virtualRow.index].role === 'user'" #time>
                   {{ messages[virtualRow.index].createdAt ? relativeTime(messages[virtualRow.index].createdAt) : '' }}
@@ -650,6 +671,7 @@ onMounted(async () => {
           </div>
         </div>
       </div>
+      </template>
       <div v-else class="messages-scroll">
         <div class="chat__empty">
           <div class="empty-state">
@@ -663,6 +685,9 @@ onMounted(async () => {
         <svg viewBox="0 0 20 20" width="16" height="16"><path d="M10 3v10l-4-4m4 4l4-4" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
         {{ t('backToLatest') }}
       </button>
+
+      <!-- 编排进度条 -->
+      <PhaseProgressBar />
 
       <!-- 输入区 -->
       <ChatInput
@@ -678,7 +703,7 @@ onMounted(async () => {
         @closeQuote="quoteMsg = null"
         @openSettings="currentConversationId ? (settingsOpen = true) : (groupSettingsOpen = true)"
         @mcpServersChange="sidebar.onMcpServersChange"
-        @knowledgeBasesChange="sidebar.onKnowledgeBasesChange"
+        @knowledgeBasesChange="sidebar.onConversationKbChange"
       />
     </div>
 
@@ -699,8 +724,7 @@ onMounted(async () => {
       :projectMemories="projectMemories"
       :loadingMemories="loadingProjectMemories"
       @close="groupSettingsOpen = false"
-      @update:groupKbNames="v => groupKbNames = v"
-      @saveGroupSettings="sidebar.saveGroupSettings()"
+      @update:groupKbNames="v => { groupKbNames = v; sidebar.saveGroupSettings() }"
     />
     <SaveToKbModal
       v-if="showSaveToKbModal"

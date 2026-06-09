@@ -23,17 +23,6 @@ export interface Message {
   generationGroup?: string
   generationTotal?: number
   chain?: string
-  orchestration?: {
-    executionId?: string
-    squadName?: string
-    status: 'running' | 'completed' | 'failed'
-    phases: { name: string; status: string; agentCount?: number }[]
-    currentStep?: string
-    currentMessage?: string
-    phaseCount?: number
-    agentCount?: number
-    errorMessage?: string
-  }
   _key: string
 }
 
@@ -141,45 +130,6 @@ export function useMessageStore() {
     messages.value.splice(index, 1)
   }
 
-  let inflightSync: Promise<void> | null = null
-
-  /** 流完成后合并服务器字段（messageId / sortOrder）到现有消息 */
-  async function syncFromServer(conversationId: string) {
-    if (inflightSync) return inflightSync
-    inflightSync = (async () => {
-      try {
-        const res: any = await api.get(`/conversations/${conversationId}/messages?limit=${PAGE_SIZE}`)
-        const msgs: Message[] = (res.data?.messages || res.data || [])
-        for (const fetched of msgs) {
-          if (!fetched.messageId) continue
-          const existing = messages.value.find(m =>
-            m.messageId === fetched.messageId
-            || (!m.messageId && m.role === fetched.role && m.role === 'user' && m.content === fetched.content)
-          )
-          if (existing) {
-            existing.messageId = fetched.messageId
-            existing.sortOrder = fetched.sortOrder
-            existing.createdAt = fetched.createdAt
-            if (fetched.thinking) existing.thinking = fetched.thinking
-            if (fetched.model) existing.model = fetched.model
-            if ((fetched as any).totalTokens != null) existing.tokens = (fetched as any).totalTokens
-            if ((fetched as any).durationMs != null) existing.duration = `${((fetched as any).durationMs / 1000).toFixed(1)}s`
-            if ((fetched as any).thinkingDurationMs != null) existing.thinkingDurationMs = (fetched as any).thinkingDurationMs
-            if ((fetched as any).thinkingTokens != null) existing.thinkingTokens = (fetched as any).thinkingTokens
-            if ((fetched as any).images) existing.images = (fetched as any).images
-            if ((fetched as any).attachments) existing.attachments = (fetched as any).attachments
-            if ((fetched as any).generationGroup != null) existing.generationGroup = (fetched as any).generationGroup
-            if ((fetched as any).generationIndex != null) existing.generationIndex = (fetched as any).generationIndex
-            if ((fetched as any).generationTotal != null) existing.generationTotal = (fetched as any).generationTotal
-          }
-        }
-      } catch { /* 静默失败 */ } finally {
-        inflightSync = null
-      }
-    })()
-    return inflightSync
-  }
-
   /**
    * 流完成后轻量同步最新消息的服务器字段（sortOrder / createdAt）。
    * SSE 流已推送 messageId/tokens/duration 等，无需全量重取。
@@ -230,7 +180,6 @@ export function useMessageStore() {
     replaceAt,
     removeAt,
     clear,
-    syncFromServer,
     syncLatestMeta,
     cancelFetch,
   }

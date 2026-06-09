@@ -8,7 +8,7 @@ import com.icusu.sivan.core.model.Model.ModelResponse;
 import com.icusu.sivan.domain.memory.MemoryEntry;
 import com.icusu.sivan.domain.conversation.Message;
 import com.icusu.sivan.domain.conversation.IMessageRepository;
-import com.icusu.sivan.web.memory.service.MemoryService;
+import com.icusu.sivan.web.service.MemoryService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;

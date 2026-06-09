@@ -5,8 +5,8 @@ import { useAuthStore } from '../../stores/auth'
 import { useI18n } from '../../utils/i18n'
 import SystemSettingsModal from '../common/SystemSettingsModal.vue'
 import {
-  MessageSquare, GitBranch, Bot, Zap, Library, BrainCircuit,
-  Sparkles, BarChart3, Share2, PanelRightClose, PanelLeftClose, Target,
+  MessageSquare, Bot, Zap, Library, BrainCircuit,
+  Sparkles, BarChart3, Share2, PanelRightClose, PanelLeftClose,
 } from '@lucide/vue'
 
 interface MenuItem {
@@ -36,8 +36,8 @@ function toggleCollapsed() {
 const activeKey = computed(() => route.path)
 
 const iconMap: Record<string, any> = {
-  MessageSquare, GitBranch, Bot, Zap, Library, BrainCircuit,
-  Sparkles, BarChart3, Share2, Target,
+  MessageSquare, Bot, Zap, Library, BrainCircuit,
+  Sparkles, BarChart3, Share2,
 }
 
 const menuGroups: MenuGroup[] = [
@@ -45,7 +45,6 @@ const menuGroups: MenuGroup[] = [
     labelKey: 'navGroupComm',
     items: [
       { labelKey: 'navConversations', key: '/conversations', icon: 'MessageSquare' },
-      { labelKey: 'navSquads', key: '/squads', icon: 'GitBranch' },
     ],
   },
   {

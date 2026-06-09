@@ -13,7 +13,7 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 @SpringBootApplication
 @ComponentScan(basePackages = {"com.icusu.sivan.infra", "com.icusu.sivan.domain"},
         excludeFilters = @ComponentScan.Filter(type = FilterType.REGEX,
-                pattern = "com\\.sivan\\.infra\\.shared\\.config\\.InfrastructureConfig"))
+                pattern = "com\\.icusu\\.sivan\\.infra\\.shared\\.config\\.InfrastructureConfig"))
 @EntityScan(basePackages = {"com.icusu.sivan.infra"})
 @EnableJpaRepositories(basePackages = {"com.icusu.sivan.infra"})
 public class TestInfrastructureApplication {

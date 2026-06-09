@@ -2,13 +2,13 @@ package com.icusu.sivan.web.conversation.service.tree;
 
 import com.icusu.sivan.domain.conversation.CompressResult;
 import com.icusu.sivan.domain.conversation.Message;
-import com.icusu.sivan.domain.memory.MemoryEntry;
 import com.icusu.sivan.domain.conversation.IMessageRepository;
 import com.icusu.sivan.domain.context.ContextForest;
 import com.icusu.sivan.domain.context.ContextSegment;
 import com.icusu.sivan.domain.context.ContextTree;
 import com.icusu.sivan.domain.context.Epoch;
 import com.icusu.sivan.domain.context.TopicNode;
+import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -19,7 +19,7 @@ import java.util.*;
  * 统一上下文构建器，消费 {@link CompressResult} 和森林中各树，按场景分配预算。
  * <p>
  * CHAT 路径：使用话题树增强压缩上下文（{@link #build}）。
- * Squad 路径：森林架构（SquadTree / MemoryTree / KBTree / ToolChainTree），使用 {@link #buildForSquad}。
+ * Squad 路径：森林架构（SquadTree / MemoryTree / KBTree / ToolChainTree），使用 。
  * Epoch 分段路径：五层 Epoch 感知构建（{@link #buildEpochs}）。
  * <p>
  * CHAT 输出格式：
@@ -45,6 +45,7 @@ public class ContextBuilder {
     private final IMessageRepository messageRepository;
     private final ConversationTree conversationTree;
     /** 森林容器，注入各内容类型的树（SquadTree / KBTree / MemoryTree / ToolChainTree）。 */
+    @Getter
     private ContextForest forest;
 
     public ContextBuilder(IMessageRepository messageRepository, ConversationTree conversationTree) {
@@ -57,44 +58,6 @@ public class ContextBuilder {
     public ContextBuilder withForest(ContextForest forest) {
         this.forest = forest != null ? forest : new ContextForest();
         return this;
-    }
-
-    /** 获取当前森林容器。 */
-    public ContextForest getForest() {
-        return forest;
-    }
-
-    /**
-     * 为编排路径构建增强上下文（Squad 场景感知）。
-     * 每次调用创建新鲜森林，避免单例状态泄漏。
-     *
-     * @param conversationId 对话 ID（仅用于日志）
-     * @param compressResult HistoryCompressor 的压缩结果（用于异常降级）
-     * @param maxTokens      上下文预算（token）
-     * @param squadTree       Squad 执行阶段树（预注入数据，可 null）
-     * @param userMemories    用户长期记忆列表（注入 MemoryTree，可 null）
-     * @return 编排路径的增强上下文文本
-     */
-    public String buildForSquad(UUID conversationId, CompressResult compressResult,
-                                 int maxTokens, SquadTree squadTree, List<MemoryEntry> userMemories) {
-        try {
-            // 每次调用创建新鲜森林，避免单例状态泄漏
-            ContextForest squadForest = new ContextForest();
-
-            if (squadTree != null) {
-                squadForest.register(squadTree);
-            }
-
-            if (userMemories != null && !userMemories.isEmpty()) {
-                squadForest.register(new MemoryTree().withMemories(userMemories));
-            }
-
-            return squadForest.buildAll(ContextForest.SCENE_SQUAD, maxTokens);
-
-        } catch (Exception e) {
-            log.warn("ContextBuilder.buildForSquad 异常(将降级到压缩摘要): conversationId={}", conversationId, e);
-            return compressResult != null ? compressResult.toSummaryText() : "";
-        }
     }
 
     /**

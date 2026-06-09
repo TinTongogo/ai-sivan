@@ -4,9 +4,7 @@ import com.icusu.sivan.common.dto.BaseResponse;
 import com.icusu.sivan.common.dto.PageResponse;
 import com.icusu.sivan.web.routing.dto.CreateRoutingDecisionRequest;
 import com.icusu.sivan.web.routing.dto.RoutingDecisionResponse;
-import com.icusu.sivan.web.routing.dto.StrategyPerformanceResponse;
-import com.icusu.sivan.web.routing.service.RoutingDecisionService;
-import com.icusu.sivan.web.routing.service.StrategyPerformanceService;
+import com.icusu.sivan.web.service.RoutingDecisionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -25,7 +23,6 @@ import java.util.UUID;
 public class RoutingDecisionController {
 
     private final RoutingDecisionService routingDecisionService;
-    private final StrategyPerformanceService performanceService;
 
     /** 创建路由决策记录。 */
     @PostMapping
@@ -68,17 +65,4 @@ public class RoutingDecisionController {
         return BaseResponse.success();
     }
 
-    /** 获取各路由策略的性能统计数据。 */
-    @GetMapping("/performance")
-    public BaseResponse<List<StrategyPerformanceResponse>> getPerformance(@CurrentAccountId UUID accountId) {
-        return BaseResponse.success(performanceService.listCurrent(accountId));
-    }
-
-    /** 重置策略性能统计数据。 */
-    @DeleteMapping("/performance")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public BaseResponse<Void> resetPerformance(@CurrentAccountId UUID accountId) {
-        performanceService.reset(accountId);
-        return BaseResponse.success();
-    }
 }

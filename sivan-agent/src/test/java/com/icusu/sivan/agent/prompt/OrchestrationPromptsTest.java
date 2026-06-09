@@ -38,20 +38,6 @@ class OrchestrationPromptsTest {
     }
 
     // ============================================================
-    // Deprecated 别名向后兼容测试
-    // ============================================================
-
-    @Test
-    void deprecatedAliases_pointToOrchestrationSystem() {
-        assertSame(OrchestrationPrompts.ORCHESTRATION_SYSTEM, OrchestrationPrompts.SEQUENTIAL_PHASE_SYSTEM);
-        assertSame(OrchestrationPrompts.ORCHESTRATION_SYSTEM, OrchestrationPrompts.PARALLEL_PHASE_SYSTEM);
-        assertSame(OrchestrationPrompts.ORCHESTRATION_SYSTEM, OrchestrationPrompts.CONDITIONAL_SQUAD_SYSTEM);
-        assertSame(OrchestrationPrompts.ORCHESTRATION_SYSTEM, OrchestrationPrompts.HIERARCHICAL_DECOMPOSE_SYSTEM);
-        assertSame(OrchestrationPrompts.ORCHESTRATION_SYSTEM, OrchestrationPrompts.HIERARCHICAL_EXECUTOR_SYSTEM);
-        assertSame(OrchestrationPrompts.ORCHESTRATION_SYSTEM, OrchestrationPrompts.CONSENSUS_SYNTHESIS_SYSTEM);
-    }
-
-    // ============================================================
     // CONDITIONAL User prompt
     // ============================================================
 

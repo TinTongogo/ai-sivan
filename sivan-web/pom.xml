@@ -7,7 +7,7 @@
     <parent>
         <groupId>com.icusu.sivan</groupId>
         <artifactId>ai-sivan</artifactId>
-        <version>1.0.0-SNAPSHOT</version>
+        <version>1.0.1-SNAPSHOT</version>
     </parent>
 
     <artifactId>sivan-web</artifactId>
@@ -16,7 +16,11 @@
     <dependencies>
         <dependency>
             <groupId>com.icusu.sivan</groupId>
-            <artifactId>sivan-orchestration</artifactId>
+            <artifactId>sivan-agent</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.icusu.sivan</groupId>
+            <artifactId>sivan-memory</artifactId>
         </dependency>
 
         <dependency>

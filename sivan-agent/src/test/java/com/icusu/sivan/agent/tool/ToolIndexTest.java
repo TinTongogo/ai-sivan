@@ -1,7 +1,5 @@
 package com.icusu.sivan.agent.tool;
 
-import com.icusu.sivan.domain.tool.IMcpToolRepository;
-import com.icusu.sivan.domain.tool.McpTool;
 import com.icusu.sivan.domain.tool.ToolMeta;
 import io.modelcontextprotocol.spec.McpSchema;
 import org.junit.jupiter.api.BeforeEach;
@@ -11,7 +9,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -23,46 +20,12 @@ class ToolIndexTest {
 
     @Mock
     private ToolCapabilityRegistry toolCapabilityRegistry;
-    @Mock
-    private IMcpToolRepository mcpToolRepository;
 
     private ToolIndex toolIndex;
 
     @BeforeEach
     void setUp() {
-        toolIndex = new ToolIndex(toolCapabilityRegistry, mcpToolRepository);
-    }
-
-    @Test
-    void init_无工具不报错() {
-        when(mcpToolRepository.findAll()).thenReturn(List.of());
-        toolIndex.loadFromDb();
-        assertTrue(toolIndex.getAllTools().isEmpty());
-    }
-
-    @Test
-    void init_从DB加载工具() {
-        UUID serverId = UUID.randomUUID();
-        McpTool dbTool = McpTool.builder()
-                .serverId(serverId)
-                .name("db-tool")
-                .description("来自 DB")
-                .inputSchema(Map.of("type", "object"))
-                .build();
-        when(mcpToolRepository.findAll()).thenReturn(List.of(dbTool));
-
-        toolIndex.loadFromDb();
-
-        List<ToolMeta> all = toolIndex.getAllTools();
-        assertEquals(1, all.size());
-        assertEquals("db-tool", all.get(0).getToolName());
-    }
-
-    @Test
-    void init_DB异常静默失败() {
-        when(mcpToolRepository.findAll()).thenThrow(new RuntimeException("DB 不可用"));
-        toolIndex.loadFromDb();
-        assertTrue(toolIndex.getAllTools().isEmpty());
+        toolIndex = new ToolIndex(toolCapabilityRegistry);
     }
 
     private static McpSchema.Tool mcpTool(String name, String desc) {
@@ -77,14 +40,12 @@ class ToolIndexTest {
         String serverId = UUID.randomUUID().toString();
 
         when(toolCapabilityRegistry.resolveAll(any())).thenReturn(List.of(List.of("utility")));
-        doNothing().when(mcpToolRepository).save(any());
 
         toolIndex.indexServer(serverId, "test-server", List.of(mcpTool("tool-a", "一个测试工具")));
 
         assertEquals(1, toolIndex.getAllTools().size());
         assertEquals("tool-a", toolIndex.getAllTools().get(0).getToolName());
         assertTrue(toolIndex.isServerConnected(serverId));
-        verify(mcpToolRepository).deleteByServerId(UUID.fromString(serverId));
     }
 
     @Test
@@ -105,7 +66,6 @@ class ToolIndexTest {
         String serverId = UUID.randomUUID().toString();
 
         when(toolCapabilityRegistry.resolveAll(any())).thenReturn(List.of(List.of()));
-        doNothing().when(mcpToolRepository).save(any());
 
         toolIndex.indexServer(serverId, "test", List.of(mcpTool("keep-tool", "离线后仍可见")));
         assertEquals(1, toolIndex.getConnectedTools().size());
@@ -121,7 +81,6 @@ class ToolIndexTest {
         String serverId = UUID.randomUUID().toString();
 
         when(toolCapabilityRegistry.resolveAll(any())).thenReturn(List.of(List.of()));
-        doNothing().when(mcpToolRepository).save(any());
 
         toolIndex.indexServer(serverId, "test", List.of(mcpTool("gone-tool", "")));
         assertEquals(1, toolIndex.getAllTools().size());
@@ -136,7 +95,6 @@ class ToolIndexTest {
         String serverId = UUID.randomUUID().toString();
 
         when(toolCapabilityRegistry.resolveAll(any())).thenReturn(List.of(List.of()));
-        doNothing().when(mcpToolRepository).save(any());
 
         toolIndex.indexServer(serverId, "srv", List.of(mcpTool("named-tool", "测试")));
 
@@ -150,7 +108,6 @@ class ToolIndexTest {
         UUID serverId = UUID.randomUUID();
 
         when(toolCapabilityRegistry.resolveAll(any())).thenReturn(List.of(List.of()));
-        doNothing().when(mcpToolRepository).save(any());
 
         toolIndex.indexServer(serverId.toString(), "srv", List.of(mcpTool("srv-tool", "")));
 
@@ -159,11 +116,11 @@ class ToolIndexTest {
     }
 
     @Test
-    void indexServer_DB保存失败不影响内存索引() {
+    void indexServer_能力注册失败不影响索引() {
         String serverId = UUID.randomUUID().toString();
 
-        when(toolCapabilityRegistry.resolveAll(any())).thenReturn(List.of(List.of()));
-        doThrow(new RuntimeException("DB 写入失败")).when(mcpToolRepository).save(any());
+        when(toolCapabilityRegistry.resolveAll(any()))
+                .thenThrow(new RuntimeException("能力注册不可用"));
 
         toolIndex.indexServer(serverId, "srv", List.of(mcpTool("mem-only", "仅内存")));
 

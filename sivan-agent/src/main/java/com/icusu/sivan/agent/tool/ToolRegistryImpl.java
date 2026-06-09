@@ -13,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.util.List;
 import java.util.Map;
@@ -81,16 +82,18 @@ public class ToolRegistryImpl implements ToolRegistry {
                 if (client == null) {
                     return Mono.just(ToolResult.failure(spec.name(), "服务器未连接"));
                 }
-                try {
-                    McpSchema.CallToolRequest request = new McpSchema.CallToolRequest(
-                            spec.name(), call.args() != null ? call.args() : Map.of());
+                McpSchema.CallToolRequest request = new McpSchema.CallToolRequest(
+                        spec.name(), call.args() != null ? call.args() : Map.of());
+                return Mono.fromCallable(() -> {
                     McpSchema.CallToolResult result = client.callTool(request);
                     boolean success = !Boolean.TRUE.equals(result.isError());
                     String output = extractText(result);
-                    return Mono.just(new ToolResult(spec.name(), success, output));
-                } catch (Exception e) {
+                    return new ToolResult(spec.name(), success, output);
+                }).subscribeOn(Schedulers.boundedElastic())
+                .onErrorResume(e -> {
+                    log.warn("MCP 工具执行失败: {} {}", spec.name(), e.getMessage());
                     return Mono.just(ToolResult.failure(spec.name(), e.getMessage()));
-                }
+                });
             }));
         }
         if (!tools.isEmpty()) {

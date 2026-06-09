@@ -274,16 +274,11 @@ function onKeydown(e: KeyboardEvent) {
 }
 
 // ====== Quick Commands ======
-const slashMatch = computed(() => {
-  const m = props.modelValue.match(/^\/squad\s+(.+)/)
-  return m ? m[1].trim() : null
-})
 const atMatch = computed(() => {
   const m = props.modelValue.match(/^@(\S+)\s+(.+)/)
   return m ? { agent: m[1], text: m[2].trim() } : null
 })
 const commandHint = computed(() => {
-  if (slashMatch.value) return { icon: '⚙', label: 'Squad 编排：系统将自动创建或匹配 Squad 协同处理', color: 'var(--clr-accent)' }
   if (atMatch.value) return { icon: '🤖', label: `@${atMatch.value.agent}：跳过路由，直接调用此智能体`, color: 'var(--clr-green)' }
   return null
 })
@@ -302,15 +297,10 @@ function handleSend() {
   }
 
   let content = raw
-  let forceIntent: string | undefined
   let targetAgent: string | undefined
 
-  if (slashMatch.value) {
-    content = slashMatch.value
-    forceIntent = 'SQUAD'
-  } else if (atMatch.value) {
+  if (atMatch.value) {
     content = atMatch.value.text
-    forceIntent = 'SINGLE_AGENT'
     targetAgent = atMatch.value.agent
   }
 
@@ -329,7 +319,6 @@ function handleSend() {
     replyToId: props.quoteMsg?.messageId,
     modelProviderId: selectedProviderId.value || undefined,
     mcpServerIds: selectedMcpServerIds.value.length ? [...selectedMcpServerIds.value] : undefined,
-    ...(forceIntent ? { forceIntent } as any : {}),
     ...(targetAgent ? { targetAgent } as any : {}),
   })
 

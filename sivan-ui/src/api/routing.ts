@@ -1,14 +1,9 @@
 import api from './index'
-import type {BaseResponse} from './squad'
 
-export interface StrategyPerformance {
-  id: string
-  strategy: string
-  total: number
-  success: number
-  avgConfidence: number
-  successRate: number
-  updatedAt: string
+export interface BaseResponse<T> {
+  code: number
+  message: string
+  data: T
 }
 
 export interface RoutingDecision {
@@ -25,14 +20,6 @@ export interface RoutingDecision {
   createdAt: string
 }
 
-export function fetchStrategyPerformance() {
-  return api.get('/routing-decisions/performance') as Promise<BaseResponse<StrategyPerformance[]>>
-}
-
 export function fetchRoutingDecision(id: string) {
   return api.get(`/routing-decisions/${id}`) as Promise<BaseResponse<RoutingDecision>>
-}
-
-export function resetStrategyPerformance() {
-  return api.delete('/routing-decisions/performance') as Promise<BaseResponse<void>>
 }

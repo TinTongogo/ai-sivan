@@ -430,9 +430,25 @@ export function useSidebar() {
   }
 
   // ── MCP Servers ──
-  function onMcpServersChange(ids: string[]) {
+  async function onMcpServersChange(ids: string[]) {
     const conv = conversations.value.find(c => c.conversationId === currentConversationId.value)
     if (conv) conv.mcpServerIds = ids
+    if (currentConversationId.value) {
+      try {
+        await api.put(`/conversations/${currentConversationId.value}`, { mcpServerIds: ids.length ? ids : null })
+      } catch { /* 静默失败，本地状态已更新 */ }
+    }
+  }
+
+  async function onConversationKbChange(kbNames: string[]) {
+    // 同步更新项目级 KB 绑定
+    onGroupKbChange(kbNames)
+    // 持久化到对话级别
+    if (currentConversationId.value) {
+      try {
+        await api.put(`/conversations/${currentConversationId.value}`, { knowledgeBaseIds: kbNames.length ? kbNames : null })
+      } catch { /* 静默失败 */ }
+    }
   }
 
   // ── watcher ──
@@ -480,6 +496,6 @@ export function useSidebar() {
     createConversation, deleteConversation,
     saveTitle, cancelEditTitle, startEditTitle,
     saveGroupTitle, startEditGroupTitle,
-    onMcpServersChange,
+    onMcpServersChange, onConversationKbChange,
   }
 }

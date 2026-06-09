@@ -1,4 +1,4 @@
-package com.icusu.sivan.web.agent.service;
+package com.icusu.sivan.web.service;
 
 import com.icusu.sivan.common.enums.SkillStatus;
 import com.icusu.sivan.common.exception.DomainException;
@@ -73,7 +73,6 @@ public class SkillService {
     }
 
     /** 删除技能。 */
-    @Transactional
     public void delete(UUID accountId, UUID skillId) {
         Skill skill = findOwned(accountId, skillId);
         skillRepository.delete(skill.getSkillId());

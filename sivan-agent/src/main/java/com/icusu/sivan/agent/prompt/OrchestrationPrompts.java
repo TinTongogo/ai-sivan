@@ -78,34 +78,6 @@ public final class OrchestrationPrompts {
             Prompt.CacheStrategy.STATIC, 550, Prompt.OutputFormat.FREE_TEXT);
 
     // ============================================================
-    // 以下为旧版单模式 STATIC prompt（O3 合并后保留为 Deprecated 别名）
-    // ============================================================
-
-    /** @deprecated 使用 {@link #ORCHESTRATION_SYSTEM} */
-    @Deprecated
-    public static final Prompt SEQUENTIAL_PHASE_SYSTEM = ORCHESTRATION_SYSTEM;
-
-    /** @deprecated 使用 {@link #ORCHESTRATION_SYSTEM} */
-    @Deprecated
-    public static final Prompt PARALLEL_PHASE_SYSTEM = ORCHESTRATION_SYSTEM;
-
-    /** @deprecated 使用 {@link #ORCHESTRATION_SYSTEM} */
-    @Deprecated
-    public static final Prompt CONDITIONAL_SQUAD_SYSTEM = ORCHESTRATION_SYSTEM;
-
-    /** @deprecated 使用 {@link #ORCHESTRATION_SYSTEM} */
-    @Deprecated
-    public static final Prompt HIERARCHICAL_DECOMPOSE_SYSTEM = ORCHESTRATION_SYSTEM;
-
-    /** @deprecated 使用 {@link #ORCHESTRATION_SYSTEM} */
-    @Deprecated
-    public static final Prompt HIERARCHICAL_EXECUTOR_SYSTEM = ORCHESTRATION_SYSTEM;
-
-    /** @deprecated 使用 {@link #ORCHESTRATION_SYSTEM} */
-    @Deprecated
-    public static final Prompt CONSENSUS_SYNTHESIS_SYSTEM = ORCHESTRATION_SYSTEM;
-
-    // ============================================================
     // CONDITIONAL — 条件路由（User prompt）
     // ============================================================
 

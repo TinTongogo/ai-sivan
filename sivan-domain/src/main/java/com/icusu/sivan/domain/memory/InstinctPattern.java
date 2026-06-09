@@ -1,8 +1,5 @@
 package com.icusu.sivan.domain.memory;
 
-import com.icusu.sivan.domain.task.ExecutionPath;
-import com.icusu.sivan.domain.task.ExecutionModeRecommendation;
-import com.icusu.sivan.domain.task.ExecutionShape;
 import com.icusu.sivan.domain.task.PatternFeatureVector;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -14,7 +11,7 @@ import java.util.UUID;
 
 /**
  * 本能模板实体。
- * 特征驱动的任务执行路径元模板，原生支持 CHAT / SINGLE_AGENT / SQUAD 三种执行形态。
+ * 特征驱动的任务执行路径元模板。
  */
 @Data
 @Builder
@@ -30,7 +27,7 @@ public class InstinctPattern {
 
     /** 特征概率分布向量。 */
     private PatternFeatureVector featureVector;
-    /** 执行形态：CHAT / SINGLE_AGENT / SQUAD。 */
+    /** 执行形态（Forest 模式：SEQUENTIAL / PARALLEL / CONDITIONAL / HIERARCHICAL / CONSENSUS）。 */
     private String executionMode;
 
     // ===== 统计 =====
@@ -46,10 +43,6 @@ public class InstinctPattern {
     /** 模板版本号，从 1 开始递增。 */
     private Integer version;
 
-    // ===== 模式推荐（缓存） =====
-
-    /** 推荐执行模式组合（命中时直接使用，跳过 LLM 选择）。 */
-    private ExecutionModeRecommendation modeRecommendation;
     /** 此模式选择的历史成功率。 */
     private Double modeSuccessRate;
 
@@ -87,23 +80,5 @@ public class InstinctPattern {
         if (success) {
             this.successCount = (this.successCount != null ? this.successCount : 0) + 1;
         }
-    }
-
-    /** 转换为执行路径。 */
-    public ExecutionPath toExecutionPath() {
-        ExecutionShape shape = parseExecutionMode(this.executionMode);
-        String reason = this.modeRecommendation != null
-                ? this.modeRecommendation.reason()
-                : "本能模板匹配 (patternId=" + this.patternId + ")";
-        return new ExecutionPath(shape, null, null, this.topologyJson, reason);
-    }
-
-    private static ExecutionShape parseExecutionMode(String mode) {
-        if (mode == null) return ExecutionShape.SQUAD;
-        return switch (mode.toUpperCase()) {
-            case "CHAT" -> ExecutionShape.CHAT;
-            case "SINGLE_AGENT" -> ExecutionShape.SINGLE_AGENT;
-            default -> ExecutionShape.SQUAD;
-        };
     }
 }

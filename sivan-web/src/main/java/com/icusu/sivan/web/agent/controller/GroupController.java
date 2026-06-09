@@ -6,7 +6,7 @@ import com.icusu.sivan.web.agent.dto.LocalPathUpdateRequest;
 import com.icusu.sivan.web.agent.dto.ProjectCreateRequest;
 import com.icusu.sivan.web.agent.dto.ProjectRenameRequest;
 import com.icusu.sivan.web.file.dto.FileEntryResponse;
-import com.icusu.sivan.web.agent.service.GroupService;
+import com.icusu.sivan.web.service.GroupService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;

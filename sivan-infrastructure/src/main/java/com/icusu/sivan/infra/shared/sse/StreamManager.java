@@ -44,8 +44,13 @@ public class StreamManager {
 
     /**
      * 为指定消息创建流，返回 Sink 供生产者写入。
+     * 同一 msgId 重复调用返回已存在的 Sink，避免异步场景下 sink 被覆盖导致事件丢失。
      */
     public Sinks.Many<String> create(UUID msgId) {
+        ActiveStream existing = streams.get(msgId);
+        if (existing != null) {
+            return existing.sink;
+        }
         Sinks.Many<String> sink = Sinks.many().replay().limit(maxEvents);
         streams.put(msgId, new ActiveStream(sink, Instant.now()));
         return sink;

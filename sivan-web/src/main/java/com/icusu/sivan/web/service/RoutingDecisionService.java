@@ -1,4 +1,4 @@
-package com.icusu.sivan.web.routing.service;
+package com.icusu.sivan.web.service;
 
 import com.icusu.sivan.common.dto.PageResponse;
 import com.icusu.sivan.common.exception.ResourceNotFoundException;
@@ -64,8 +64,7 @@ public class RoutingDecisionService {
         return PageResponse.of(items, total, page + 1, size);
     }
 
-    /** 删除路由决策（校验所有权后删除）。 */
-    @Transactional
+    /** 删除路由决策。 */
     public void delete(UUID decisionId, UUID accountId) {
         // 校验所有权：查询决策并确认属于该账户
         var decision = routingDecisionRepository.findById(decisionId);

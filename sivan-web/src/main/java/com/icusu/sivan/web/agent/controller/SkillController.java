@@ -4,7 +4,7 @@ import com.icusu.sivan.common.dto.BaseResponse;
 import com.icusu.sivan.web.agent.dto.CreateSkillRequest;
 import com.icusu.sivan.web.agent.dto.UpdateSkillRequest;
 import com.icusu.sivan.web.agent.dto.SkillResponse;
-import com.icusu.sivan.web.agent.service.SkillService;
+import com.icusu.sivan.web.service.SkillService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
