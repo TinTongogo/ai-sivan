@@ -25,7 +25,6 @@
         <module>sivan-domain</module>
         <module>sivan-infrastructure</module>
         <module>sivan-agent</module>
-        <module>sivan-memory</module>
         <module>sivan-web</module>
     </modules>
 
@@ -97,11 +96,6 @@
             <dependency>
                 <groupId>com.icusu.sivan</groupId>
                 <artifactId>sivan-agent</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.icusu.sivan</groupId>
-                <artifactId>sivan-memory</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

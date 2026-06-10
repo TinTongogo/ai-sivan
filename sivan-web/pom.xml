@@ -20,7 +20,7 @@
         </dependency>
         <dependency>
             <groupId>com.icusu.sivan</groupId>
-            <artifactId>sivan-memory</artifactId>
+            <artifactId>sivan-infrastructure</artifactId>
         </dependency>
 
         <dependency>

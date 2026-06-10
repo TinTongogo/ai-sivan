@@ -3,6 +3,7 @@ package com.icusu.sivan.web.conversation.service;
 import com.icusu.sivan.common.enums.MessageStatus;
 import com.icusu.sivan.domain.conversation.*;
 import com.icusu.sivan.web.conversation.dto.*;
+import com.icusu.sivan.web.forest.service.ForestConversationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -22,7 +23,7 @@ import org.mockito.Mockito;
  */
 class ConversationServiceTest {
 
-    private ConversationService conversationService;
+    private ForestConversationService conversationService;
     private final UUID accountId = UUID.randomUUID();
 
     @BeforeEach
@@ -71,7 +72,7 @@ class ConversationServiceTest {
             }
         };
 
-        conversationService = new ConversationService(conversationRepository, messageRepository,
+        conversationService = new ForestConversationService(conversationRepository, messageRepository,
                 new com.icusu.sivan.infra.shared.sse.StreamManager(),
                 null, null, null, null,
                 conversationCrudService, messageCrudService, null, null, null, null, null, null);

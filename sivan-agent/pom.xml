@@ -23,10 +23,6 @@
             <artifactId>sivan-infrastructure</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.icusu.sivan</groupId>
-            <artifactId>sivan-memory</artifactId>
-        </dependency>
-        <dependency>
             <groupId>io.modelcontextprotocol.sdk</groupId>
             <artifactId>mcp-core</artifactId>
             <version>0.17.0</version>

@@ -1,7 +1,7 @@
 package com.icusu.sivan.agent.tool;
 
 import com.icusu.sivan.domain.shared.port.IEmbeddingService;
-import com.icusu.sivan.domain.shared.util.CosineSimilarity;
+import com.icusu.sivan.common.util.CosineSimilarity;
 import io.modelcontextprotocol.spec.McpSchema;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;

@@ -14,8 +14,10 @@ import com.icusu.sivan.domain.forest.service.EventSink;
 import com.icusu.sivan.domain.forest.service.LeafExecutor;
 import com.icusu.sivan.domain.forest.service.ForestRepository;
 import com.icusu.sivan.domain.forest.service.ModeDispatcher;
+import com.icusu.sivan.domain.forest.tree.CompressibleNode;
 import com.icusu.sivan.domain.forest.tree.ExecutableNode;
 import com.icusu.sivan.infra.forest.repository.ForestExecutionLogJpaRepository;
+import com.icusu.sivan.infra.forest.sink.ForestMetricsCollector;
 import com.icusu.sivan.infra.forest.sink.SinkFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -77,6 +79,7 @@ public class ForestExecutor {
     private final BudgetEnforcer budgetEnforcer;
     private final CheckpointHandler checkpointHandler;
     private final ForestExecutionLogJpaRepository executionLogRepository;
+    private final ForestMetricsCollector metricsCollector;
 
     /**
      * 目标树执行超时（毫秒）。覆盖 {@link ExecutionContext#timeoutMs()} 的默认值。
@@ -91,6 +94,7 @@ public class ForestExecutor {
                           BudgetEnforcer budgetEnforcer,
                           CheckpointHandler checkpointHandler,
                           ForestExecutionLogJpaRepository executionLogRepository,
+                          ForestMetricsCollector metricsCollector,
                           @Value("${sivan.goal.execution-timeout-ms:7200000}") long goalTimeoutMs) {
         this.modeDispatcher = modeDispatcher;
         this.leafExecutors = leafExecutors;
@@ -100,6 +104,7 @@ public class ForestExecutor {
         this.budgetEnforcer = budgetEnforcer;
         this.checkpointHandler = checkpointHandler;
         this.executionLogRepository = executionLogRepository;
+        this.metricsCollector = metricsCollector;
         this.goalTimeoutMs = goalTimeoutMs;
     }
 
@@ -117,7 +122,7 @@ public class ForestExecutor {
      * 将 {@link EventSink#emit} 路由到对应的输出通道（SSE / 静默 + 领域事件）。
      */
     public Flux<ForestEvent> execute(ExecutableNode root, ExecutionContext ctx, Delivery delivery) {
-        EventSink decorated = SinkFactory.create(delivery, sink, executionLogRepository);
+        EventSink decorated = SinkFactory.create(delivery, sink, executionLogRepository, metricsCollector);
         deliverySink.set(decorated);
         agentMessageBus.set(new AgentMessageBus());
         return executeWithContext(root, ctx)
@@ -165,6 +170,23 @@ public class ForestExecutor {
                     depthCheck.reason());
             activeSink().emit(err);
             return Flux.just(err);
+        }
+
+        // 预算检查：节点 token 估算
+        if (node instanceof CompressibleNode cn) {
+            long estimated = cn.estimateSubtreeTokens();
+            if (estimated > 0) {
+                long maxTokens = ctx.timeoutMs() * 10; // 粗略换算：每秒约 10 token
+                BudgetEnforcer.BudgetResult tokenCheck = budgetEnforcer.checkToken(estimated, maxTokens);
+                if (!tokenCheck.allowed()) {
+                    node.setStatus(NodeStatus.FAILED);
+                    emitStatusChange(node, oldStatus, ctx);
+                    ForestEvent err = ForestEvent.error(node.nodeId(), null, ctx.accountId().toString(),
+                            tokenCheck.reason());
+                    activeSink().emit(err);
+                    return Flux.just(err);
+                }
+            }
         }
 
         // HITL 检查已下沉到各 ModeStrategy 实现层

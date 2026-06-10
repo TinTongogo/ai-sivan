@@ -21,9 +21,9 @@ import com.icusu.sivan.domain.file.FileStoragePort;
 import com.icusu.sivan.domain.model.LlmProvider;
 import com.icusu.sivan.domain.model.ModelCapability;
 import com.icusu.sivan.domain.shared.port.IEmbeddingService;
-import com.icusu.sivan.domain.shared.util.CosineSimilarity;
+import com.icusu.sivan.common.util.CosineSimilarity;
 import com.icusu.sivan.infra.file.DocumentTextExtractor;
-import com.icusu.sivan.memory.flashback.FlashbackScanner;
+import com.icusu.sivan.infra.memory.flashback.FlashbackScanner;
 import com.icusu.sivan.web.conversation.dto.SendMessageRequest;
 import com.icusu.sivan.web.conversation.service.message.*;
 import com.icusu.sivan.web.conversation.service.tree.ContextBuilder;
@@ -33,7 +33,6 @@ import com.icusu.sivan.web.knowledge.service.RagContextBuilder;
 import com.icusu.sivan.web.service.GroupService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -69,9 +68,6 @@ public class PromptContextService {
     private final McpConnectionManager mcpConnectionManager;
     private final IMessageRepository messageRepository;
     private final IConversationRepository conversationRepository;
-
-    @Value("${sivan.file.root-path}")
-    private String fileRootPath;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -158,7 +154,17 @@ public class PromptContextService {
                     : modelRouter.getDefaultProvider(accountId);
             return provider != null && provider.supportsCapability("vision");
         } catch (Exception e) {
-            log.warn("检查模型视觉能力失败，默认不支持: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    public boolean isAudioSupported(UUID providerId, UUID accountId) {
+        try {
+            var provider = providerId != null
+                    ? modelRouter.getProvider(providerId)
+                    : modelRouter.getDefaultProvider(accountId);
+            return provider != null && provider.supportsCapability("audio");
+        } catch (Exception e) {
             return false;
         }
     }
@@ -446,28 +452,16 @@ public class PromptContextService {
     // =====================================================================
 
     public String buildProjectHint(Conversation conversation, UUID accountId) {
-        ProjectFileContext ctx = resolveProjectFileContext(conversation, accountId);
-        return ctx != null ? ctx.hint : null;
-    }
-
-    public ProjectFileContext resolveProjectFileContext(Conversation conversation, UUID accountId) {
         UUID projectId = conversation.getProjectId();
         if (projectId == null) {
-            log.warn("对话缺少 projectId，无法解析文件上下文: conversationId={}", conversation.getConversationId());
+            log.warn("对话缺少 projectId: conversationId={}", conversation.getConversationId());
             return null;
         }
         try {
             var project = groupService.findOwned(accountId, projectId);
-            String projectPath = project.getLocalPath();
-            String hint = null;
-            if (projectPath != null && !projectPath.isBlank()) {
-                String sharedPath = Paths.get(fileRootPath).resolve("shared").toString();
-                hint = ChatPrompts.projectContextHint(project.getName(), projectPath, sharedPath).content();
-            }
-            String frp = groupService.getProjectRootPath(accountId, projectId);
-            return new ProjectFileContext(hint, frp, Boolean.TRUE.equals(project.getArchived()));
+            return ChatPrompts.projectContextHint(project.getName()).content();
         } catch (Exception e) {
-            log.warn("解析项目文件上下文失败: accountId={}, projectId={}", accountId, projectId, e);
+            log.warn("解析项目上下文失败: accountId={}, projectId={}", accountId, projectId, e);
             return null;
         }
     }
@@ -739,6 +733,4 @@ public class PromptContextService {
     public record ScoredTag(String tag, double score) {
     }
 
-    public record ProjectFileContext(String hint, String fileRootPath, boolean archived) {
-    }
 }

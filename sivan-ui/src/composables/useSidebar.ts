@@ -163,7 +163,7 @@ export function useSidebar() {
   async function fetchConversations() {
     loadingConversations.value = true
     try {
-      const res: any = await api.get('/conversations')
+      const res: any = await api.get('/v2/conversations')
       conversations.value = res.data || []
     } catch { /* noop */ } finally {
       loadingConversations.value = false
@@ -353,7 +353,7 @@ export function useSidebar() {
     try {
       const body: any = { title }
       if (currentProjectContext.value) body.projectId = currentProjectContext.value
-      const res: any = await api.post('/conversations', body)
+      const res: any = await api.post('/v2/conversations', body)
       const conv = res.data as Conversation
       conversations.value.unshift(conv)
       return conv
@@ -365,7 +365,7 @@ export function useSidebar() {
 
   async function deleteConversation(id: string): Promise<boolean> {
     try {
-      await api.delete(`/conversations/${id}`)
+      await api.delete(`/v2/conversations/${id}`)
       message.success(t('conversationDeleted'))
       if (currentConversationId.value === id) {
         currentConversationId.value = ''
@@ -383,7 +383,7 @@ export function useSidebar() {
     if (!currentConversationId.value) { editingTitle.value = false; return }
     const title = editTitleText.value.trim() || currentTitle.value
     try {
-      await api.put(`/conversations/${currentConversationId.value}`, { title })
+      await api.put(`/v2/conversations/${currentConversationId.value}`, { title })
       editingTitle.value = false
       await fetchConversations()
     } catch { editingTitle.value = false }
@@ -435,7 +435,7 @@ export function useSidebar() {
     if (conv) conv.mcpServerIds = ids
     if (currentConversationId.value) {
       try {
-        await api.put(`/conversations/${currentConversationId.value}`, { mcpServerIds: ids.length ? ids : null })
+        await api.put(`/v2/conversations/${currentConversationId.value}`, { mcpServerIds: ids.length ? ids : null })
       } catch { /* 静默失败，本地状态已更新 */ }
     }
   }
@@ -446,7 +446,7 @@ export function useSidebar() {
     // 持久化到对话级别
     if (currentConversationId.value) {
       try {
-        await api.put(`/conversations/${currentConversationId.value}`, { knowledgeBaseIds: kbNames.length ? kbNames : null })
+        await api.put(`/v2/conversations/${currentConversationId.value}`, { knowledgeBaseIds: kbNames.length ? kbNames : null })
       } catch { /* 静默失败 */ }
     }
   }

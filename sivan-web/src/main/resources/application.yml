@@ -96,7 +96,7 @@ sivan:
   bash:
     allow-network: true                # 是否允许 bash 出站网络连接
   sandbox:
-    require: true                      # true = 无 OS 级沙箱时阻止 bash 执行
+    require: false                      # true = 无 OS 级沙箱时阻止 bash 执行
 
   # ── 自主目标执行 ──
   goal:

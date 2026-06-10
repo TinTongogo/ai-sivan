@@ -15,7 +15,7 @@ import com.icusu.sivan.domain.file.FileStoragePort;
 import com.icusu.sivan.domain.memory.IMemoryRepository;
 import com.icusu.sivan.domain.memory.MemoryEntry;
 import com.icusu.sivan.domain.shared.port.IEmbeddingService;
-import com.icusu.sivan.memory.curve.EbbinghausForgettingCurve;
+import com.icusu.sivan.domain.memory.curve.EbbinghausForgettingCurve;
 import com.icusu.sivan.web.conversation.service.message.MessageAttachmentsSerializer;
 import com.icusu.sivan.web.memory.dto.CreateMemoryRequest;
 import com.icusu.sivan.web.memory.dto.MemoryResponse;

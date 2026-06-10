@@ -20,7 +20,7 @@ public class TimingAspect {
 
     // ===== 全链路入口 =====
 
-    @Around("execution(* com.icusu.sivan.web.conversation.service.ConversationService.streamMessage(..))")
+    @Around("execution(* com.icusu.sivan.web.forest.service.ForestConversationService.streamMessage(..))")
     public Object measureStreamMessage(ProceedingJoinPoint pjp) throws Throwable {
         return measure(pjp, "1-streamMessage");
     }

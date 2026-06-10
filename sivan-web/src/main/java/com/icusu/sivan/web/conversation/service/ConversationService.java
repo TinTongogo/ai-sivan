@@ -266,6 +266,8 @@ public class ConversationService {
                         final int[] thinkingTokens = {0};
                         final long[] thinkingStartMs = {0};
                         final long[] thinkingDurationAcc = {0};
+                        final boolean[] phaseActive = {false};
+                        final int[] phaseIndex = {0};
                         forestExecutor.execute(tree, execCtx, Delivery.SUMMARY)
                                 .doOnNext(event -> {
                                     switch (event.type()) {
@@ -280,6 +282,18 @@ public class ConversationService {
                                         case THINKING -> {
                                             if (thinkingStartMs[0] == 0) thinkingStartMs[0] = System.currentTimeMillis();
                                             prep.sink.tryEmitNext(SseFormatter.toJsonEvent("thinking", event.message()));
+                                        }
+                                        case LIFECYCLE -> {
+                                            if (!phaseActive[0]) {
+                                                phaseActive[0] = true;
+                                                prep.sink.tryEmitNext(SseFormatter.buildPhaseStartEvent(
+                                                        "任务-" + event.nodeId().substring(0, 6), null, null,
+                                                        phaseIndex[0]++, 1));
+                                            } else {
+                                                phaseActive[0] = false;
+                                                prep.sink.tryEmitNext(SseFormatter.buildPhaseEndEvent(
+                                                        "任务-" + event.nodeId().substring(0, 6), null, 0, 0, null));
+                                            }
                                         }
                                         case MILESTONE -> {
                                             String m = event.message();
@@ -308,6 +322,10 @@ public class ConversationService {
                                     prep.assistantMsg.setDurationMs(durationMs);
                                     if (thinkingTokens[0] > 0) prep.assistantMsg.setThinkingTokens(thinkingTokens[0]);
                                     if (thinkingDurationMs > 0) prep.assistantMsg.setThinkingDurationMs(thinkingDurationMs);
+                                    String sectionsJson = "[{\"phase\":\"执行\",\"status\":\"COMPLETED\",\"content\":\""
+                                            + escapeJson(contentAcc.length() > 200 ? contentAcc.substring(0, 197) + "..." : contentAcc.toString())
+                                            + "\"}]";
+                                    prep.assistantMsg.setSections(sectionsJson);
                                     messageRepository.save(prep.assistantMsg);
                                     log.debug("[持久化] 助理消息已保存: msgId={}, status={}, contentLen={}",
                                             prep.msgId, prep.assistantMsg.getStatus(), contentAcc.length());
@@ -499,6 +517,10 @@ public class ConversationService {
                                     finalAssistantMsg.setDurationMs(durationMs);
                                     if (thinkingTokens[0] > 0) finalAssistantMsg.setThinkingTokens(thinkingTokens[0]);
                                     if (thinkingDurationMs > 0) finalAssistantMsg.setThinkingDurationMs(thinkingDurationMs);
+                                    String sectionsJson = "[{\"phase\":\"执行\",\"status\":\"COMPLETED\",\"content\":\""
+                                            + escapeJson(contentAcc.length() > 200 ? contentAcc.substring(0, 197) + "..." : contentAcc.toString())
+                                            + "\"}]";
+                                    finalAssistantMsg.setSections(sectionsJson);
                                     messageRepository.save(finalAssistantMsg);
                                     log.debug("[持久化] 重新生成消息已保存: msgId={}, status={}, contentLen={}",
                                             msgId, finalAssistantMsg.getStatus(), contentAcc.length());

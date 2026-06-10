@@ -30,13 +30,14 @@ public class ExecutionLogSink implements EventSink {
     public void emit(ForestEvent event) {
         wrapped.emit(event);
 
-        if (event.type() == ForestEvent.EventType.LIFECYCLE
+        if ((event.type() == ForestEvent.EventType.LIFECYCLE
                 || event.type() == ForestEvent.EventType.ERROR
-                || event.type() == ForestEvent.EventType.MILESTONE) {
+                || event.type() == ForestEvent.EventType.MILESTONE)
+                && event.forestId() != null) {
             try {
                 repository.save(ForestExecutionLogEntity.builder()
                         .nodeId(event.nodeId())
-                        .forestId(parseForestId(event.forestId()))
+                        .forestId(UUID.fromString(event.forestId()))
                         .eventType(event.type().name())
                         .message(event.message())
                         .build());
@@ -46,12 +47,4 @@ public class ExecutionLogSink implements EventSink {
         }
     }
 
-    private static UUID parseForestId(String s) {
-        if (s == null || s.isBlank()) return null;
-        try {
-            return UUID.fromString(s);
-        } catch (IllegalArgumentException e) {
-            return null;
-        }
-    }
 }

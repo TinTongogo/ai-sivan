@@ -114,7 +114,7 @@ describe('useMessageStore', () => {
       expect(store.messages.value).toHaveLength(2)
       expect(store.hasMore.value).toBe(false)
       expect(mockGet).toHaveBeenCalledWith(
-        expect.stringContaining('/conversations/conv-1/messages?limit=15'),
+        expect.stringContaining('/v2/conversations/conv-1/messages?limit=15'),
       )
     })
 

@@ -66,7 +66,7 @@ export function useMessageStore() {
     inflightConvId = conversationId
     inflightFetch = (async () => {
       try {
-        const res: any = await api.get(`/conversations/${conversationId}/messages?limit=${PAGE_SIZE}`)
+        const res: any = await api.get(`/v2/conversations/${conversationId}/messages?limit=${PAGE_SIZE}`)
         if (serial !== fetchSerial) return
         const list: Message[] = (res.data?.messages || []).map(normalize)
         messages.value = list
@@ -98,7 +98,7 @@ export function useMessageStore() {
     const serial = ++fetchSerial
     try {
       const params = `limit=${PAGE_SIZE}${oldestSortOrder != null ? `&before=${oldestSortOrder}` : ''}`
-      const res: any = await api.get(`/conversations/${conversationId}/messages?${params}`)
+      const res: any = await api.get(`/v2/conversations/${conversationId}/messages?${params}`)
       if (serial !== fetchSerial) return
       const older: Message[] = (res.data?.messages || []).map(normalize)
       hasMore.value = res.data?.hasMore ?? !(older.length < PAGE_SIZE)
@@ -137,7 +137,7 @@ export function useMessageStore() {
    */
   async function syncLatestMeta(conversationId: string) {
     try {
-      const res: any = await api.get(`/conversations/${conversationId}/messages?limit=3`)
+      const res: any = await api.get(`/v2/conversations/${conversationId}/messages?limit=3`)
       const msgs: Message[] = (res.data?.messages || res.data || [])
       for (const fetched of msgs) {
         if (!fetched.messageId) continue

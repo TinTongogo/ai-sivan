@@ -14,14 +14,14 @@ class SinkFactoryTest {
     @Test
     void forStreamReturnsDecoratorChain() {
         EventSink terminal = event -> { };
-        EventSink chain = SinkFactory.forStream(terminal);
+        EventSink chain = SinkFactory.forStream(terminal, null, null);
         assertNotNull(chain);
         assertInstanceOf(MetricsSink.class, chain);
     }
 
     @Test
     void forSummaryReturnsDecoratorChain() {
-        EventSink chain = SinkFactory.forSummary();
+        EventSink chain = SinkFactory.forSummary(null, null);
         assertNotNull(chain);
         assertInstanceOf(MetricsSink.class, chain);
     }
@@ -29,13 +29,13 @@ class SinkFactoryTest {
     @Test
     void createWithStreamReturnsDecoratorChain() {
         EventSink terminal = event -> { };
-        EventSink chain = SinkFactory.create(Delivery.STREAM, terminal);
+        EventSink chain = SinkFactory.create(Delivery.STREAM, terminal, null, null);
         assertInstanceOf(MetricsSink.class, chain);
     }
 
     @Test
     void createWithSummaryReturnsDecoratorChain() {
-        EventSink chain = SinkFactory.create(Delivery.SUMMARY, null);
+        EventSink chain = SinkFactory.create(Delivery.SUMMARY, null, null, null);
         assertInstanceOf(MetricsSink.class, chain);
     }
 
@@ -43,7 +43,7 @@ class SinkFactoryTest {
     void streamChainDeliversToTerminal() {
         var delivered = new boolean[]{false};
         EventSink terminal = event -> delivered[0] = true;
-        EventSink chain = SinkFactory.forStream(terminal);
+        EventSink chain = SinkFactory.forStream(terminal, null, null);
 
         chain.emit(ForestEventTestHelper.lifecycleEvent());
         assertTrue(delivered[0]);
@@ -51,7 +51,7 @@ class SinkFactoryTest {
 
     @Test
     void summaryChainDoesNotThrow() {
-        EventSink chain = SinkFactory.forSummary();
+        EventSink chain = SinkFactory.forSummary(null, null);
         assertDoesNotThrow(() -> chain.emit(ForestEventTestHelper.lifecycleEvent()));
     }
 }

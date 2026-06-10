@@ -24,6 +24,7 @@ import com.icusu.sivan.domain.forest.tree.TreeNode;
 import com.icusu.sivan.infra.forest.execution.ForestExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -45,9 +46,11 @@ public class AgentLeafExecutor implements LeafExecutor {
 
     private static final Logger log = LoggerFactory.getLogger(AgentLeafExecutor.class);
 
-    private static final int MAX_ROUNDS = 20;
     private static final int MAX_TOOL_OUTPUT_CHARS = 3000;
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    @Value("${sivan.agent.max-rounds:200}")
+    private int maxRounds;
 
     private final DefaultModelRouter modelRouter;
     private final ToolRegistry toolRegistry;
@@ -218,8 +221,8 @@ public class AgentLeafExecutor implements LeafExecutor {
                                          TreeNode node, UUID accountId, int round,
                                          ConcurrentLinkedQueue<AgentMessage> pendingMessages,
                                          AgentMessageBus bus, String agentId, UUID convId, UUID forestId) {
-        if (round >= MAX_ROUNDS) {
-            log.warn("[Agent] 达到最大轮数: {}", MAX_ROUNDS);
+        if (round >= maxRounds) {
+            log.warn("[Agent] 达到最大轮数: {}", maxRounds);
             return Flux.empty();
         }
 

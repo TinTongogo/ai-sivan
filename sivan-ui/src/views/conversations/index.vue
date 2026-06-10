@@ -185,7 +185,7 @@ async function selectConversation(id: string) {
 async function recoverOrchestrationProgress(msgId?: string) {
   if (!msgId) return
   try {
-    const res: any = await api.get(`/conversations/${currentConversationId.value}/messages/${msgId}/progress`)
+    const res: any = await api.get(`/v2/conversations/${currentConversationId.value}/messages/${msgId}/progress`)
     const progressData = res.data
     if (progressData && Object.keys(progressData).length > 0) {
       const orchStore = useOrchestrationStore()
@@ -228,7 +228,7 @@ async function deleteConversation(id: string) {
 
 async function handleDeleteMessage(item: any, index: number) {
   if (item.messageId) {
-    try { await api.delete(`/conversations/messages/${item.messageId}`) } catch { /* ignore */ }
+    try { await api.delete(`/v2/conversations/messages/${item.messageId}`) } catch { /* ignore */ }
   }
   store.removeAt(index)
 }
@@ -362,7 +362,7 @@ async function switchGeneration(m: Message, index: number) {
     if (generationFetchInFlight.has(groupKey)) return
     generationFetchInFlight.add(groupKey)
     try {
-      const res: any = await api.get(`/conversations/${currentConversationId.value}/messages/${m.messageId}/generations`)
+      const res: any = await api.get(`/v2/conversations/${currentConversationId.value}/messages/${m.messageId}/generations`)
       const list = (res.data || []) as any[]
       if (list.length <= 1) { generationCache.set(groupKey, []); return }
       generationCache.set(groupKey, list)

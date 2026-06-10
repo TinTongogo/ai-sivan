@@ -38,7 +38,7 @@ class ConversationE2ETest extends AbstractWebIntegrationTest {
     /** 创建新会话并返回 ID。 */
     private UUID createConversation(String title) {
         var resp = webTestClient.post()
-                .uri("/api/conversations")
+                .uri("/api/v2/conversations")
                 .bodyValue(Map.of("title", title, "projectId", projectId.toString()))
                 .exchange()
                 .expectStatus().isCreated()
@@ -51,7 +51,7 @@ class ConversationE2ETest extends AbstractWebIntegrationTest {
     /** 发送消息并返回 messageId。 */
     private String sendMessage(UUID convId, String content) {
         var resp = webTestClient.post()
-                .uri("/api/conversations/{id}/messages", convId)
+                .uri("/api/v2/conversations/{id}/messages", convId)
                 .bodyValue(Map.of("content", content, "projectId", projectId.toString()))
                 .exchange()
                 .expectStatus().isCreated()
@@ -66,7 +66,7 @@ class ConversationE2ETest extends AbstractWebIntegrationTest {
         var id = createConversation("测试对话");
 
         webTestClient.get()
-                .uri("/api/conversations/{id}", id)
+                .uri("/api/v2/conversations/{id}", id)
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody()
@@ -80,7 +80,7 @@ class ConversationE2ETest extends AbstractWebIntegrationTest {
         createConversation("列表测试");
 
         webTestClient.get()
-                .uri("/api/conversations")
+                .uri("/api/v2/conversations")
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody()
@@ -93,7 +93,7 @@ class ConversationE2ETest extends AbstractWebIntegrationTest {
         var id = createConversation("旧标题");
 
         webTestClient.put()
-                .uri("/api/conversations/{id}", id)
+                .uri("/api/v2/conversations/{id}", id)
                 .bodyValue(Map.of("title", "新标题"))
                 .exchange()
                 .expectStatus().isOk()
@@ -107,7 +107,7 @@ class ConversationE2ETest extends AbstractWebIntegrationTest {
         var id = createConversation("消息测试");
 
         webTestClient.post()
-                .uri("/api/conversations/{id}/messages", id)
+                .uri("/api/v2/conversations/{id}/messages", id)
                 .bodyValue(Map.of("content", "你好，这是一条测试消息", "projectId", projectId.toString()))
                 .exchange()
                 .expectStatus().isCreated()
@@ -117,7 +117,7 @@ class ConversationE2ETest extends AbstractWebIntegrationTest {
                 .jsonPath("$.data.content").isEqualTo("你好，这是一条测试消息");
 
         webTestClient.get()
-                .uri("/api/conversations/{id}/messages?limit=10", id)
+                .uri("/api/v2/conversations/{id}/messages?limit=10", id)
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody()
@@ -131,7 +131,7 @@ class ConversationE2ETest extends AbstractWebIntegrationTest {
         String msgId = sendMessage(id, "待评价的消息");
 
         webTestClient.patch()
-                .uri("/api/conversations/messages/{msgId}/rating?rating=like", msgId)
+                .uri("/api/v2/conversations/messages/{msgId}/rating?rating=like", msgId)
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody()
@@ -144,7 +144,7 @@ class ConversationE2ETest extends AbstractWebIntegrationTest {
         String msgId = sendMessage(id, "待删除的消息");
 
         webTestClient.delete()
-                .uri("/api/conversations/messages/{msgId}", msgId)
+                .uri("/api/v2/conversations/messages/{msgId}", msgId)
                 .exchange()
                 .expectStatus().isNoContent();
     }
@@ -154,12 +154,12 @@ class ConversationE2ETest extends AbstractWebIntegrationTest {
         var id = createConversation("待删除的会话");
 
         webTestClient.delete()
-                .uri("/api/conversations/{id}", id)
+                .uri("/api/v2/conversations/{id}", id)
                 .exchange()
                 .expectStatus().isNoContent();
 
         webTestClient.get()
-                .uri("/api/conversations/{id}", id)
+                .uri("/api/v2/conversations/{id}", id)
                 .exchange()
                 .expectStatus().is4xxClientError();
     }

@@ -7,7 +7,7 @@ import com.icusu.sivan.core.message.Role;
 import com.icusu.sivan.core.model.Model;
 import com.icusu.sivan.domain.memory.IMemoryRepository;
 import com.icusu.sivan.domain.memory.MemoryEntry;
-import com.icusu.sivan.domain.shared.util.CosineSimilarity;
+import com.icusu.sivan.common.util.CosineSimilarity;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;

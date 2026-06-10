@@ -4,7 +4,7 @@ import com.icusu.sivan.agent.mcp.McpConnectionManager;
 import com.icusu.sivan.core.tool.ToolSpec;
 import com.icusu.sivan.domain.agent.AgentDefinition;
 import com.icusu.sivan.domain.agent.IAgentRepository;
-import com.icusu.sivan.domain.shared.util.CosineSimilarity;
+import com.icusu.sivan.common.util.CosineSimilarity;
 import com.icusu.sivan.domain.tool.IToolUsageRepository;
 import com.icusu.sivan.domain.tool.ToolMeta;
 import com.icusu.sivan.domain.tool.ToolRequirement;

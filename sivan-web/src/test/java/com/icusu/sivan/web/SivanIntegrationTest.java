@@ -9,7 +9,7 @@ import com.icusu.sivan.web.conversation.dto.CreateConversationRequest;
 import com.icusu.sivan.web.conversation.dto.SendMessageRequest;
 import com.icusu.sivan.web.conversation.dto.ConversationResponse;
 import com.icusu.sivan.web.conversation.dto.MessageResponse;
-import com.icusu.sivan.web.conversation.service.ConversationService;
+import com.icusu.sivan.web.forest.service.ForestConversationService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
@@ -40,7 +40,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class SivanIntegrationTest {
 
     @Autowired
-    private ConversationService conversationService;
+    private ForestConversationService conversationService;
 
     @Autowired
     private IConversationRepository conversationRepository;

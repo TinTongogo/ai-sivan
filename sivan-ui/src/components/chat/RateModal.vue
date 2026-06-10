@@ -16,7 +16,7 @@ const rateHints = computed(() => ['', t('rateHint1'), t('rateHint2'), t('rateHin
 async function confirm() {
   if (value.value < 1 || value.value > 5) { message.warning(t('selectRating')); return }
   try {
-    await api.patch(`/conversations/messages/${props.messageId}/rating?rating=${value.value}`)
+    await api.patch(`/v2/conversations/messages/${props.messageId}/rating?rating=${value.value}`)
     message.success(t('rateSubmitted'))
     emit('close')
   } catch { message.error(t('rateSubmitFailed')) }

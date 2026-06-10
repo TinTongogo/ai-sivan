@@ -5,7 +5,7 @@ import com.icusu.sivan.agent.routing.RoutingStrategy;
 import com.icusu.sivan.common.enums.AgentType;
 import com.icusu.sivan.domain.agent.AgentDefinition;
 import com.icusu.sivan.domain.shared.port.IEmbeddingService;
-import com.icusu.sivan.domain.shared.util.CosineSimilarity;
+import com.icusu.sivan.common.util.CosineSimilarity;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;

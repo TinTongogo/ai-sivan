@@ -94,15 +94,12 @@ public final class ChatPrompts {
     }
 
     /**
-     * 注入项目文件路径上下文，告知 LLM 可访问的本地目录。
+     * 注入项目上下文，告知 LLM 当前项目名称和工具使用规范。
      */
-    public static Prompt projectContextHint(String projectName, String projectPath, String sharedPath) {
+    public static Prompt projectContextHint(String projectName) {
         StringBuilder sb = new StringBuilder("\n## 项目文件环境\n");
         sb.append("当前在项目「").append(projectName).append("」中操作。\n");
-        sb.append("项目目录: ").append(projectPath).append("\n");
-        if (sharedPath != null) {
-            sb.append("共享只读目录: ").append(sharedPath).append("\n");
-        }
+        sb.append("工作目录已锁定为项目根目录，使用相对路径即可。\n");
         sb.append("\n### 文件操作 — 必须使用 file_read / file_write 工具\n");
         sb.append("读取文件内容必须使用 file_read（支持文本与 PDF/DOCX/XLSX 文档的自动文本提取），");
         sb.append("即便文件较大也能处理。\n");
@@ -111,7 +108,7 @@ public final class ChatPrompts {
         sb.append("目录列表使用 file_list，内容搜索使用 file_search。\n");
         sb.append("仅在需要运行脚本时使用 bash，不要用 bash cat/grep/ls 替代专用文件工具。\n");
         sb.append("\n### 代码执行 — 使用 bash 工具\n");
-        sb.append("工作目录已锁定为项目根目录，使用相对路径即可。写完脚本后必须立即执行。\n");
+        sb.append("写完脚本后必须立即执行。\n");
         return new Prompt(sb.toString(), Prompt.CacheStrategy.SESSION_STABLE, 40, Prompt.OutputFormat.FREE_TEXT);
     }
 }

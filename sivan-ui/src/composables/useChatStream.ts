@@ -59,7 +59,7 @@ export function useChatStream(deps: {
       const ctx = pendingCancelCtx
       pendingCancelCtx = null
       clearTimeout(pendingCancelTimer)
-      api.post(`/conversations/${ctx.convId}/stream/${messageId}/cancel`)
+      api.post(`/v2/conversations/${ctx.convId}/stream/${messageId}/cancel`)
         .catch((err: any) => console.warn('延迟取消请求失败:', err))
       ctx.controller.abort()
     }
@@ -73,7 +73,7 @@ export function useChatStream(deps: {
         runningAsst.status = 'FAILED'
         if (!runningAsst.content) runningAsst.content = t('cancelSend')
         const cid = currentConversationId.value
-        api.post(`/conversations/${cid}/stream/${runningAsst.messageId}/cancel`)
+        api.post(`/v2/conversations/${cid}/stream/${runningAsst.messageId}/cancel`)
           .catch((err: any) => console.warn('取消请求失败(不影响 SSE 断开):', err))
         currentController.value?.abort()
         currentController.value = null
@@ -187,7 +187,7 @@ export function useChatStream(deps: {
       try {
         const body: any = { title: text.slice(0, 30) }
         if (currentProjectContext.value) body.projectId = currentProjectContext.value
-        const res: any = await api.post('/conversations', body)
+        const res: any = await api.post('/v2/conversations', body)
         const conv = res.data as Conversation
         conversations.value.unshift(conv)
         currentConversationId.value = conv.conversationId
@@ -260,7 +260,7 @@ export function useChatStream(deps: {
         lastMcpServerIds.value = []
       }
 
-      const response = await fetch(`/api/conversations/${currentConversationId.value}/stream`, {
+      const response = await fetch(`/api/v2/conversations/${currentConversationId.value}/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(body),
@@ -317,7 +317,7 @@ export function useChatStream(deps: {
 
     try {
       const token = localStorage.getItem('token')
-      const response = await fetch(`/api/conversations/${currentConversationId.value}/messages/${msgId}/subscribe`, {
+      const response = await fetch(`/api/v2/conversations/${currentConversationId.value}/messages/${msgId}/subscribe`, {
         headers: { Authorization: `Bearer ${token}` },
         signal: controller.signal,
       })
@@ -375,7 +375,7 @@ export function useChatStream(deps: {
         modelProviderId: lastModelProviderId.value || null,
         mcpServerIds: lastMcpServerIds.value.length ? lastMcpServerIds.value : null,
       }
-      const response = await fetch(`/api/conversations/${convId}/regenerate`, {
+      const response = await fetch(`/api/v2/conversations/${convId}/regenerate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(body),

@@ -7,7 +7,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication
 @EnableScheduling
-@ComponentScan(basePackages = {"com.icusu.sivan.web", "com.icusu.sivan.infra", "com.icusu.sivan.agent", "com.icusu.sivan.memory"})
+@ComponentScan(basePackages = {"com.icusu.sivan.web", "com.icusu.sivan.infra", "com.icusu.sivan.agent"})
 /**
  * Sivan（灵枢）应用入口。
  */
