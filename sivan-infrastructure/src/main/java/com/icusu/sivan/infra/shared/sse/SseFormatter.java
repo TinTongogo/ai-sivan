@@ -114,4 +114,49 @@ public class SseFormatter {
     public static String buildProgressEvent(String progressStateJson) {
         return "{\"type\":\"progress\",\"data\":" + progressStateJson + "}";
     }
+
+    /**
+     * 构建 branch_decision 事件：{"type":"branch_decision","chosen":"...","skipped":["..."],"reason":"..."}
+     */
+    public static String buildBranchDecisionEvent(String chosen, java.util.List<String> skipped, String reason) {
+        StringBuilder json = new StringBuilder("{\"type\":\"branch_decision\"");
+        appendJsonStr(json, "chosen", chosen);
+        if (skipped != null && !skipped.isEmpty()) {
+            json.append(",\"skipped\":[");
+            for (int i = 0; i < skipped.size(); i++) {
+                if (i > 0) json.append(",");
+                json.append("\"").append(JsonUtil.escapeJson(skipped.get(i))).append("\"");
+            }
+            json.append("]");
+        }
+        if (reason != null && !reason.isBlank()) appendJsonStr(json, "reason", reason);
+        json.append("}");
+        return json.toString();
+    }
+
+    /** 构建 hitl_resume 事件：{"type":"hitl_resume","nodeId":"...","reason":"..."} */
+    public static String buildHitlResumeEvent(String nodeId, String reason) {
+        StringBuilder json = new StringBuilder("{\"type\":\"hitl_resume\"");
+        appendJsonStr(json, "nodeId", nodeId);
+        if (reason != null && !reason.isBlank()) appendJsonStr(json, "reason", reason);
+        json.append("}");
+        return json.toString();
+    }
+
+    /** 构建 hitl_reject 事件：{"type":"hitl_reject","nodeId":"...","reason":"..."} */
+    public static String buildHitlRejectEvent(String nodeId, String reason) {
+        StringBuilder json = new StringBuilder("{\"type\":\"hitl_reject\"");
+        appendJsonStr(json, "nodeId", nodeId);
+        if (reason != null && !reason.isBlank()) appendJsonStr(json, "reason", reason);
+        json.append("}");
+        return json.toString();
+    }
+
+    /**
+     * 构建模板匹配事件：{"type":"match_template","step":"match_template","message":"..."}
+     */
+    public static String buildMatchTemplateEvent(String message) {
+        return "{\"type\":\"match_template\",\"step\":\"match_template\",\"message\":\""
+                + JsonUtil.escapeJson(message) + "\"}";
+    }
 }

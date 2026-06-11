@@ -5,6 +5,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.extension.ExtensionContext;
 import org.opentest4j.TestAbortedException;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
@@ -21,6 +22,7 @@ import java.nio.file.Paths;
  * 使用自定义 DockerCheckExtension 确保在 Spring 上下文初始化之前检查 Docker。
  */
 @SpringBootTest(classes = TestInfrastructureApplication.class)
+@Import(ForestExecutionTestConfig.class)
 @ExtendWith(AbstractIntegrationTest.DockerCheckExtension.class)
 @ExtendWith(SpringExtension.class)
 public abstract class AbstractIntegrationTest {

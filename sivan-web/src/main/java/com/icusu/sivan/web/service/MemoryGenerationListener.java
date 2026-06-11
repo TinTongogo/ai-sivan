@@ -9,7 +9,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
 /**
- * 消息完成后异步触发记忆生成 + 画像自动学习。
+ * 消息完成后异步触发记忆生成。
  * 通过领域事件解耦，不阻塞主流程。
  */
 @Slf4j

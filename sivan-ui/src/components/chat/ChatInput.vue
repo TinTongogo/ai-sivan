@@ -492,7 +492,7 @@ function cancelPolish() {
         class="chat__textarea"
         :value="modelValue"
         :placeholder="conversationId ? t('inputPlaceholder') : t('inputPlaceholderNewConv')"
-        :disabled="streaming || !conversationId"
+        :disabled="!conversationId"
         rows="1"
         @input="onInput"
         @keydown="onKeydown"
@@ -656,11 +656,17 @@ function cancelPolish() {
           </svg>
         </button>
 
-        <!-- Send / Cancel -->
-        <button class="btn chat__send" :class="streaming ? 'is-canceling' : 'btn-primary'"
-                :disabled="!conversationId || (!streaming && !modelValue.trim())"
-                @click="streaming ? emit('cancel') : handleSend()">
-          {{ streaming ? t('cancel') : t('send') }}
+        <!-- Cancel (streaming 时显示) -->
+        <button v-if="streaming" class="btn btn-ghost chat__cancel"
+                @click="emit('cancel')">
+          {{ t('cancel') }}
+        </button>
+
+        <!-- Send -->
+        <button class="btn btn-primary chat__send"
+                :disabled="!conversationId || !modelValue.trim()"
+                @click="handleSend()">
+          {{ t('send') }}
         </button>
       </div>
     </div>

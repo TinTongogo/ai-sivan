@@ -284,6 +284,13 @@ const capLabelMap: Record<string, string> = {
   streaming: 'capacityStream',
   thinking: 'capacityThink',
   reasoning_effort: 'capacityReasoning',
+	  system_prompt: 'capacitySystemPrompt',
+	  json_mode: 'capacityJsonMode',
+	  batch: 'capacityBatch',
+	  image_gen: 'capacityImageGen',
+	  speech_synth: 'capacitySpeechSynth',
+	  speech_recog: 'capacitySpeechRecog',
+	  video_gen: 'capacityVideoGen',
 }
 function capLabel(code: string): string {
   const key = capLabelMap[code]

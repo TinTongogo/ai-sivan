@@ -20,8 +20,12 @@ import com.icusu.sivan.domain.forest.service.TreeMatcher;
 import com.icusu.sivan.domain.forest.tree.ExecutableNode;
 import com.icusu.sivan.domain.forest.tree.TaskNode;
 import com.icusu.sivan.domain.shared.event.MessageCompletedEvent;
+import com.icusu.sivan.domain.memory.InstinctPattern;
+import com.icusu.sivan.domain.task.TaskFeatures;
 import com.icusu.sivan.infra.forest.compression.ForestCompressor;
 import com.icusu.sivan.infra.forest.execution.ForestExecutor;
+import com.icusu.sivan.infra.forest.sink.ForestMetricsCollector;
+import com.icusu.sivan.infra.memory.instinct.InstinctPatternService;
 import com.icusu.sivan.infra.shared.sse.SseFormatter;
 import com.icusu.sivan.infra.shared.sse.StreamManager;
 import com.icusu.sivan.web.conversation.dto.*;
@@ -49,7 +53,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Consumer;
-
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 /**
  * Forest 对话服务 — 对话 CRUD、消息收发、流式 LLM 调用与 Forest 编排执行。
  * <p>
@@ -76,6 +81,9 @@ public class ForestConversationService {
     private final ForestRepository forestRepository;
     private final TransactionTemplate transactionTemplate;
     private final ApplicationEventPublisher eventPublisher;
+    private final ForestMetricsCollector metricsCollector;
+    private final com.icusu.sivan.domain.agent.IAgentRepository agentRepository;
+    private final InstinctPatternService instinctPatternService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     // ============ 对话 CRUD ============
@@ -237,7 +245,32 @@ public class ForestConversationService {
                             conversationId, accountId, null, null,
                             prep.contextLength, null, null, null, null, null);
 
-                    return treeMatcher.match(request.getContent(), accountId)
+                    // 本能模板匹配：优先复用历史成功的任务分解
+                    TaskFeatures features = extractTaskFeatures(request.getContent());
+                    final AtomicReference<UUID> patternIdRef = new AtomicReference<>();
+                    Optional<InstinctPattern> patternOpt = instinctPatternService.match(features, accountId);
+                    Mono<ExecutableNode> treeMono;
+                    if (patternOpt.isPresent()) {
+                        InstinctPattern p = patternOpt.get();
+                        ExecutableNode cachedTree = parseTopologyJson(p.getTopologyJson(), request.getContent());
+                        if (cachedTree != null) {
+                            log.info("本能模板命中: patternId={} mode={}", p.getPatternId(), p.getExecutionMode());
+                            patternIdRef.set(p.getPatternId());
+                            // 发射模板匹配 SSE 事件
+                            String sr = p.getSuccessRate() != null
+                                    ? String.format("%.0f%%", p.getSuccessRate() * 100) : "N/A";
+                            prep.sink.tryEmitNext(SseFormatter.buildMatchTemplateEvent(
+                                    "已匹配模板「" + p.getExecutionMode() + "」- 成功率 " + sr
+                                    + "（" + (p.getTotalCount() != null ? p.getTotalCount() : 0) + "次）"));
+                            treeMono = Mono.just(cachedTree);
+                        } else {
+                            treeMono = treeMatcher.match(request.getContent(), accountId);
+                        }
+                    } else {
+                        treeMono = treeMatcher.match(request.getContent(), accountId);
+                    }
+
+                    return treeMono
                             .switchIfEmpty(Mono.fromRunnable(() -> {
                                 prep.assistantMsg.setContent("执行树构建失败");
                                 prep.assistantMsg.setStatus(MessageStatus.FAILED);
@@ -248,21 +281,29 @@ public class ForestConversationService {
                                 String projectPath = groupService.getProjectRootPath(accountId, conversation.getProjectId());
 
                                 Forest forest = persistForestTree(tree, request.getContent(),
-                                        accountId, conversation.getProjectId());
+                                        accountId, conversation.getProjectId(), conversation.getConversationId());
 
                                 forestCompressor.compress(forest, tree, "send", prep.maxPromptTokens);
-                                addRuntimeMetadata(tree, prebuiltMsgs, coreTools, forest.forestId(), projectPath);
+                                String agent = request.getTargetAgent();
+                                addRuntimeMetadata(tree, prebuiltMsgs, coreTools, forest.forestId(),
+                                        projectPath, accountId, agent);
 
                                 ExecutionContext execCtx = ExecutionContext.create(accountId,
                                         conversation.getProjectId(), conversationId);
 
                                 StringBuilder contentAcc = new StringBuilder();
+                                StringBuilder thinkingAcc = new StringBuilder();
                                 long startMs = System.currentTimeMillis();
 
                                 final int[] totalTokens = {0};
                                 final int[] thinkingTokens = {0};
                                 final long[] thinkingStartMs = {0};
                                 final long[] thinkingDurationAcc = {0};
+                                final java.util.Set<String> activePhases = new java.util.HashSet<>();
+                                final int[] activeCount = {0};
+                                final int[] completedCount = {0};
+                                final int totalLeaves = countLeaves(tree);
+                                final long startProgressMs = System.currentTimeMillis();
 
                                 forestExecutor.execute(tree, execCtx, Delivery.SUMMARY)
                                         .doOnNext(event -> {
@@ -278,6 +319,7 @@ public class ForestConversationService {
                                                 case THINKING -> {
                                                     if (thinkingStartMs[0] == 0)
                                                         thinkingStartMs[0] = System.currentTimeMillis();
+                                                    thinkingAcc.append(event.message());
                                                     prep.sink.tryEmitNext(SseFormatter.toJsonEvent("thinking", event.message()));
                                                 }
                                                 case MILESTONE -> {
@@ -297,6 +339,41 @@ public class ForestConversationService {
                                                     prep.sink.tryEmitNext("{\"type\":\"error\",\"message\":\""
                                                             + escapeJson(event.message()) + "\"}");
                                                 }
+                                                case LIFECYCLE -> {
+                                                    String nid = event.nodeId();
+                                                    if (activePhases.add(nid)) {
+                                                        if (++activeCount[0] == 1) {
+                                                            prep.sink.tryEmitNext(SseFormatter.buildPhaseStartEvent(
+                                                                    "执行", null, null, 0, totalLeaves));
+                                                        }
+                                                    } else {
+                                                        activePhases.remove(nid);
+                                                        completedCount[0]++;
+                                                        if (--activeCount[0] > 0) {
+                                                            prep.sink.tryEmitNext(buildProgressJson(
+                                                                    completedCount[0], totalLeaves,
+                                                                    System.currentTimeMillis() - startProgressMs));
+                                                        } else {
+                                                            prep.sink.tryEmitNext(SseFormatter.buildPhaseEndEvent(
+                                                                    "执行", null, totalTokens[0] > 0 ? totalTokens[0] : null,
+                                                                    null, null));
+                                                        }
+                                                    }
+                                                }
+                                                case BRANCH_DECISION -> {
+                                                    prep.sink.tryEmitNext("{\"type\":\"branch_decision\",\"data\":"
+                                                            + escapeJson(event.message()) + "}");
+                                                }
+                                                case HITL_RESUME -> {
+                                                    prep.sink.tryEmitNext("{\"type\":\"hitl_resume\",\"nodeId\":\""
+                                                            + event.nodeId() + "\",\"reason\":\""
+                                                            + escapeJson(event.message()) + "\"}");
+                                                }
+                                                case HITL_REJECT -> {
+                                                    prep.sink.tryEmitNext("{\"type\":\"hitl_reject\",\"nodeId\":\""
+                                                            + event.nodeId() + "\",\"reason\":\""
+                                                            + escapeJson(event.message()) + "\"}");
+                                                }
                                                 default -> {
                                                 }
                                             }
@@ -307,7 +384,9 @@ public class ForestConversationService {
                                             int thinkingDurationMs = (int) (thinkingDurationAcc[0]
                                                     + (thinkingStartMs[0] > 0
                                                     ? System.currentTimeMillis() - thinkingStartMs[0] : 0));
+                                            String thinkingContent = thinkingAcc.length() > 0 ? thinkingAcc.toString() : null;
                                             prep.assistantMsg.setContent(contentAcc.toString());
+                                            prep.assistantMsg.setThinking(thinkingContent);
                                             prep.assistantMsg.setStatus(
                                                     signal == reactor.core.publisher.SignalType.ON_COMPLETE
                                                             ? MessageStatus.COMPLETED : MessageStatus.FAILED);
@@ -320,12 +399,19 @@ public class ForestConversationService {
                                             if (thinkingDurationMs > 0)
                                                 prep.assistantMsg.setThinkingDurationMs(thinkingDurationMs);
                                             messageRepository.save(prep.assistantMsg);
-                                            log.debug("[持久化] 助理消息已保存: msgId={}, status={}, contentLen={}",
-                                                    prep.msgId, prep.assistantMsg.getStatus(), contentAcc.length());
+                                            log.debug("[持久化] 助理消息已保存: msgId={}, status={}, contentLen={} thinkLen={}",
+                                                    prep.msgId, prep.assistantMsg.getStatus(), contentAcc.length(),
+                                                    thinkingAcc.length());
+                                            boolean success = signal == reactor.core.publisher.SignalType.ON_COMPLETE;
+                                            metricsCollector.recordExecution(totalTokens[0], durationMs);
+                                            // 本能模板学习：记录执行结果
+                                            if (patternIdRef.get() != null) {
+                                                instinctPatternService.recordResult(patternIdRef.get(), success, features);
+                                            }
                                             eventPublisher.publishEvent(new MessageCompletedEvent(
                                                     prep.msgId, conversationId, accountId,
-                                                    conversation.getProjectId(), contentAcc.toString(), null,
-                                                    null, 0, 0, 0));
+                                                    conversation.getProjectId(), contentAcc.toString(), thinkingContent,
+                                                    prep.modelName, totalTokens[0], durationMs, thinkingDurationMs));
                                             prep.sink.tryEmitNext(SseFormatter.buildMetaEvent(
                                                     prep.modelName, totalTokens[0] > 0 ? totalTokens[0] : null,
                                                     durationMs, thinkingDurationMs,
@@ -440,19 +526,26 @@ public class ForestConversationService {
                         TaskNode tree = new TaskNode(userContent);
                         String projectPath = groupService.getProjectRootPath(accountId, conversation.getProjectId());
                         Forest forest = persistForestTree(tree, userContent,
-                                accountId, conversation.getProjectId());
+                                accountId, conversation.getProjectId(), conversation.getConversationId());
                         forestCompressor.compress(forest, tree, "send", contextLength);
                         tree.metadata().put("prebuiltMessages", prebuiltMsgs);
+                        tree.metadata().put("_accountId", accountId.toString());
                         if (projectPath != null) tree.metadata().put("_fileRootPath", projectPath);
                         ExecutionContext execCtx = ExecutionContext.create(accountId,
                                 conversation.getProjectId(), conversationId);
 
                         StringBuilder contentAcc = new StringBuilder();
+                        StringBuilder thinkingAcc = new StringBuilder();
                         long startMs = System.currentTimeMillis();
                         final int[] totalTokens = {0};
                         final int[] thinkingTokens = {0};
                         final long[] thinkingStartMs = {0};
                         final long[] thinkingDurationAcc = {0};
+                        final java.util.Set<String> regActivePhases = new java.util.HashSet<>();
+                        final int[] regActiveCount = {0};
+                        final int[] regCompletedCount = {0};
+                        final int regTotalLeaves = countLeaves(tree);
+                        final long regStartMs = System.currentTimeMillis();
                         String modelName = resolveModelName(providerId, accountId);
 
                         forestExecutor.execute(tree, execCtx, Delivery.SUMMARY)
@@ -469,6 +562,7 @@ public class ForestConversationService {
                                         case THINKING -> {
                                             if (thinkingStartMs[0] == 0)
                                                 thinkingStartMs[0] = System.currentTimeMillis();
+                                            thinkingAcc.append(event.message());
                                             sink.tryEmitNext(SseFormatter.toJsonEvent("thinking", event.message()));
                                         }
                                         case MILESTONE -> {
@@ -488,6 +582,27 @@ public class ForestConversationService {
                                             sink.tryEmitNext("{\"type\":\"error\",\"message\":\""
                                                     + escapeJson(event.message()) + "\"}");
                                         }
+                                        case LIFECYCLE -> {
+                                            String nid = event.nodeId();
+                                            if (regActivePhases.add(nid)) {
+                                                if (++regActiveCount[0] == 1) {
+                                                    sink.tryEmitNext(SseFormatter.buildPhaseStartEvent(
+                                                            "执行", null, null, 0, regTotalLeaves));
+                                                }
+                                            } else {
+                                                regActivePhases.remove(nid);
+                                                regCompletedCount[0]++;
+                                                if (--regActiveCount[0] > 0) {
+                                                    sink.tryEmitNext(buildProgressJson(regCompletedCount[0],
+                                                            regTotalLeaves,
+                                                            System.currentTimeMillis() - regStartMs));
+                                                } else {
+                                                    sink.tryEmitNext(SseFormatter.buildPhaseEndEvent(
+                                                            "执行", null, totalTokens[0] > 0 ? totalTokens[0] : null,
+                                                            null, null));
+                                                }
+                                            }
+                                        }
                                     }
                                 })
                                 .publishOn(Schedulers.boundedElastic())
@@ -496,7 +611,9 @@ public class ForestConversationService {
                                     int thinkingDurationMs = (int) (thinkingDurationAcc[0]
                                             + (thinkingStartMs[0] > 0
                                             ? System.currentTimeMillis() - thinkingStartMs[0] : 0));
+                                    String thinkingContent = thinkingAcc.length() > 0 ? thinkingAcc.toString() : null;
                                     finalAssistantMsg.setContent(contentAcc.toString());
+                                    finalAssistantMsg.setThinking(thinkingContent);
                                     finalAssistantMsg.setStatus(
                                             signal == reactor.core.publisher.SignalType.ON_COMPLETE
                                                     ? MessageStatus.COMPLETED : MessageStatus.FAILED);
@@ -509,12 +626,14 @@ public class ForestConversationService {
                                     if (thinkingDurationMs > 0)
                                         finalAssistantMsg.setThinkingDurationMs(thinkingDurationMs);
                                     messageRepository.save(finalAssistantMsg);
-                                    log.debug("[持久化] 重新生成消息已保存: msgId={}, status={}, contentLen={}",
-                                            msgId, finalAssistantMsg.getStatus(), contentAcc.length());
+                                    log.debug("[持久化] 重新生成消息已保存: msgId={}, status={}, contentLen={} thinkLen={}",
+                                            msgId, finalAssistantMsg.getStatus(), contentAcc.length(),
+                                            thinkingAcc.length());
+                                    metricsCollector.recordExecution(totalTokens[0], durationMs);
                                     eventPublisher.publishEvent(new MessageCompletedEvent(
                                             msgId, conversationId, accountId,
-                                            conversation.getProjectId(), contentAcc.toString(), null,
-                                            null, 0, 0, 0));
+                                            conversation.getProjectId(), contentAcc.toString(), thinkingContent,
+                                            modelName, totalTokens[0], durationMs, thinkingDurationMs));
                                     sink.tryEmitNext(SseFormatter.buildMetaEvent(
                                             modelName, totalTokens[0] > 0 ? totalTokens[0] : null,
                                             durationMs, thinkingDurationMs,
@@ -636,12 +755,113 @@ public class ForestConversationService {
 
     // ============ 内部辅助 ============
 
-    private static String escapeJson(String s) {
+    /** 递归统计树中的叶子节点（TaskNode）数量。 */
+    private static int countLeaves(ExecutableNode node) {
+        if (node.children().isEmpty()) return 1;
+        int count = 0;
+        for (var child : node.children()) {
+            if (child instanceof ExecutableNode en) {
+                count += countLeaves(en);
+            }
+        }
+        return Math.max(count, 1);
+    }
+
+    /** 构建 progress SSE 事件 JSON。 */
+    private static String buildProgressJson(int completed, int total, long elapsedMs) {
+        return "{\"type\":\"progress\",\"data\":{\"status\":\"RUNNING\","
+                + "\"totalPhases\":" + total
+                + ",\"completedPhases\":" + completed
+                + ",\"elapsedMs\":" + elapsedMs
+                + ",\"totalTokens\":0"
+                + ",\"currentPhase\":\"执行中\""
+                + ",\"phases\":[]}}";
+    }
+
+
+    /** 从用户输入中提取任务特征（启发式规则，用于本能模板匹配）。 */
+    private static TaskFeatures extractTaskFeatures(String input) { 
+        return new TaskFeatures( 
+                detectComplexity(input), 
+                detectDependency(input), 
+                detectInputStructure(input), 
+                detectDomain(input), 
+                detectOutputType(input) 
+        ); 
+    } 
+
+    private static TaskFeatures.Complexity detectComplexity(String input) { 
+        int len = input != null ? input.length() : 0; 
+        if (len < 30) return TaskFeatures.Complexity.LEVEL_1; 
+        if (len < 200) return TaskFeatures.Complexity.LEVEL_2; 
+        if (len < 800) return TaskFeatures.Complexity.LEVEL_3; 
+        if (len < 3000) return TaskFeatures.Complexity.LEVEL_4; 
+        return TaskFeatures.Complexity.LEVEL_5; 
+    } 
+
+    private static TaskFeatures.Dependency detectDependency(String input) { 
+        if (input == null) return TaskFeatures.Dependency.INDEPENDENT; 
+        String lower = input.toLowerCase(); 
+        if (lower.contains("同时") || lower.contains("并行") || lower.contains("parallel")) 
+            return TaskFeatures.Dependency.PARALLEL; 
+        if (lower.contains("如果") || lower.contains("判断") || lower.contains("条件") || lower.contains("否则")) 
+            return TaskFeatures.Dependency.CONDITIONAL; 
+        if (lower.contains("然后") || lower.contains("之后再") || lower.contains("接着") || lower.contains("步骤")) 
+            return TaskFeatures.Dependency.SEQUENTIAL; 
+        return TaskFeatures.Dependency.INDEPENDENT; 
+    } 
+
+    private static TaskFeatures.InputStructure detectInputStructure(String input) { 
+        if (input == null) return TaskFeatures.InputStructure.FREE_TEXT; 
+        String lower = input.toLowerCase(); 
+        if (input.contains("```") || lower.contains("function") || lower.contains("class ") || lower.contains("error:")) 
+            return TaskFeatures.InputStructure.CODE; 
+        return TaskFeatures.InputStructure.FREE_TEXT; 
+    } 
+
+    private static TaskFeatures.Domain detectDomain(String input) { 
+        if (input == null) return TaskFeatures.Domain.GENERAL; 
+        String lower = input.toLowerCase(); 
+        if (lower.contains("代码") || lower.contains("写") || lower.contains("编程") || lower.contains("debug") || lower.contains("api") || lower.contains("sql")) 
+            return TaskFeatures.Domain.CODING; 
+        if (lower.contains("文章") || lower.contains("写") || lower.contains("文案") || lower.contains("翻译")) 
+            return TaskFeatures.Domain.WRITING; 
+        if (lower.contains("分析") || lower.contains("对比") || lower.contains("总结") || lower.contains("数据")) 
+            return TaskFeatures.Domain.ANALYSIS; 
+        if (lower.contains("调研") || lower.contains("研究") || lower.contains("搜索")) 
+            return TaskFeatures.Domain.RESEARCH; 
+        return TaskFeatures.Domain.GENERAL; 
+    } 
+
+    private static TaskFeatures.OutputType detectOutputType(String input) { 
+        if (input == null) return TaskFeatures.OutputType.SHORT_TEXT; 
+        String lower = input.toLowerCase(); 
+        if (lower.contains("代码") || lower.contains("脚本") || lower.contains("编程")) 
+            return TaskFeatures.OutputType.CODE; 
+        if (lower.contains("json") || lower.contains("结构化")) 
+            return TaskFeatures.OutputType.JSON; 
+        if (lower.contains("文章") || lower.contains("报告") || lower.contains("长文")) 
+            return TaskFeatures.OutputType.LONG_TEXT; 
+        return TaskFeatures.OutputType.SHORT_TEXT; 
+    } 
+
+    /** 将 InstinctPattern 的 topologyJson 解析为 ExecutableNode 树。复⽤ LlmTreeMatcher 的解析逻辑。 */ 
+    private ExecutableNode parseTopologyJson(String topologyJson, String originalInput) { 
+        if (topologyJson == null || topologyJson.isBlank()) return null; 
+        try { 
+            if (treeMatcher instanceof com.icusu.sivan.agent.forest.matcher.LlmTreeMatcher llm) { 
+                return llm.parseTree(topologyJson, originalInput); 
+            } 
+        } catch (Exception e) { 
+            log.warn("解析 topologyJson 失败: {}", e.getMessage()); 
+        } 
+        return null; 
+    }    private static String escapeJson(String s) {
         return JsonUtil.escapeJson(s);
     }
 
-    private Forest persistForestTree(ExecutableNode root, String content, UUID accountId, UUID projectId) {
-        Forest forest = new Forest(UUID.randomUUID(), accountId, projectId,
+    private Forest persistForestTree(ExecutableNode root, String content, UUID accountId, UUID projectId, UUID conversationId) {
+        Forest forest = new Forest(UUID.randomUUID(), accountId, projectId, conversationId,
                 content.length() > 50 ? content.substring(0, 47) + "..." : content,
                 root.nodeId());
         try {
@@ -656,16 +876,19 @@ public class ForestConversationService {
         return forest;
     }
 
-    private void addRuntimeMetadata(ExecutableNode node, List<Msg> msgs, List<ToolSpec> tools, UUID forestId, String fileRootPath) {
+    private void addRuntimeMetadata(ExecutableNode node, List<Msg> msgs, List<ToolSpec> tools,
+                                     UUID forestId, String fileRootPath, UUID accountId, String agentName) {
         if (node instanceof TaskNode tn) {
             tn.metadata().put("prebuiltMessages", msgs);
             tn.metadata().put("_forestId", forestId != null ? forestId.toString() : "");
+            tn.metadata().put("_accountId", accountId.toString());
             if (tools != null) tn.metadata().put("preferredToolSpecs", tools);
             if (fileRootPath != null) tn.metadata().put("_fileRootPath", fileRootPath);
+            if (agentName != null && !agentName.isBlank()) tn.metadata().put("agentName", agentName);
         }
         for (var child : node.children()) {
             if (child instanceof ExecutableNode en) {
-                addRuntimeMetadata(en, msgs, tools, forestId, fileRootPath);
+                addRuntimeMetadata(en, msgs, tools, forestId, fileRootPath, accountId, agentName);
             }
         }
     }

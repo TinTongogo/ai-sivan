@@ -80,7 +80,6 @@ sivan:
   file:
     storage-path: ${user.home}/uploads
     root-path: ${user.home}/sivan
-    quarantine-path: ${user.home}/sivan/.quarantine
   cors:
     allowed-origins: http://localhost:5173,http://localhost:3000
 
@@ -106,5 +105,8 @@ sivan:
   orchestration:
     hitl:
       auto-resume: true                 # HITL 超时后自动继续执行
+    scheduler:
+      max-concurrent: 3                 # 最大并发执行数
+      queue-strategy: fifo              # 排队策略：fifo / priority
 
 

@@ -1,4 +1,4 @@
-package com.icusu.sivan.infra.token.adapter;
+package com.icusu.sivan.infra.adapter;
 
 import com.icusu.sivan.common.enums.TokenSource;
 import com.icusu.sivan.domain.token.TokenUsage;

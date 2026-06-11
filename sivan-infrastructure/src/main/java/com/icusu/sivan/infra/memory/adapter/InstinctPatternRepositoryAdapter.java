@@ -86,6 +86,9 @@ public class InstinctPatternRepositoryAdapter implements IInstinctPatternReposit
         entity.setFeatureVector(serializeFeatureVector(pattern.getFeatureVector()));
         entity.setExecutionMode(pattern.getExecutionMode());
         entity.setHitCount(pattern.getHitCount());
+        entity.setSuccessRate(pattern.getSuccessRate());
+        entity.setWeight(pattern.getWeight() != null ? pattern.getWeight() : 0.5);
+        entity.setDraft(pattern.getDraft() != null ? pattern.getDraft() : false);
         entity.setVersion(pattern.getVersion());
         entity.setSourcePatternId(pattern.getSourcePatternId());
         entity.setLastMatchAt(pattern.getLastMatchAt() != null
@@ -113,6 +116,9 @@ public class InstinctPatternRepositoryAdapter implements IInstinctPatternReposit
                 .successCount(entity.getSuccessCount())
                 .totalCount(entity.getTotalCount())
                 .hitCount(entity.getHitCount())
+                .successRate(entity.getSuccessRate())
+                .weight(entity.getWeight())
+                .draft(entity.getDraft())
                 .version(entity.getVersion())
                 .sourcePatternId(entity.getSourcePatternId())
                 .active(entity.getActive())
@@ -133,6 +139,9 @@ public class InstinctPatternRepositoryAdapter implements IInstinctPatternReposit
         entity.setSuccessCount(pattern.getSuccessCount() != null ? pattern.getSuccessCount() : 0);
         entity.setTotalCount(pattern.getTotalCount() != null ? pattern.getTotalCount() : 0);
         entity.setHitCount(pattern.getHitCount() != null ? pattern.getHitCount() : 0);
+        entity.setSuccessRate(pattern.getSuccessRate());
+        entity.setWeight(pattern.getWeight() != null ? pattern.getWeight() : 0.5);
+        entity.setDraft(pattern.getDraft() != null ? pattern.getDraft() : false);
         entity.setVersion(pattern.getVersion() != null ? pattern.getVersion() : 1);
         entity.setSourcePatternId(pattern.getSourcePatternId());
         entity.setActive(pattern.getActive() != null ? pattern.getActive() : false);

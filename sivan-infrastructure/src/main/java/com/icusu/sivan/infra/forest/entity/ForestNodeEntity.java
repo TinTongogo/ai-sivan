@@ -65,6 +65,9 @@ public class ForestNodeEntity implements Persistable<String> {
     @Column(name = "content_hash", length = 64)
     private String contentHash;
 
+    @Column(name = "completed_at")
+    private OffsetDateTime completedAt;
+
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
 

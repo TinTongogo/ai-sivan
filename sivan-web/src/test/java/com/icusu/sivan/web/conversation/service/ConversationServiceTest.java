@@ -1,19 +1,20 @@
 package com.icusu.sivan.web.conversation.service;
 
 import com.icusu.sivan.common.enums.MessageStatus;
-import com.icusu.sivan.domain.conversation.*;
+import com.icusu.sivan.domain.conversation.Conversation;
+import com.icusu.sivan.domain.conversation.IConversationRepository;
+import com.icusu.sivan.domain.conversation.IMessageRepository;
+import com.icusu.sivan.domain.conversation.Message;
 import com.icusu.sivan.web.conversation.dto.*;
 import com.icusu.sivan.web.forest.service.ForestConversationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
-
-import org.mockito.Mockito;
 
 /**
  * 对话服务测试 — 验证委托链路正确性。
@@ -27,7 +28,6 @@ class ConversationServiceTest {
     private final UUID accountId = UUID.randomUUID();
 
     @BeforeEach
-    @SuppressWarnings("unchecked")
     void setUp() {
         var conversationRepository = Mockito.mock(IConversationRepository.class);
         var messageRepository = Mockito.mock(IMessageRepository.class);
@@ -35,38 +35,68 @@ class ConversationServiceTest {
         // 使用匿名子类避免 Mockito inline + Java 26 兼容问题
         var conversationCrudService = new ConversationCrudService(
                 conversationRepository, null, messageRepository) {
-            @Override public ConversationResponse create(UUID a, CreateConversationRequest r) {
+            @Override
+            public ConversationResponse create(UUID a, CreateConversationRequest r) {
                 return ConversationResponse.builder().title(r.getTitle()).build();
             }
-            @Override public ConversationResponse getById(UUID a, UUID cid) {
+
+            @Override
+            public ConversationResponse getById(UUID a, UUID cid) {
                 return ConversationResponse.builder().conversationId(cid).title("对话").build();
             }
-            @Override public List<ConversationResponse> list(UUID a, UUID p) { return List.of(); }
-            @Override public ConversationResponse update(UUID a, UUID cid, UpdateConversationRequest r) {
+
+            @Override
+            public List<ConversationResponse> list(UUID a, UUID p) {
+                return List.of();
+            }
+
+            @Override
+            public ConversationResponse update(UUID a, UUID cid, UpdateConversationRequest r) {
                 return ConversationResponse.builder().conversationId(cid).title(r.getTitle()).build();
             }
-            @Override public void delete(UUID a, UUID cid) {}
-            @Override public Conversation findOwned(UUID a, UUID cid) {
+
+            @Override
+            public void delete(UUID a, UUID cid) {
+            }
+
+            @Override
+            public Conversation findOwned(UUID a, UUID cid) {
                 return Conversation.builder().conversationId(cid).accountId(a).build();
             }
         };
 
         var messageCrudService = new MessageCrudService(messageRepository, null, null) {
-            @Override public MessageResponse sendMessage(UUID a, UUID cid, SendMessageRequest r) {
+            @Override
+            public MessageResponse sendMessage(UUID a, UUID cid, SendMessageRequest r) {
                 return MessageResponse.builder().content(r.getContent()).build();
             }
-            @Override public MessagePageResponse getMessages(UUID a, UUID cid, Integer b, int l) {
+
+            @Override
+            public MessagePageResponse getMessages(UUID a, UUID cid, Integer b, int l) {
                 return new MessagePageResponse(List.of(), false);
             }
-            @Override public MessagePageResponse getMessages(UUID a, UUID cid) {
+
+            @Override
+            public MessagePageResponse getMessages(UUID a, UUID cid) {
                 return new MessagePageResponse(List.of(), false);
             }
-            @Override public void deleteMessage(UUID a, UUID mid) {}
-            @Override public int countMessages(UUID a, UUID cid) { return 5; }
-            @Override public MessageResponse rateMessage(UUID a, UUID mid, String r) {
+
+            @Override
+            public void deleteMessage(UUID a, UUID mid) {
+            }
+
+            @Override
+            public int countMessages(UUID a, UUID cid) {
+                return 5;
+            }
+
+            @Override
+            public MessageResponse rateMessage(UUID a, UUID mid, String r) {
                 return MessageResponse.builder().rating(r).build();
             }
-            @Override public Message createAssistantMessage(Conversation c, UUID a) {
+
+            @Override
+            public Message createAssistantMessage(Conversation c, UUID a) {
                 return Message.builder().conversationId(c.getConversationId()).accountId(a)
                         .role("assistant").content("").status(MessageStatus.RUNNING).build();
             }
@@ -75,7 +105,7 @@ class ConversationServiceTest {
         conversationService = new ForestConversationService(conversationRepository, messageRepository,
                 new com.icusu.sivan.infra.shared.sse.StreamManager(),
                 null, null, null, null,
-                conversationCrudService, messageCrudService, null, null, null, null, null, null);
+                conversationCrudService, messageCrudService, null, null, null, null, null, null, null, null, null);
     }
 
     // ============ 对话 CRUD 委托 ============

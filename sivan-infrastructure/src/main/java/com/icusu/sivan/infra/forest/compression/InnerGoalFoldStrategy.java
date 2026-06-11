@@ -6,6 +6,7 @@ import com.icusu.sivan.domain.compression.FoldStrategy;
 import com.icusu.sivan.domain.compression.TokenBudget;
 import com.icusu.sivan.domain.forest.tree.InnerGoalNode;
 import com.icusu.sivan.domain.forest.tree.TreeNode;
+import org.springframework.stereotype.Component;
 
 /**
  * InnerGoalNode 折叠策略。
@@ -14,6 +15,7 @@ import com.icusu.sivan.domain.forest.tree.TreeNode;
  * RUNNING → 保留，递归压缩子节点；
  * PENDING/FAILED → 检查 token 预算。
  */
+@Component
 public class InnerGoalFoldStrategy implements FoldStrategy {
 
     @Override

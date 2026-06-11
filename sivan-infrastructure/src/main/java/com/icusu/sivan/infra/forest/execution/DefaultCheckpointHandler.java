@@ -81,6 +81,7 @@ public class DefaultCheckpointHandler implements CheckpointHandler {
         MonoSink<PauseRequest> sink = pendingApprovals.remove(nodeId);
         if (sink != null) {
             sink.success(new PauseRequest(nodeId, "人工批准", List.of("approve")));
+            eventSink.emit(ForestEvent.hitlResume(nodeId, null, accountId, "人工批准"));
             log.info("[HITL] 节点 {} 已批准", nodeId);
         } else {
             log.warn("[HITL] 节点 {} 不在暂停状态，无法批准", nodeId);
@@ -91,7 +92,9 @@ public class DefaultCheckpointHandler implements CheckpointHandler {
     public void reject(String nodeId, String accountId, String reason) {
         MonoSink<PauseRequest> sink = pendingApprovals.remove(nodeId);
         if (sink != null) {
-            sink.success(new PauseRequest(nodeId, reason != null ? reason : "人工拒绝", List.of("reject")));
+            String msg = reason != null ? reason : "人工拒绝";
+            sink.success(new PauseRequest(nodeId, msg, List.of("reject")));
+            eventSink.emit(ForestEvent.hitlReject(nodeId, null, accountId, msg));
             log.info("[HITL] 节点 {} 已拒绝: {}", nodeId, reason);
         } else {
             log.warn("[HITL] 节点 {} 不在暂停状态，无法拒绝", nodeId);

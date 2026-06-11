@@ -103,6 +103,10 @@ public abstract class AbstractWebIntegrationTest {
         registry.add("spring.flyway.baseline-on-migrate", () -> "true");
         registry.add("spring.jpa.hibernate.ddl-auto", () -> "validate");
         registry.add("spring.jpa.show-sql", () -> "true");
+        registry.add("sivan.embedding.default-url", () -> "http://127.0.0.1:18001");
+        registry.add("sivan.embedding.default-model", () -> "default-embed");
+        registry.add("sivan.reranker.default-url", () -> "http://127.0.0.1:18002");
+        registry.add("sivan.reranker.default-model", () -> "default-rerank");
     }
 
     /**

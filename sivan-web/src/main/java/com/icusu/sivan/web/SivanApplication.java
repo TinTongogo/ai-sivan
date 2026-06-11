@@ -5,12 +5,12 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
-@SpringBootApplication
-@EnableScheduling
-@ComponentScan(basePackages = {"com.icusu.sivan.web", "com.icusu.sivan.infra", "com.icusu.sivan.agent"})
 /**
  * Sivan（灵枢）应用入口。
  */
+@SpringBootApplication
+@EnableScheduling
+@ComponentScan(basePackages = {"com.icusu.sivan.web", "com.icusu.sivan.infra", "com.icusu.sivan.agent"})
 public class SivanApplication {
 
     /** 启动 Spring Boot 应用。 */

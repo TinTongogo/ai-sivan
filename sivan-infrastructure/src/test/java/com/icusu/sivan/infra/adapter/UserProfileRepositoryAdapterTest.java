@@ -1,4 +1,4 @@
-package com.icusu.sivan.infra.account.adapter;
+package com.icusu.sivan.infra.adapter;
 
 import com.icusu.sivan.domain.account.IUserProfileRepository;
 import com.icusu.sivan.domain.account.UserProfile;

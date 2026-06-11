@@ -3,6 +3,8 @@ package com.icusu.sivan.web.service;
 import com.icusu.sivan.common.exception.DomainException;
 import com.icusu.sivan.domain.account.Account;
 import com.icusu.sivan.domain.account.IAccountRepository;
+import com.icusu.sivan.domain.conversation.IConversationRepository;
+import com.icusu.sivan.domain.conversation.IMessageRepository;
 import com.icusu.sivan.infra.agent.entity.ProjectEntity;
 import com.icusu.sivan.infra.agent.repository.ProjectJpaRepository;
 import com.icusu.sivan.infra.agent.service.ShortIdGenerator;
@@ -12,7 +14,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
-import java.nio.file.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -20,46 +24,60 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Stream;
 
-/** 分组管理服务，管理项目分组。 */
+/**
+ * 分组管理服务，管理项目分组。
+ */
 @Slf4j
 @Service
 public class GroupService {
 
     private final ProjectJpaRepository projectJpaRepository;
     private final IAccountRepository accountRepository;
+    private final IConversationRepository conversationRepository;
+    private final IMessageRepository messageRepository;
 
     @Value("${sivan.file.root-path}")
     private String fileRootPath;
 
-    @Value("${sivan.file.quarantine-path}")
-    private String quarantinePath;
-
-    public GroupService(ProjectJpaRepository projectJpaRepository, IAccountRepository accountRepository) {
+    public GroupService(ProjectJpaRepository projectJpaRepository, IAccountRepository accountRepository,
+                        IConversationRepository conversationRepository, IMessageRepository messageRepository) {
         this.projectJpaRepository = projectJpaRepository;
         this.accountRepository = accountRepository;
+        this.conversationRepository = conversationRepository;
+        this.messageRepository = messageRepository;
     }
 
-    /** 查询分组列表。 */
+    /**
+     * 查询分组列表。
+     */
     public List<ProjectEntity> list(UUID accountId) {
         return projectJpaRepository.findByAccountIdOrderBySortOrderAsc(accountId);
     }
 
-    /** 查询账户下的项目数量。 */
+    /**
+     * 查询账户下的项目数量。
+     */
     public long countByAccount(UUID accountId) {
         return projectJpaRepository.countByAccountId(accountId);
     }
 
-    /** 保存分组（供其他 Service 调用）。 */
+    /**
+     * 保存分组（供其他 Service 调用）。
+     */
     public ProjectEntity save(ProjectEntity entity) {
         return projectJpaRepository.save(entity);
     }
 
-    /** 创建分组。 */
+    /**
+     * 创建分组。
+     */
     public ProjectEntity create(UUID accountId, String name) {
         return create(accountId, name, true);
     }
 
-    /** 创建分组（可选自动创建本地目录）。 */
+    /**
+     * 创建分组（可选自动创建本地目录）。
+     */
     public ProjectEntity create(UUID accountId, String name, boolean autoCreateDir) {
         long count = projectJpaRepository.countByAccountId(accountId);
         String shortId = generateShortIdForAccount(accountId);
@@ -80,50 +98,99 @@ public class GroupService {
         return entity;
     }
 
-    /** 重命名分组。 */
+    /**
+     * 重命名分组。
+     */
     public ProjectEntity rename(UUID accountId, UUID groupId, String name) {
         ProjectEntity entity = findOwned(accountId, groupId);
         entity.setName(name);
         return projectJpaRepository.save(entity);
     }
 
-    /** 删除分组（默认保留文件）。 */
+    /**
+     * 删除分组（默认保留文件）。
+     */
     public void delete(UUID accountId, UUID groupId) {
         delete(accountId, groupId, false);
     }
 
-    /** 删除分组，可选同步清理本地文件目录。 */
+    /**
+     * 删除分组，可选同步清理本地文件目录（不可恢复）。
+     * 同时级联删除项目下的对话和消息。
+     */
     public void delete(UUID accountId, UUID groupId, boolean removeFiles) {
         ProjectEntity entity = findOwned(accountId, groupId);
         log.info("项目删除: name={} shortId={} localPath={} removeFiles={}", entity.getName(), entity.getShortId(), entity.getLocalPath(), removeFiles);
         if (removeFiles && entity.getLocalPath() != null) {
-            moveToQuarantine(entity.getLocalPath());
+            deleteDirectory(resolveLocalPath(entity.getLocalPath()));
+        }
+        // 级联清理：先删消息，再删对话
+        var conversations = conversationRepository.findAllByAccountAndProject(accountId, groupId);
+        for (var conv : conversations) {
+            messageRepository.deleteByConversationId(conv.getConversationId());
+        }
+        for (var conv : conversations) {
+            conversationRepository.delete(conv.getConversationId());
         }
         projectJpaRepository.delete(entity);
     }
 
-    /** 更新本地路径。 */
-    public ProjectEntity updateLocalPath(UUID accountId, UUID groupId, String localPath) {
-        ProjectEntity entity = findOwned(accountId, groupId);
-        if (localPath != null && !localPath.isBlank()) {
-            Path path = Paths.get(localPath).normalize().toAbsolutePath();
-            if (!Files.exists(path)) {
-                throw new DomainException("路径不存在");
-            }
-            if (!Files.isDirectory(path)) {
-                throw new DomainException("路径不是目录");
-            }
-            entity.setLocalPath(path.toString());
-        } else {
-            entity.setLocalPath(null);
-        }
-        return projectJpaRepository.save(entity);
+    /**
+     * 将存储的相对 localPath 解析为运行时绝对路径。
+     * 所有 DB 存储的路径均为相对路径，运行时拼上 root-path 供文件系统操作。
+     */
+    private String resolveLocalPath(String localPath) {
+        if (localPath == null || localPath.isBlank()) return null;
+        return Paths.get(fileRootPath).resolve(localPath).normalize().toString();
     }
 
-    /** 获取分组本地路径下的文件列表。 */
+    /**
+     * 递归删除目录树。删除前发出日志，删除后检查残留。
+     */
+    private void deleteDirectory(String path) {
+        try {
+            Path dir = Paths.get(path).normalize().toAbsolutePath();
+            if (!Files.exists(dir)) return;
+            try (var walk = Files.walk(dir).sorted((a, b) -> b.toString().length() - a.toString().length())) {
+                walk.forEach(p -> {
+                    try {
+                        Files.deleteIfExists(p);
+                    } catch (IOException e) {
+                        log.warn("删除失败: {}", p);
+                    }
+                });
+            }
+            log.info("项目目录已删除: {}", dir);
+        } catch (IOException e) {
+            log.warn("删除项目目录失败: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 为新项目创建本地目录结构，返回相对路径（不绑定 root-path，换服务器不失效）。
+     */
+    public String initProjectDirectory(UUID accountId, String projectShortId) {
+        Account account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new DomainException("账户不存在"));
+        String acctShortId = account.getShortId();
+        if (acctShortId == null) throw new DomainException("账户短标识符未生成，请联系管理员");
+        Path root = Paths.get(fileRootPath).resolve(acctShortId).resolve(projectShortId);
+        try {
+            Files.createDirectories(root);
+            log.info("项目目录已创建: acctShortId={} projectShortId={} root={}", acctShortId, projectShortId, root);
+            // 存相对路径：{acctShortId}/{projectShortId}，运行时通过 resolveLocalPath 拼 root-path
+            return Paths.get(acctShortId, projectShortId).toString();
+        } catch (IOException e) {
+            throw new DomainException("创建项目目录失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 获取分组本地路径下的文件列表。
+     */
     public List<FileEntryResponse> listFiles(UUID accountId, UUID groupId, String subPath) {
         ProjectEntity entity = findOwned(accountId, groupId);
-        String localPath = entity.getLocalPath();
+        String localPath = resolveLocalPath(entity.getLocalPath());
         if (localPath == null || localPath.isBlank()) {
             throw new DomainException("未配置本地路径");
         }
@@ -137,7 +204,6 @@ public class GroupService {
                 ? root.resolve(subPath).normalize()
                 : root;
 
-        // 防路径穿越：target 必须在 root 之下
         if (!target.startsWith(root)) {
             throw new DomainException("无效的路径");
         }
@@ -148,7 +214,6 @@ public class GroupService {
         List<FileEntryResponse> entries = new ArrayList<>();
         try (Stream<Path> stream = Files.list(target)) {
             stream.sorted((a, b) -> {
-                // 目录排前、按名称排序
                 boolean aDir = Files.isDirectory(a);
                 boolean bDir = Files.isDirectory(b);
                 if (aDir != bDir) return aDir ? -1 : 1;
@@ -172,7 +237,9 @@ public class GroupService {
         return entries;
     }
 
-    /** 归档项目：设为只读，不允许创建新对话或修改文件。 */
+    /**
+     * 归档项目：设为只读，不允许创建新对话或修改文件。
+     */
     public ProjectEntity archive(UUID accountId, UUID groupId) {
         ProjectEntity entity = findOwned(accountId, groupId);
         if (Boolean.TRUE.equals(entity.getArchived())) {
@@ -183,7 +250,9 @@ public class GroupService {
         return projectJpaRepository.save(entity);
     }
 
-    /** 取消归档：恢复读写。 */
+    /**
+     * 取消归档：恢复读写。
+     */
     public ProjectEntity unarchive(UUID accountId, UUID groupId) {
         ProjectEntity entity = findOwned(accountId, groupId);
         if (!Boolean.TRUE.equals(entity.getArchived())) {
@@ -194,25 +263,9 @@ public class GroupService {
         return projectJpaRepository.save(entity);
     }
 
-    /** 为新项目创建本地目录结构：{root}/sivan/{acctShortId}/{projectShortId}/ */
-    public String initProjectDirectory(UUID accountId, String projectShortId) {
-        Account account = accountRepository.findById(accountId)
-                .orElseThrow(() -> new DomainException("账户不存在"));
-        String acctShortId = account.getShortId();
-        if (acctShortId == null) throw new DomainException("账户短标识符未生成，请联系管理员");
-        Path root = Paths.get(fileRootPath).resolve(acctShortId).resolve(projectShortId);
-        try {
-            Files.createDirectories(root.resolve("data"));
-            Files.createDirectories(root.resolve("output"));
-            Files.createDirectories(root.resolve("uploads"));
-            log.info("项目目录已创建: acctShortId={} projectShortId={} root={}", acctShortId, projectShortId, root);
-            return root.toString();
-        } catch (IOException e) {
-            throw new DomainException("创建项目目录失败: " + e.getMessage());
-        }
-    }
-
-    /** 为账户生成唯一的短标识符。 */
+    /**
+     * 为账户生成唯一的短标识符。
+     */
     private String generateShortIdForAccount(UUID accountId) {
         for (int i = 0; i < 5; i++) {
             String candidate = ShortIdGenerator.generate();
@@ -223,37 +276,29 @@ public class GroupService {
         return ShortIdGenerator.generateWithSuffix();
     }
 
-    /** 将指定目录移至隔离区（防止误删）。 */
-    private void moveToQuarantine(String path) {
-        try {
-            Path source = Paths.get(path).normalize().toAbsolutePath();
-            if (!Files.exists(source)) return;
-            Path quarantine = Paths.get(quarantinePath).normalize().toAbsolutePath();
-            Files.createDirectories(quarantine);
-            Path target = quarantine.resolve(source.getFileName().toString() + "-" + System.currentTimeMillis());
-            Files.move(source, target);
-            log.info("目录已移至隔离区: {} → {}", source, target);
-        } catch (IOException e) {
-            log.warn("移至隔离区失败: {}", e.getMessage());
-        }
-    }
-
-    /** 获取账户的短标识符。 */
+    /**
+     * 获取账户的短标识符。
+     */
     public String getAccountShortId(UUID accountId) {
         return accountRepository.findById(accountId)
                 .map(Account::getShortId)
                 .orElse(null);
     }
 
-    /** 获取项目根目录路径：{fileRootPath}/{acctShortId}/{projectShortId} */
+    /**
+     * 获取项目根目录路径：{fileRootPath}/{acctShortId}/{projectShortId}，无项目时返回账户路径
+     */
     public String getProjectRootPath(UUID accountId, UUID projectId) {
-        ProjectEntity project = findOwned(accountId, projectId);
         Account account = accountRepository.findById(accountId)
                 .orElseThrow(() -> new DomainException("账户不存在"));
         String acctShortId = account.getShortId();
         if (acctShortId == null) {
             throw new DomainException("账户短标识符未生成，请联系管理员");
         }
+        if (projectId == null) {
+            return Paths.get(fileRootPath).resolve(acctShortId).toString();
+        }
+        ProjectEntity project = findOwned(accountId, projectId);
         String projShortId = project.getShortId();
         if (projShortId == null) {
             throw new DomainException("项目短标识符未生成，请更新项目或联系管理员");
@@ -262,10 +307,33 @@ public class GroupService {
                 .resolve(projShortId).toString();
     }
 
-    /** 在系统文件管理器中打开项目本地目录。 */
+    /**
+     * 获取项目展示路径：{acctShortId}/{projectShortId}（不暴露 root-path）。
+     */
+    public String getProjectDisplayPath(UUID accountId, UUID projectId) {
+        Account account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new DomainException("账户不存在"));
+        String acctShortId = account.getShortId();
+        if (acctShortId == null) {
+            throw new DomainException("账户短标识符未生成，请联系管理员");
+        }
+        if (projectId == null) {
+            return acctShortId;
+        }
+        ProjectEntity project = findOwned(accountId, projectId);
+        String projShortId = project.getShortId();
+        if (projShortId == null) {
+            throw new DomainException("项目短标识符未生成，请更新项目或联系管理员");
+        }
+        return Paths.get(acctShortId, projShortId).toString();
+    }
+
+    /**
+     * 在系统文件管理器中打开项目本地目录。
+     */
     public void openDirectory(UUID accountId, UUID groupId) {
         ProjectEntity entity = findOwnedInternal(accountId, groupId);
-        String localPath = entity.getLocalPath();
+        String localPath = resolveLocalPath(entity.getLocalPath());
         if (localPath == null || localPath.isBlank()) {
             throw new DomainException("未配置本地路径");
         }
@@ -288,12 +356,16 @@ public class GroupService {
         }
     }
 
-    /** 公开查询方法：校验所有权并返回项目。 */
+    /**
+     * 公开查询方法：校验所有权并返回项目。
+     */
     public ProjectEntity findOwned(UUID accountId, UUID groupId) {
         return findOwnedInternal(accountId, groupId);
     }
 
-    /** 查找并校验当前用户拥有的分组。 */
+    /**
+     * 查找并校验当前用户拥有的分组。
+     */
     private ProjectEntity findOwnedInternal(UUID accountId, UUID groupId) {
         ProjectEntity entity = projectJpaRepository.findById(groupId)
                 .orElseThrow(() -> new DomainException("分组不存在"));

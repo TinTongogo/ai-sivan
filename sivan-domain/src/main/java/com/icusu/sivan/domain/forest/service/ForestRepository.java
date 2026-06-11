@@ -4,6 +4,7 @@ import com.icusu.sivan.common.NodeStatus;
 import com.icusu.sivan.domain.forest.Forest;
 import com.icusu.sivan.domain.forest.tree.TreeNode;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -18,6 +19,9 @@ public interface ForestRepository {
     Forest findForestById(UUID forestId, UUID accountId);
 
     void saveForest(Forest forest, UUID accountId);
+
+    /** 按对话 ID 查询关联的森林执行记录（按时间倒序）。 */
+    List<Forest> findByConversationId(UUID conversationId, UUID accountId);
 
     // ===== TreeNode =====
 

@@ -55,6 +55,7 @@ public class AgentMessageBus {
     public Flux<AgentMessage> subscribe(String topic) {
         return Flux.<AgentMessage>create(sink -> {
             subscribers.put(topic, sink);
+            sink.onDispose(() -> subscribers.remove(topic, sink));
             // 补发历史消息
             history.stream()
                     .filter(m -> topic.equals(m.topic()))

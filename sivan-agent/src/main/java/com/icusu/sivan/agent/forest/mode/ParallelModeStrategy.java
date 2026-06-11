@@ -7,12 +7,16 @@ import com.icusu.sivan.domain.forest.context.ExecutionContext;
 import com.icusu.sivan.domain.forest.service.CheckpointHandler;
 import com.icusu.sivan.domain.forest.service.Continuation;
 import com.icusu.sivan.domain.forest.service.ModeStrategy;
+import com.icusu.sivan.domain.forest.tree.ContentNode;
 import com.icusu.sivan.domain.forest.tree.ExecutableNode;
 import com.icusu.sivan.domain.forest.tree.TreeNode;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * PARALLEL 编排策略 — 全部子节点并发执行。
@@ -48,6 +52,29 @@ public class ParallelModeStrategy implements ModeStrategy {
 
         if (ready.isEmpty()) {
             return Flux.empty();
+        }
+
+        // 多 Agent 协作：为每个子节点注入队友信息
+        if (ready.size() > 1) {
+            for (ExecutableNode child : ready) {
+                List<Map<String, String>> peers = new ArrayList<>();
+                for (ExecutableNode sibling : ready) {
+                    if (sibling != child && sibling instanceof ContentNode sc) {
+                        Map<String, String> peer = new HashMap<>();
+                        peer.put("agentId", sibling.nodeId());
+                        peer.put("task", sc.content());
+                        // 传递队友的 Agent 名称（如有），供 AgentLeafExecutor 查询能力
+                        Object peerAgent = sc.metadata().get("agentName");
+                        if (peerAgent instanceof String s && !s.isBlank()) {
+                            peer.put("agentName", s);
+                        }
+                        peers.add(peer);
+                    }
+                }
+                if (child instanceof ContentNode cn) {
+                    cn.metadata().put("peers", peers);
+                }
+            }
         }
 
         return Flux.fromIterable(ready)

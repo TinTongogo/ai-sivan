@@ -82,10 +82,18 @@ public class ConversationCompressor {
         };
     }
 
-    // ====== 策略等级 ======
+    // ====== 压缩策略等级 ======
 
+    /** 压缩等级，由 {@code budget / totalTokens} 比值自动选择。 */
     public enum Level {
-        PASSTHROUGH, LIGHT, MODERATE, AGGRESSIVE
+        /** 预算充足（ratio ≥ 1.0），全部原文保留，不做任何压缩 */
+        PASSTHROUGH,
+        /** 轻度压缩（ratio ≥ 0.6），去重 + 过滤无意义填充语 */
+        LIGHT,
+        /** 中度压缩（ratio ≥ 0.3），消息级评分分档，低分消息丢弃 */
+        MODERATE,
+        /** 激进压缩（ratio &lt; 0.3），消息评分 + 句级提取，只保留关键句 */
+        AGGRESSIVE
     }
 
     Level selectLevel(int totalTokens, int budget) {

@@ -3,6 +3,8 @@ package com.icusu.sivan.web.service;
 import com.icusu.sivan.common.exception.DomainException;
 import com.icusu.sivan.domain.account.Account;
 import com.icusu.sivan.domain.account.IAccountRepository;
+import com.icusu.sivan.domain.conversation.IConversationRepository;
+import com.icusu.sivan.domain.conversation.IMessageRepository;
 import com.icusu.sivan.infra.agent.entity.ProjectEntity;
 import com.icusu.sivan.infra.agent.repository.ProjectJpaRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -14,6 +16,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -30,6 +33,12 @@ class GroupServiceTest {
     @Mock
     private IAccountRepository accountRepository;
 
+    @Mock
+    private IConversationRepository conversationRepository;
+
+    @Mock
+    private IMessageRepository messageRepository;
+
     private GroupService groupService;
 
     private final UUID accountId = UUID.randomUUID();
@@ -44,9 +53,8 @@ class GroupServiceTest {
 
     @BeforeEach
     void setUp() {
-        groupService = new GroupService(projectJpaRepository, accountRepository);
+        groupService = new GroupService(projectJpaRepository, accountRepository, conversationRepository, messageRepository);
         ReflectionTestUtils.setField(groupService, "fileRootPath", tempDir.resolve("sivan_data").toString());
-        ReflectionTestUtils.setField(groupService, "quarantinePath", tempDir.resolve("quarantine").toString());
 
         mockAccount = Account.builder()
                 .accountId(accountId)
@@ -105,6 +113,7 @@ class GroupServiceTest {
     void delete_shouldNotRemoveFilesByDefault() {
         entity.setLocalPath(tempDir.resolve("project").toString());
         when(projectJpaRepository.findById(groupId)).thenReturn(Optional.of(entity));
+        when(conversationRepository.findAllByAccountAndProject(accountId, groupId)).thenReturn(List.of());
 
         groupService.delete(accountId, groupId);
 
@@ -112,16 +121,17 @@ class GroupServiceTest {
     }
 
     @Test
-    void delete_withRemoveFiles_shouldMoveToQuarantine() throws Exception {
+    void delete_withRemoveFiles_shouldDeleteDirectory() throws Exception {
         Path projectDir = tempDir.resolve("project-to-delete");
         java.nio.file.Files.createDirectories(projectDir);
         entity.setLocalPath(projectDir.toString());
         when(projectJpaRepository.findById(groupId)).thenReturn(Optional.of(entity));
+        when(conversationRepository.findAllByAccountAndProject(accountId, groupId)).thenReturn(List.of());
 
         groupService.delete(accountId, groupId, true);
 
         verify(projectJpaRepository).delete(entity);
-        assertFalse(java.nio.file.Files.exists(projectDir));
+        assertFalse(java.nio.file.Files.exists(projectDir), "目录应该被删除");
     }
 
     @Test
@@ -133,17 +143,17 @@ class GroupServiceTest {
     }
 
     @Test
-    void initProjectDirectory_shouldCreateSubdirs() {
+    void initProjectDirectory_shouldCreateRootDir() {
         when(accountRepository.findById(accountId)).thenReturn(Optional.of(mockAccount));
 
-        String rootPath = groupService.initProjectDirectory(accountId, "swift-dawn");
-        Path root = Path.of(rootPath);
+        String relativePath = groupService.initProjectDirectory(accountId, "swift-dawn");
 
-        // 路径应为 {root}/{acctShortId}/{projectShortId}
-        assertTrue(rootPath.endsWith(ACCT_SHORT_ID + "/swift-dawn"), "路径应以 " + ACCT_SHORT_ID + "/swift-dawn 结尾，实际: " + rootPath);
-        assertTrue(java.nio.file.Files.exists(root.resolve("data")));
-        assertTrue(java.nio.file.Files.exists(root.resolve("output")));
-        assertTrue(java.nio.file.Files.exists(root.resolve("uploads")));
+        // 返回值应为相对路径 {acctShortId}/{projectShortId}，不绑定 root-path
+        assertTrue(relativePath.endsWith(ACCT_SHORT_ID + "/swift-dawn"), "相对路径应以 " + ACCT_SHORT_ID + "/swift-dawn 结尾，实际: " + relativePath);
+        // 实际目录创建在 fileRootPath 下
+        String fileRoot = (String) ReflectionTestUtils.getField(groupService, "fileRootPath");
+        Path root = Path.of(fileRoot, relativePath);
+        assertTrue(java.nio.file.Files.exists(root), "项目根目录应存在");
     }
 
     @Test
@@ -159,11 +169,11 @@ class GroupServiceTest {
         assertTrue(result.getShortId().matches("[a-z]+-[a-z]+"), "shortId 格式应为 {adj}-{noun}: " + result.getShortId());
         assertTrue(result.getLocalPathAuto(), "localPathAuto 应为 true");
 
-        Path projectDir = Path.of(result.getLocalPath());
+        // localPath 存相对路径，运行时通过 resolveLocalPath 拼 root-path
         assertTrue(result.getLocalPath().endsWith(ACCT_SHORT_ID + "/" + result.getShortId()), "localPath 应以 {acctShortId}/{projectShortId} 结尾");
-        assertTrue(java.nio.file.Files.exists(projectDir.resolve("data")), "data 目录应存在");
-        assertTrue(java.nio.file.Files.exists(projectDir.resolve("output")), "output 目录应存在");
-        assertTrue(java.nio.file.Files.exists(projectDir.resolve("uploads")), "uploads 目录应存在");
+        String fileRoot = (String) ReflectionTestUtils.getField(groupService, "fileRootPath");
+        Path projectDir = Path.of(fileRoot, result.getLocalPath());
+        assertTrue(java.nio.file.Files.exists(projectDir), "项目根目录应存在");
     }
 
     @Test
@@ -181,17 +191,18 @@ class GroupServiceTest {
     }
 
     @Test
-    void delete_withRemoveFiles_quarantinesShortIdDir() throws Exception {
+    void delete_withRemoveFiles_shouldDeleteSubdirs() throws Exception {
         Path projectDir = tempDir.resolve("sivan_data").resolve(ACCT_SHORT_ID).resolve("swift-dawn");
         java.nio.file.Files.createDirectories(projectDir.resolve("data"));
         entity.setLocalPath(projectDir.toString());
         entity.setShortId("swift-dawn");
         when(projectJpaRepository.findById(groupId)).thenReturn(Optional.of(entity));
+        when(conversationRepository.findAllByAccountAndProject(accountId, groupId)).thenReturn(List.of());
 
         groupService.delete(accountId, groupId, true);
 
         verify(projectJpaRepository).delete(entity);
-        assertFalse(java.nio.file.Files.exists(projectDir), "目录应已移至隔离区");
+        assertFalse(java.nio.file.Files.exists(projectDir), "目录应该被删除");
     }
 
     @Test

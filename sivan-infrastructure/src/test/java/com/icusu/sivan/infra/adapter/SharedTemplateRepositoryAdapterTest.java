@@ -1,4 +1,4 @@
-package com.icusu.sivan.infra.memory.adapter;
+package com.icusu.sivan.infra.adapter;
 
 import com.icusu.sivan.domain.memory.ISharedTemplateRepository;
 import com.icusu.sivan.domain.memory.SharedTemplate;

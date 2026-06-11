@@ -116,10 +116,31 @@ public class ConditionalModeStrategy implements ModeStrategy {
                             .flatMapMany(decision -> {
                                 if (!decision) {
                                     log.info("[CONDITIONAL] LLM 决定停止，{} 个阶段已完成", index + 1);
-                                    return Flux.fromIterable(events);
+                                    // 发射 branch_decision 事件
+                                    List<String> skipped = pending.subList(index + 1, pending.size()).stream()
+                                            .map(n -> n.nodeId().substring(0, 8))
+                                            .toList();
+                                    return Flux.concat(
+                                            Flux.just(ForestEvent.branchDecision(phase.nodeId(), null,
+                                                    ctx.accountId().toString(),
+                                                    "{\"chosen\":\"完成\",\"skipped\":" + toJsonArray(skipped)
+                                                            + ",\"reason\":\"LLM 判定目标已达成\"}")),
+                                            Flux.fromIterable(events)
+                                    );
                                 }
-                                return Flux.<ForestEvent>fromIterable(events)
-                                        .concatWith(executePhases(node, ctx, depth, next, pending, index + 1, phaseAcc[0].toString()));
+                                // 继续下一阶段，发射 branch_decision 事件
+                                List<String> rest = pending.subList(index + 1, pending.size()).stream()
+                                        .map(n -> n.nodeId().substring(0, 8))
+                                        .toList();
+                                return Flux.concat(
+                                        Flux.just(ForestEvent.branchDecision(phase.nodeId(), null,
+                                                ctx.accountId().toString(),
+                                                "{\"chosen\":\"" + phase.nodeId().substring(0, 8)
+                                                        + "\",\"skipped\":" + toJsonArray(rest)
+                                                        + ",\"reason\":\"继续执行下一阶段\"}")),
+                                        Flux.fromIterable(events),
+                                        executePhases(node, ctx, depth, next, pending, index + 1, phaseAcc[0].toString())
+                                );
                             });
                 })
                 .timeout(DECIDE_TIMEOUT)
@@ -164,5 +185,15 @@ public class ConditionalModeStrategy implements ModeStrategy {
 
     private static String truncate(String s, int max) {
         return s.length() <= max ? s : s.substring(0, max) + "...";
+    }
+
+    private static String toJsonArray(List<String> items) {
+        return items.stream()
+                .collect(java.util.stream.Collectors.joining("\",\"", "[\"", "\"]"));
+    }
+
+    private static String phaseLabel(ExecutableNode n) {
+        String text = n instanceof com.icusu.sivan.domain.forest.tree.ContentNode cn ? cn.content() : "";
+        return text.length() > 30 ? text.substring(0, 30) + "..." : text;
     }
 }

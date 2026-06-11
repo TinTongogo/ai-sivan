@@ -15,7 +15,14 @@ public enum ModelCapability {
     TOOL_USE("tool_use", "工具调用"),
     STREAMING("streaming", "流式输出"),
     THINKING("thinking", "深度思考"),
-    REASONING_EFFORT("reasoning_effort", "推理力度");
+    REASONING_EFFORT("reasoning_effort", "推理力度"),
+    SYSTEM_PROMPT("system_prompt", "系统提示词"),
+    JSON_MODE("json_mode", "JSON 模式"),
+    BATCH("batch", "批量处理"),
+    IMAGE_GEN("image_gen", "图像生成"),
+    SPEECH_SYNTH("speech_synth", "语音合成"),
+    SPEECH_RECOG("speech_recog", "语音识别"),
+    VIDEO_GEN("video_gen", "视频生成");
 
     private final String code;
     private final String label;

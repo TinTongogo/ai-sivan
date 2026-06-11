@@ -267,7 +267,10 @@ export function useSidebar() {
     try {
       await deleteGroup(id, removeFiles)
       projects.value = projects.value.filter(p => p.projectId !== id)
-      if (currentProjectContext.value === id) currentProjectContext.value = null
+      if (currentProjectContext.value === id) {
+        currentProjectContext.value = null
+        await fetchConversations()
+      }
     } catch (e: any) {
       message.error(e.response?.data?.message || t('deleteFailed'))
     }

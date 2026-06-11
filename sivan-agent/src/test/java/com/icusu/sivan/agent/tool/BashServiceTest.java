@@ -32,7 +32,7 @@ class BashServiceTest {
     @BeforeEach
     void setUp() {
         bashService = new BashService(sandboxExecutor);
-        when(sandboxExecutor.execute(anyString(), anyString())).thenReturn("UNEXPECTED_SANDBOX");
+        when(sandboxExecutor.execute(anyString(), anyString(), anyBoolean())).thenReturn("UNEXPECTED_SANDBOX");
     }
 
     // ── execute 输入校验 ──
@@ -67,10 +67,10 @@ class BashServiceTest {
 
     @Test
     void execute_安全命令委托沙箱() {
-        when(sandboxExecutor.execute(anyString(), anyString())).thenReturn("ok");
+        when(sandboxExecutor.execute(anyString(), anyString(), anyBoolean())).thenReturn("ok");
         String result = bashService.execute("echo hello", tempDir.toString());
         assertEquals("ok", result);
-        verify(sandboxExecutor).execute("echo hello", tempDir.toString());
+        verify(sandboxExecutor).execute("echo hello", tempDir.toString(), false);
     }
 
     // ── 危险命令拦截 ──
@@ -144,14 +144,14 @@ class BashServiceTest {
 
     @Test
     void execute_安全命令不拦截_ls() {
-        when(sandboxExecutor.execute(anyString(), anyString())).thenReturn("file1\nfile2");
+        when(sandboxExecutor.execute(anyString(), anyString(), anyBoolean())).thenReturn("file1\nfile2");
         String result = bashService.execute("ls -la", tempDir.toString());
         assertEquals("file1\nfile2", result);
     }
 
     @Test
     void execute_安全命令不拦截_grep() {
-        when(sandboxExecutor.execute(anyString(), anyString())).thenReturn("match");
+        when(sandboxExecutor.execute(anyString(), anyString(), anyBoolean())).thenReturn("match");
         String result = bashService.execute("grep -r 'pattern' .", tempDir.toString());
         assertEquals("match", result);
     }
@@ -199,7 +199,7 @@ class BashServiceTest {
 
     @Test
     void execute_sandboxCom失败时返回原始错误() {
-        when(sandboxExecutor.execute(anyString(), anyString())).thenReturn("sandbox error");
+        when(sandboxExecutor.execute(anyString(), anyString(), anyBoolean())).thenReturn("sandbox error");
         String result = bashService.execute("echo ok", tempDir.toString());
         assertEquals("sandbox error", result);
     }
@@ -212,14 +212,14 @@ class BashServiceTest {
 
     @Test
     void execute_chmod不在危险路径不拦截() {
-        when(sandboxExecutor.execute(anyString(), anyString())).thenReturn("ok");
+        when(sandboxExecutor.execute(anyString(), anyString(), anyBoolean())).thenReturn("ok");
         String result = bashService.execute("chmod 755 myfile", tempDir.toString());
         assertEquals("ok", result);
     }
 
     @Test
     void execute_find不在根目录不拦截() {
-        when(sandboxExecutor.execute(anyString(), anyString())).thenReturn("ok");
+        when(sandboxExecutor.execute(anyString(), anyString(), anyBoolean())).thenReturn("ok");
         String result = bashService.execute("find . -name '*.java'", tempDir.toString());
         assertEquals("ok", result);
     }

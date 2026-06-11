@@ -9,5 +9,11 @@ public record GoalTreeCompleted(
         String accountId,
         String conversationId,
         boolean success,
-        Instant completedAt
-) {}
+        Instant completedAt,
+        String templateId
+) {
+    public GoalTreeCompleted(String rootNodeId, String forestId, String accountId,
+                             String conversationId, boolean success, Instant completedAt) {
+        this(rootNodeId, forestId, accountId, conversationId, success, completedAt, null);
+    }
+}

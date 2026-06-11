@@ -29,6 +29,9 @@ public class ForestEntity extends BaseEntity implements Persistable<UUID> {
     @Column(name = "project_id")
     private UUID projectId;
 
+    @Column(name = "conversation_id")
+    private UUID conversationId;
+
     @Column(nullable = false, length = 256)
     private String title;
 

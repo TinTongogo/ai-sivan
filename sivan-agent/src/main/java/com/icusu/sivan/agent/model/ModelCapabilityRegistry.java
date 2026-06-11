@@ -25,9 +25,13 @@ public class ModelCapabilityRegistry {
     void init() {
         // providerType 兜底默认值
         providerTypeDefaults = Map.of(
-                "openai", EnumSet.of(ModelCapability.VISION, ModelCapability.AUDIO, ModelCapability.TOOL_USE, ModelCapability.STREAMING, ModelCapability.REASONING_EFFORT),
-                "anthropic", EnumSet.of(ModelCapability.VISION, ModelCapability.TOOL_USE, ModelCapability.STREAMING, ModelCapability.THINKING),
-                "openai-compatible", EnumSet.noneOf(ModelCapability.class)
+                "openai", EnumSet.of(ModelCapability.VISION, ModelCapability.AUDIO, ModelCapability.TOOL_USE,
+                        ModelCapability.STREAMING, ModelCapability.REASONING_EFFORT,
+                        ModelCapability.SYSTEM_PROMPT, ModelCapability.JSON_MODE,
+                        ModelCapability.IMAGE_GEN, ModelCapability.SPEECH_SYNTH, ModelCapability.SPEECH_RECOG),
+                "anthropic", EnumSet.of(ModelCapability.VISION, ModelCapability.TOOL_USE,
+                        ModelCapability.STREAMING, ModelCapability.THINKING, ModelCapability.SYSTEM_PROMPT),
+                "openai-compatible", EnumSet.of(ModelCapability.STREAMING, ModelCapability.SYSTEM_PROMPT)
         );
 
         // 模型名模式匹配（前缀匹配，注册顺序即优先级）

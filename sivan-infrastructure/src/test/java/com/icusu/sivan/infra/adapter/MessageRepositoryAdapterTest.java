@@ -1,4 +1,4 @@
-package com.icusu.sivan.infra.conversation.adapter;
+package com.icusu.sivan.infra.adapter;
 
 import com.icusu.sivan.domain.conversation.IMessageRepository;
 import com.icusu.sivan.domain.conversation.Message;

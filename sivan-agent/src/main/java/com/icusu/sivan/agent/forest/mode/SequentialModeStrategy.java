@@ -10,9 +10,12 @@ import com.icusu.sivan.domain.forest.service.ModeStrategy;
 import com.icusu.sivan.domain.forest.tree.ContentNode;
 import com.icusu.sivan.domain.forest.tree.ExecutableNode;
 import com.icusu.sivan.domain.forest.tree.TreeNode;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 
+import java.time.Duration;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -21,6 +24,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * HITL: 每个子节点执行前检查 {@code hitl} 标记，需审批时暂停等待。
  */
 @Component
+@Slf4j
 public class SequentialModeStrategy implements ModeStrategy {
 
     private final CheckpointHandler checkpointHandler;
@@ -74,6 +78,11 @@ public class SequentialModeStrategy implements ModeStrategy {
             return next.execute(child, ctx, depth + 1);
         }
         return checkpointHandler.check(child, ctx)
+                .timeout(Duration.ofMinutes(30))
+                .onErrorResume(TimeoutException.class, e -> {
+                    log.warn("[Sequential] HITL 审批超时，自动继续: nodeId={}", child.nodeId());
+                    return reactor.core.publisher.Mono.empty(); // 超时视为自动通过
+                })
                 .flatMapMany(pause -> {
                     if (pause.isRejected()) {
                         child.setStatus(NodeStatus.CANCELLED);

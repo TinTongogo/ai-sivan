@@ -12,6 +12,7 @@ import reactor.core.publisher.Flux;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -37,6 +38,7 @@ public class DefaultModeDispatcher implements ModeDispatcher {
             int depth,
             Continuation next
     ) {
+        Objects.requireNonNull(next, "continuation must not be null");
         ModeStrategy strategy = strategies.get(node.mode());
         if (strategy == null) {
             return Flux.empty();

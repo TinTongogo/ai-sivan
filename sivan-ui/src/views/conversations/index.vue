@@ -53,6 +53,11 @@ const scrollRef = ref<HTMLDivElement | null>(null)
 const autoScroll = ref(true)
 const initialScrollDone = ref(true)
 
+// ── 删除确认弹窗 ──
+const deleteDialog = ref<{ show: boolean; projectId: string; projectName: string }>({
+  show: false, projectId: '', projectName: ''
+})
+
 const virtualizer = useVirtualizer({
   get count() { return messages.value.length },
   getScrollElement: () => scrollRef.value,
@@ -130,8 +135,16 @@ function handleUnarchiveGroup(id: string) {
 function handleDeleteGroup(id: string) {
   const g = projects.value.find(p => p.projectId === id)
   if (!g) return
-  const removeFiles = confirm(t('deleteWithFilesConfirm', { name: g.name }))
-  sidebar.deleteGroupInline(id, removeFiles)
+  deleteDialog.value = { show: true, projectId: id, projectName: g.name }
+}
+
+function confirmDeleteGroup(removeFiles: boolean) {
+  deleteDialog.value.show = false
+  sidebar.deleteGroupInline(deleteDialog.value.projectId, removeFiles)
+}
+
+function cancelDeleteGroup() {
+  deleteDialog.value.show = false
 }
 
 // ====== 对话生命周期 ======
@@ -748,6 +761,24 @@ onMounted(async () => {
       :routingDecisionId="routingDecisionId"
       @close="showRoutingDecisionModal = false"
     />
+
+    <!-- 删除确认弹窗 -->
+    <div v-if="deleteDialog.show" class="modal-overlay" @click.self="cancelDeleteGroup">
+      <div class="modal" style="max-width:400px;">
+        <div class="modal__header">
+          <h3>{{ t('deleteConfirm') }}</h3>
+          <button class="modal__close" @click="cancelDeleteGroup">&times;</button>
+        </div>
+        <div class="modal__body">
+          <p>{{ t('deleteProjectConfirm', { name: deleteDialog.projectName }) }}</p>
+        </div>
+        <div class="modal__footer" style="display:flex;gap:8px;justify-content:flex-end;">
+          <button class="btn btn-ghost" @click="cancelDeleteGroup">{{ t('cancel') }}</button>
+          <button class="btn btn-ghost" @click="confirmDeleteGroup(false)">{{ t('deleteDirOnly') }}</button>
+          <button class="btn btn-danger" @click="confirmDeleteGroup(true)">{{ t('deleteAll') }}</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 

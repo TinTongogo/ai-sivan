@@ -6,6 +6,7 @@ import com.icusu.sivan.domain.compression.FoldStrategy;
 import com.icusu.sivan.domain.compression.TokenBudget;
 import com.icusu.sivan.domain.forest.tree.ContentNode;
 import com.icusu.sivan.domain.forest.tree.TreeNode;
+import org.springframework.stereotype.Component;
 
 /**
  * TaskNode 折叠策略。
@@ -13,6 +14,7 @@ import com.icusu.sivan.domain.forest.tree.TreeNode;
  * COMPLETED/FAILED/CANCELLED → 折叠为单行摘要；
  * RUNNING/PENDING → 保留。
  */
+@Component
 public class TaskFoldStrategy implements FoldStrategy {
 
     @Override

@@ -56,6 +56,7 @@ function copyContent(text: string) {
     <div class="phase-card__header">
       <span class="phase-card__icon">{{ statusIcon }}</span>
       <span class="phase-card__name">{{ phase.phase }}</span>
+      <button v-if="phase.content" class="phase-card__copy" :title="t('copy') || '复制'" @click.stop="copyContent(phase.content || '')">📋</button>
       <span v-if="phase.agent" class="phase-card__agent">{{ phase.agent }}</span>
       <span v-if="phase.durationMs" class="phase-card__meta">{{ (phase.durationMs / 1000).toFixed(1) }}s</span>
       <span v-if="phase.tokens" class="phase-card__meta">{{ phase.tokens }} tok</span>

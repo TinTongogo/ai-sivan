@@ -152,13 +152,25 @@ export function useChatStream(deps: {
         }
         break
       case 'phase_start':
-        // 有新编排开始，重置 store
         if (asst) {
           orchStore.reset()
+          orchStore.setProgress({
+            status: 'RUNNING',
+            totalPhases: parsed.totalPhases || 1,
+            completedPhases: 0,
+            currentPhase: parsed.phase || '执行',
+            phases: [{ name: parsed.phase || '执行', status: 'RUNNING' }],
+            elapsedMs: 0,
+            totalTokens: 0,
+          })
         }
         break
       case 'phase_end':
-        // 阶段结束，无额外操作
+        if (orchStore.progress) {
+          if (parsed.tokens) orchStore.progress.totalTokens += parsed.tokens
+          orchStore.progress.completedPhases = orchStore.progress.totalPhases
+          orchStore.progress.status = 'COMPLETED'
+        }
         break
       case 'meta':
         // 编排完成（最终 meta 事件到达时）

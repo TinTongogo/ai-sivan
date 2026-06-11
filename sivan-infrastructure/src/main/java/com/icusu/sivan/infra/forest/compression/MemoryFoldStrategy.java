@@ -5,6 +5,7 @@ import com.icusu.sivan.domain.compression.FoldStrategy;
 import com.icusu.sivan.domain.compression.TokenBudget;
 import com.icusu.sivan.domain.forest.tree.ContentNode;
 import com.icusu.sivan.domain.forest.tree.TreeNode;
+import org.springframework.stereotype.Component;
 
 /**
  * MemoryNode 折叠策略。
@@ -12,6 +13,7 @@ import com.icusu.sivan.domain.forest.tree.TreeNode;
  * 低重要性（importance &lt; 0.3）→ 折叠/删除；
  * 高重要性 → 保留，超预算时摘要。
  */
+@Component
 public class MemoryFoldStrategy implements FoldStrategy {
 
     /** 低重要性阈值，与 CompressibleNode.isFoldable() 一致 */

@@ -11,6 +11,7 @@ import com.icusu.sivan.common.util.UrlValidator;
 import com.icusu.sivan.web.service.LlmProviderService;
 import com.icusu.sivan.web.shared.security.CurrentAccountId;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -37,6 +38,15 @@ public class SettingsController {
     private static final int READ_TIMEOUT = 15000;
     private final RestTemplate restTemplate;
 
+    @Value("${sivan.embedding.default-url:}")
+    private String defaultEmbeddingUrl;
+    @Value("${sivan.embedding.default-model:}")
+    private String defaultEmbeddingModel;
+    @Value("${sivan.reranker.default-url:}")
+    private String defaultRerankerUrl;
+    @Value("${sivan.reranker.default-model:}")
+    private String defaultRerankerModel;
+
     public SettingsController(LlmProviderService llmProviderService) {
         this.llmProviderService = llmProviderService;
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
@@ -60,10 +70,14 @@ public class SettingsController {
                 .filter(p -> p.getBaseUrl() != null && !p.getBaseUrl().isBlank())
                 .orElse(null);
         return BaseResponse.success(EmbeddingConfigDTO.builder()
-                .embeddingUrl(embedding != null ? embedding.getBaseUrl() : null)
-                .embeddingModel(embedding != null ? embedding.getPrimaryModelName() : null)
-                .rerankerUrl(reranker != null ? reranker.getBaseUrl() : null)
-                .rerankerModel(reranker != null ? reranker.getPrimaryModelName() : null)
+                .embeddingUrl(embedding != null ? embedding.getBaseUrl() :
+                        !defaultEmbeddingUrl.isBlank() ? defaultEmbeddingUrl : null)
+                .embeddingModel(embedding != null ? embedding.getPrimaryModelName() :
+                        !defaultEmbeddingModel.isBlank() ? defaultEmbeddingModel : null)
+                .rerankerUrl(reranker != null ? reranker.getBaseUrl() :
+                        !defaultRerankerUrl.isBlank() ? defaultRerankerUrl : null)
+                .rerankerModel(reranker != null ? reranker.getPrimaryModelName() :
+                        !defaultRerankerModel.isBlank() ? defaultRerankerModel : null)
                 .build());
     }
 

@@ -9,6 +9,9 @@ import com.icusu.sivan.core.model.Model;
 import com.icusu.sivan.core.tool.ToolRegistry;
 import com.icusu.sivan.core.tool.ToolSpec;
 import com.icusu.sivan.core.model.TokenUsage;
+import com.icusu.sivan.domain.agent.IAgentRepository;
+import com.icusu.sivan.domain.agent.ISkillRepository;
+import com.icusu.sivan.domain.agent.Skill;
 import com.icusu.sivan.domain.tool.IToolUsageRepository;
 import com.icusu.sivan.domain.tool.ToolUsage;
 import com.icusu.sivan.infra.forest.entity.ForestAgentMessageEntity;
@@ -29,12 +32,11 @@ import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.time.Duration;
+
+import java.util.*;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.stream.Collectors;
 
 /**
  * Agent 叶子执行器 — 基于 ReAct 循环 + MCP 工具调用的 TaskNode 执行器。
@@ -56,14 +58,20 @@ public class AgentLeafExecutor implements LeafExecutor {
     private final ToolRegistry toolRegistry;
     private final IToolUsageRepository toolUsageRepository;
     private final ForestAgentMessageJpaRepository a2aMessageRepository;
+    private final IAgentRepository agentRepository;
+    private final ISkillRepository skillRepository;
 
     public AgentLeafExecutor(DefaultModelRouter modelRouter, ToolRegistry toolRegistry,
                              IToolUsageRepository toolUsageRepository,
-                             ForestAgentMessageJpaRepository a2aMessageRepository) {
+                             ForestAgentMessageJpaRepository a2aMessageRepository,
+                             IAgentRepository agentRepository,
+                             ISkillRepository skillRepository) {
         this.modelRouter = modelRouter;
         this.toolRegistry = toolRegistry;
         this.toolUsageRepository = toolUsageRepository;
         this.a2aMessageRepository = a2aMessageRepository;
+        this.agentRepository = agentRepository;
+        this.skillRepository = skillRepository;
     }
 
     @Override
@@ -101,9 +109,13 @@ public class AgentLeafExecutor implements LeafExecutor {
             tools = toolRegistry.allSpecs();
         }
 
-        // 注册 A2A 通信工具（始终可用）
+        // 注册 A2A 通信工具（始终可用，去重）
         List<ToolSpec> allTools = new ArrayList<>(tools);
-        allTools.add(buildA2AToolSpec());
+        LinkedHashSet<String> toolNames = new LinkedHashSet<>(tools.stream().map(ToolSpec::name).toList());
+        var a2aSpec = buildA2AToolSpec();
+        if (toolNames.add(a2aSpec.name())) {
+            allTools.add(a2aSpec);
+        }
 
         // 获取 A2A 消息总线 and forestId（用于持久化）
         AgentMessageBus bus = ForestExecutor.activeBus();
@@ -118,9 +130,9 @@ public class AgentLeafExecutor implements LeafExecutor {
         }
 
         // 订阅 A2A 消息
-        bus.subscribe(agentId).subscribe(pendingMessages::add);
+        var agentSub = bus.subscribe(agentId).subscribe(pendingMessages::add);
         // 订阅广播
-        bus.subscribe("broadcast").subscribe(pendingMessages::add);
+        var broadcastSub = bus.subscribe("broadcast").subscribe(pendingMessages::add);
 
         log.info("[Agent] 执行任务: nodeId={} content={} 可用工具={} A2A={}",
                 agentId, taskContent, allTools.size(), bus.activeTopics().size());
@@ -132,6 +144,11 @@ public class AgentLeafExecutor implements LeafExecutor {
 
         return reactLoop(model, messages, allTools, node, accountId, 0, pendingMessages, bus, agentId, convId, forestId)
                 .doOnComplete(() -> log.info("[Agent] 完成: nodeId={}", agentId))
+                .doFinally(s -> {
+                    agentSub.dispose();
+                    broadcastSub.dispose();
+                    log.debug("[Agent] A2A 订阅已清理: nodeId={}", agentId);
+                })
                 .onErrorResume(e -> {
                     log.error("[Agent] 执行异常: {}", e.getMessage(), e);
                     return Flux.just(ForestEvent.error(node.nodeId(), null, accountId.toString(),
@@ -168,23 +185,35 @@ public class AgentLeafExecutor implements LeafExecutor {
     // 消息构建
     // =====================================================================
 
+    @SuppressWarnings("unchecked")
     private List<Msg> buildMessages(TreeNode node, String taskContent,
                                      ConcurrentLinkedQueue<AgentMessage> pendingMessages) {
+        // 提取队友信息
+        List<Map<String, String>> peers = null;
+        Object rawPeers = node instanceof ContentNode cn ? cn.metadata().get("peers") : null;
+        if (rawPeers instanceof List<?> list && !list.isEmpty()
+                && list.getFirst() instanceof Map<?, ?>) {
+            peers = (List<Map<String, String>>) list;
+        }
+
+        // 解析 Agent 定义的 systemPrompt 和技能
+        String agentName = node instanceof ContentNode cn
+                ? (String) cn.metadata().get("agentName") : null;
+        String agentSystemPrompt = resolveAgentSystemPrompt(node, agentName);
+
         List<Msg> messages = null;
         if (node instanceof ContentNode cn) {
             Object raw = cn.metadata().get("prebuiltMessages");
             if (raw instanceof List<?> list) {
-                messages = list.stream()
+                messages = new ArrayList<>(list.stream()
                         .filter(Msg.class::isInstance)
                         .map(Msg.class::cast)
-                        .toList();
+                        .toList());
             }
         }
         if (messages == null || messages.isEmpty()) {
             messages = new ArrayList<>();
-            messages.add(Msg.of(Role.SYSTEM, List.of(new Content.Text(
-                    "你是一个 AI 助手，请根据用户请求完成任务。你可以使用以下工具来帮助你完成任务。"
-                            + "\n\n你可以使用 send_agent_message 工具与同一任务中的其他 Agent 协作。"))));
+            messages.add(Msg.of(Role.SYSTEM, List.of(new Content.Text(agentSystemPrompt))));
             String accumulatedContext = node instanceof ContentNode cn2
                     ? (String) cn2.metadata().get("accumulatedContext") : null;
             if (accumulatedContext != null && !accumulatedContext.isEmpty()) {
@@ -194,9 +223,136 @@ public class AgentLeafExecutor implements LeafExecutor {
             messages.add(Msg.of(Role.USER, List.of(new Content.Text(taskContent))));
         }
 
+        // 多 Agent 协作：注入队友名片（精简，避免 token 膨胀）
+        if (peers != null && !peers.isEmpty()) {
+            UUID acctId = resolveAccountId(node);
+            StringBuilder sb = new StringBuilder(
+                    "## 团队队友\n你可以用 send_agent_message 与他们通信（targetAgentId 用下方 agentId）。\n");
+            for (Map<String, String> peer : peers) {
+                String peerId = peer.get("agentId");
+                String task = peer.get("task");
+                String peerName = resolvePeerAgentName(peer, acctId);
+                String label = peerName != null ? peerName : peerId.substring(0, 8);
+                // 任务摘要截断到 50 字
+                String taskBrief = task != null && task.length() > 50 ? task.substring(0, 47) + "..." : task;
+                sb.append("- ").append(label).append(": ").append(taskBrief).append("\n");
+            }
+            sb.append("根据各自任务合理协作，不要分派队友不擅长的任务。");
+            messages.add(Msg.of(Role.SYSTEM, List.of(new Content.Text(sb.toString()))));
+        }
+
         // 注入待处理的 A2A 消息
         injectPendingA2AMessages(messages, pendingMessages);
         return messages;
+    }
+
+    /** 解析 Agent 的 systemPrompt：优先使用 Agent 定义，无则用通用 prompt，并加载关联的技能。 */
+    private String resolveAgentSystemPrompt(TreeNode node, String agentName) {
+        UUID accountId = null;
+        if (node instanceof ContentNode cn) {
+            Object raw = cn.metadata().get("_accountId");
+            if (raw instanceof String s && !s.isEmpty()) {
+                try { accountId = UUID.fromString(s); } catch (Exception ignored) {}
+            }
+        }
+
+        if (agentName != null && !agentName.isBlank() && accountId != null) {
+            try {
+                var agentOpt = agentRepository.findByAccountAndName(accountId, agentName);
+                if (agentOpt.isPresent()) {
+                    var agent = agentOpt.get();
+                    StringBuilder sb = new StringBuilder();
+                    if (agent.getSystemPrompt() != null && !agent.getSystemPrompt().isBlank()) {
+                        sb.append(agent.getSystemPrompt());
+                    }
+                    // 加载关联的技能内容
+                    if (agent.getSkillIds() != null && !agent.getSkillIds().isEmpty()) {
+                        sb.append("\n\n## 技能参考\n");
+                        for (String skillId : agent.getSkillIds()) {
+                            try {
+                                var skillOpt = skillRepository.findById(UUID.fromString(skillId));
+                                skillOpt.ifPresent(skill -> {
+                                    sb.append("\n### ").append(skill.getName()).append("\n");
+                                    if (skill.getContent() != null && !skill.getContent().isBlank()) {
+                                        sb.append(skill.getContent()).append("\n");
+                                    }
+                                });
+                            } catch (Exception ignored) { }
+                        }
+                    }
+                    sb.append(
+                        "\n\n你可以使用 send_agent_message 工具与同一任务中的其他 Agent 协作。");
+                    log.info("[Agent] 使用 Agent 定义: name={} skillCount={}",
+                            agentName, agent.getSkillIds() != null ? agent.getSkillIds().size() : 0);
+                    return sb.toString();
+                }
+            } catch (Exception e) {
+                log.warn("[Agent] 加载 Agent 定义失败: name={} error={}", agentName, e.getMessage());
+            }
+        }
+        // 回退：通用 prompt
+        return "你是一个 AI 助手，请根据用户请求完成任务。你可以使用以下工具来帮助你完成任务。"
+                + "\n\n你可以使用 send_agent_message 工具与同一任务中的其他 Agent 协作。";
+    }
+
+    /** 从节点 metadata 中解析 accountId。 */
+    private UUID resolveAccountId(TreeNode node) {
+        if (node instanceof ContentNode cn) {
+            Object raw = cn.metadata().get("_accountId");
+            if (raw instanceof String s && !s.isEmpty()) {
+                try { return UUID.fromString(s); } catch (Exception ignored) {}
+            }
+        }
+        return null;
+    }
+
+    /** 查询队友的 Agent 显示名称。 */
+    @SuppressWarnings("unchecked")
+    private String resolvePeerAgentName(Map<String, String> peer, UUID accountId) {
+        if (accountId == null) return null;
+        Object raw = peer.get("agentName");
+        if (raw instanceof String name && !name.isBlank()) {
+            try {
+                var opt = agentRepository.findByAccountAndName(accountId, name);
+                if (opt.isPresent() && opt.get().getDisplayName() != null) {
+                    return opt.get().getDisplayName();
+                }
+            } catch (Exception ignored) {}
+        }
+        return null;
+    }
+
+    /** 查询队友的能力摘要（从 Agent 定义的 description 和技能名中提取）。 */
+    @SuppressWarnings("unchecked")
+    private String resolvePeerCapabilities(Map<String, String> peer, UUID accountId) {
+        if (accountId == null) return null;
+        Object raw = peer.get("agentName");
+        if (raw instanceof String name && !name.isBlank()) {
+            try {
+                var opt = agentRepository.findByAccountAndName(accountId, name);
+                if (opt.isPresent()) {
+                    var agent = opt.get();
+                    StringBuilder caps = new StringBuilder();
+                    if (agent.getDescription() != null && !agent.getDescription().isBlank()) {
+                        caps.append(agent.getDescription());
+                    }
+                    if (agent.getSkillIds() != null && !agent.getSkillIds().isEmpty()) {
+                        if (!caps.isEmpty()) caps.append("；");
+                        caps.append("技能: ");
+                        List<String> skillNames = new java.util.ArrayList<>();
+                        for (String sid : agent.getSkillIds()) {
+                            try {
+                                skillRepository.findById(UUID.fromString(sid))
+                                        .ifPresent(s -> skillNames.add(s.getName()));
+                            } catch (Exception ignored) {}
+                        }
+                        caps.append(String.join("、", skillNames));
+                    }
+                    return !caps.isEmpty() ? caps.toString() : null;
+                }
+            } catch (Exception ignored) {}
+        }
+        return null;
     }
 
     private void injectPendingA2AMessages(List<Msg> messages, ConcurrentLinkedQueue<AgentMessage> pending) {
@@ -222,8 +378,9 @@ public class AgentLeafExecutor implements LeafExecutor {
                                          ConcurrentLinkedQueue<AgentMessage> pendingMessages,
                                          AgentMessageBus bus, String agentId, UUID convId, UUID forestId) {
         if (round >= maxRounds) {
-            log.warn("[Agent] 达到最大轮数: {}", maxRounds);
-            return Flux.empty();
+            log.warn("[Agent] 达到最大轮数: nodeId={} maxRounds={}", node.nodeId(), maxRounds);
+            return Flux.just(ForestEvent.error(node.nodeId(), null, accountId.toString(),
+                    "达到最大工具调用轮数: " + maxRounds));
         }
 
         return Flux.defer(() -> {
@@ -232,7 +389,11 @@ public class AgentLeafExecutor implements LeafExecutor {
             Map<Integer, ToolCallAcc> toolAccs = new HashMap<>();
             final TokenUsage[] lastTokenUsage = {null};
 
-            return model.stream(messages, tools, Model.ModelParams.defaults())
+            // 去重：DeepSeek 等 API 要求工具名唯一
+            List<ToolSpec> dedupedTools = tools.stream()
+                    .collect(Collectors.toMap(ToolSpec::name, t -> t, (a, b) -> a, LinkedHashMap::new))
+                    .values().stream().toList();
+            return model.stream(messages, dedupedTools, Model.ModelParams.defaults())
                     .concatMap(chunk -> {
                         if (chunk.usage() != null) lastTokenUsage[0] = chunk.usage();
                         List<ForestEvent> events = new ArrayList<>(2);
@@ -332,18 +493,10 @@ public class AgentLeafExecutor implements LeafExecutor {
                                     pendingMessages, bus, agentId, convId, forestId);
                         }
                         // 仅 A2A 消息，无其他工具 → 继续下一轮
-                        return reactLoop(model, newMessages, allToolsWithA2A(tools), node, accountId, round + 1,
+                        return reactLoop(model, newMessages, tools, node, accountId, round + 1,
                                 pendingMessages, bus, agentId, convId, forestId);
                     }));
         });
-    }
-
-    private static List<ToolSpec> allToolsWithA2A(List<ToolSpec> tools) {
-        List<ToolSpec> result = new ArrayList<>(tools);
-        if (result.stream().noneMatch(t -> "send_agent_message".equals(t.name()))) {
-            // A2A 工具已在 allTools 中注册，此处仅确保不丢失
-        }
-        return result;
     }
 
     // =====================================================================
@@ -413,6 +566,8 @@ public class AgentLeafExecutor implements LeafExecutor {
                         truncateOutput(r.output())))
                 .doOnNext(r -> recordToolUsage(tc.name(), acctId, toolNode, r.success(),
                         (int) (System.currentTimeMillis() - toolStartMs), convId))
+                .timeout(Duration.ofMinutes(5),
+                        Mono.just(new ToolCallResult(tc.id(), tc.name(), false, "工具执行超时")))
                 .onErrorResume(e -> {
                     log.warn("[Agent] 工具执行失败: {} error={}", tc.name(), e.getMessage());
                     recordToolUsage(tc.name(), acctId, toolNode, false,

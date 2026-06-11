@@ -23,7 +23,7 @@ class LlmTreeMatcherTest {
         assertNotNull(node);
         assertEquals("inner_goal", node.nodeType());
         assertEquals(2, node.children().size());
-        ContentNode cn = (ContentNode) node.children().get(0);
+        ContentNode cn = (ContentNode) node.children().getFirst();
         assertEquals("分析需求", cn.content());
     }
 

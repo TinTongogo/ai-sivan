@@ -100,6 +100,7 @@ public class KnowledgeBaseService {
     }
 
     /** 删除知识库。 */
+    @Transactional
     public void delete(UUID accountId, String kbName) {
         KnowledgeBase kb = findOwned(accountId, kbName);
         knowledgeBaseRepository.deleteByNameAndAccount(kbName, kb.getAccountId());

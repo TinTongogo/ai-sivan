@@ -64,7 +64,7 @@ public class ForestGoalController {
         ForestEvent goalEvent = ForestEvent.lifecycle(goalId.toString(), goalId.toString(),
                 accountId.toString(), ForestEvent.EventType.LIFECYCLE);
 
-        Forest forest = new Forest(goalId, accountId, null, title, root.nodeId());
+        Forest forest = new Forest(goalId, accountId, null, null, title, root.nodeId());
 
         return Flux.concat(
                 Flux.just(goalEvent),

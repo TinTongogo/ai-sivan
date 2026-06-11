@@ -1,5 +1,7 @@
 package com.icusu.sivan.domain.forest.tree;
 
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.icusu.sivan.domain.forest.service.ForestVisitor;
 
 import java.util.List;
@@ -7,9 +9,19 @@ import java.util.List;
 /**
  * 树结构接口 — 所有节点都需要。
  * <p>
- * 这是递归树的原子单元：每个节点持有父引用和子列表，
- * 遍历器通过 {@link #children()} 递归下降。
+ * Jackson 多态序列化支持 {@link #nodeType()} 驱动的类型分派，
+ * 用于 GoalTreeTemplate 的 JSONB 存储。
  */
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "nodeType")
+@JsonSubTypes({
+    @JsonSubTypes.Type(value = InnerGoalNode.class, name = "inner_goal"),
+    @JsonSubTypes.Type(value = TaskNode.class, name = "task"),
+    @JsonSubTypes.Type(value = SynthesisNode.class, name = "synthesis"),
+    @JsonSubTypes.Type(value = MessageNode.class, name = "message"),
+    @JsonSubTypes.Type(value = MemoryNode.class, name = "memory"),
+    @JsonSubTypes.Type(value = ContextBlockNode.class, name = "context_block"),
+    @JsonSubTypes.Type(value = FileSnapshotNode.class, name = "file_snapshot")
+})
 public interface TreeNode {
 
     /** 节点唯一 ID */

@@ -143,7 +143,9 @@ public class PromptContextService {
         if (visionSupported) {
             pipeline.addEnricher(new ImageAttachmentEnricher(images, targetMessageId));
         }
-        pipeline.addEnricher(new AudioAttachmentEnricher(audios, targetMessageId));
+        if (isAudioSupported(providerId, accountId)) {
+            pipeline.addEnricher(new AudioAttachmentEnricher(audios, targetMessageId));
+        }
         return pipeline.enrich(truncated, messages);
     }
 
@@ -396,6 +398,7 @@ public class PromptContextService {
             if (rootPath == null) return null;
             Path root = Paths.get(rootPath);
             if (!Files.exists(root)) return null;
+            String displayPath = groupService.getProjectDisplayPath(accountId, projectId);
 
             List<Path> recentFiles = new ArrayList<>();
             int fileCount = 0;
@@ -427,7 +430,7 @@ public class PromptContextService {
             if (recentFiles.size() > 5) recentFiles = recentFiles.subList(0, 5);
 
             StringBuilder sb = new StringBuilder("## 工作目录状态\n");
-            sb.append("路径：").append(rootPath).append("\n");
+            sb.append("路径：").append(displayPath).append("\n");
             sb.append("文件：").append(fileCount).append(" 个文件，").append(dirCount).append(" 个目录\n");
             if (!recentFiles.isEmpty()) {
                 sb.append("最近修改：\n");

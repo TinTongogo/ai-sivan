@@ -127,7 +127,7 @@ public class LlmTreeMatcher implements TreeMatcher {
     /**
      * 解析 LLM 输出的 JSON 文本为执行树。
      */
-    ExecutableNode parseTree(String jsonText, String originalInput) {
+    public ExecutableNode parseTree(String jsonText, String originalInput) {
         String json = extractJson(jsonText);
         if (json == null) {
             log.warn("[TreeMatcher] 无法从 LLM 响应中提取 JSON，使用原始输入作为 TaskNode");

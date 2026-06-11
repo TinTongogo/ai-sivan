@@ -1,4 +1,4 @@
-package com.icusu.sivan.infra.model.adapter;
+package com.icusu.sivan.infra.adapter;
 
 import com.icusu.sivan.domain.model.ILlmProviderRepository;
 import com.icusu.sivan.domain.model.LlmProvider;

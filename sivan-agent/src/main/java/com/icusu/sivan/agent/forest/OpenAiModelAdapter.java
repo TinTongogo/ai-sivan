@@ -125,6 +125,10 @@ public class OpenAiModelAdapter implements LanguageModel {
                 case TOOL_USE -> caps.add(TOOL_USE);
                 case VISION -> caps.add(VISION);
                 case STREAMING -> {} // 已默认添加
+                case SYSTEM_PROMPT -> caps.add(SYSTEM_PROMPT);
+                case JSON_MODE -> caps.add(JSON_MODE);
+                case BATCH -> caps.add(BATCH);
+                // IMAGE_GEN / SPEECH_SYNTH / SPEECH_RECOG / VIDEO_GEN 走独立的多模态路由，不在此映射
                 default -> {}
             }
         }

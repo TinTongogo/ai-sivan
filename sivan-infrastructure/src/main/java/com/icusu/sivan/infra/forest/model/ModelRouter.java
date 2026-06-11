@@ -1,6 +1,7 @@
 package com.icusu.sivan.infra.forest.model;
 
 import com.icusu.sivan.domain.forest.service.ChatEvent;
+import com.icusu.sivan.domain.forest.service.Intent;
 import com.icusu.sivan.domain.forest.service.LanguageModel;
 import com.icusu.sivan.domain.forest.service.ModelParams;
 import com.icusu.sivan.domain.forest.service.TaskProfile;
@@ -34,6 +35,25 @@ public class ModelRouter {
 
     public LanguageModel defaultModel() {
         return registry.get(defaultModelId);
+    }
+
+    /** 按调用场景选择模型（设计文档 5.1 节）。 */
+    public LanguageModel forIntent(Intent intent) {
+        return switch (intent) {
+            case CHAT -> registry.get(defaultModelId);
+            case CREATIVE -> {
+                // 创意场景优先高思考 token 上限的模型
+                var candidates = registry.findByCapability(THINKING);
+                yield candidates.isEmpty() ? registry.get(defaultModelId) : candidates.getFirst();
+            }
+            case ANALYSIS -> {
+                // 分析场景优先高 maxToken 的模型
+                var all = registry.all();
+                yield all.stream().max((a, b) -> Integer.compare(
+                        a.capabilities().maxTokens(), b.capabilities().maxTokens()))
+                        .orElse(registry.get(defaultModelId));
+            }
+        };
     }
 
     public LanguageModel forTask(TaskProfile task) {

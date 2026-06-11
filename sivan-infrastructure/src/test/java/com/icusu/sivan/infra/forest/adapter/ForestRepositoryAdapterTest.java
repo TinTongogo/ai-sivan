@@ -33,7 +33,7 @@ class ForestRepositoryAdapterTest extends AbstractIntegrationTest {
     @Test
     void shouldSaveAndFindForestById() {
         UUID forestId = UUID.randomUUID();
-        var forest = new Forest(forestId, ACCOUNT_ID, null, "测试森林", "root-1");
+        var forest = new Forest(forestId, ACCOUNT_ID, null, null, "测试森林", "root-1");
         forestRepository.saveForest(forest, ACCOUNT_ID);
 
         Forest found = forestRepository.findForestById(forestId, ACCOUNT_ID);
@@ -58,7 +58,7 @@ class ForestRepositoryAdapterTest extends AbstractIntegrationTest {
         var child2 = new TaskNode("任务2");
         var root = new InnerGoalNode(Mode.SEQUENTIAL, List.of(child1, child2));
 
-        var forest = new Forest(forestId, ACCOUNT_ID, null, "树测试", root.nodeId());
+        var forest = new Forest(forestId, ACCOUNT_ID, null, null, "树测试", root.nodeId());
         forestRepository.saveForest(forest, ACCOUNT_ID);
 
         forestRepository.saveTree(root, forestId, ACCOUNT_ID);
@@ -88,7 +88,7 @@ class ForestRepositoryAdapterTest extends AbstractIntegrationTest {
     void shouldUpdateNodeStatus() {
         UUID forestId = UUID.randomUUID();
         var node = new TaskNode("状态节点");
-        var forest = new Forest(forestId, ACCOUNT_ID, null, "状态测试", node.nodeId());
+        var forest = new Forest(forestId, ACCOUNT_ID, null, null, "状态测试", node.nodeId());
         forestRepository.saveForest(forest, ACCOUNT_ID);
 
         forestRepository.saveNode(node, forestId, ACCOUNT_ID);
@@ -106,7 +106,7 @@ class ForestRepositoryAdapterTest extends AbstractIntegrationTest {
     void shouldSaveNodeAndFindInSubtree() {
         UUID forestId = UUID.randomUUID();
         var node = new TaskNode("单独保存的节点");
-        var forest = new Forest(forestId, ACCOUNT_ID, null, "单节点测试", node.nodeId());
+        var forest = new Forest(forestId, ACCOUNT_ID, null, null, "单节点测试", node.nodeId());
         forestRepository.saveForest(forest, ACCOUNT_ID);
 
         forestRepository.saveNode(node, forestId, ACCOUNT_ID);
@@ -121,7 +121,7 @@ class ForestRepositoryAdapterTest extends AbstractIntegrationTest {
         UUID forestId = UUID.randomUUID();
         var oldChild = new TaskNode("旧任务");
         var root = new InnerGoalNode(Mode.SEQUENTIAL, List.of(oldChild));
-        var forest = new Forest(forestId, ACCOUNT_ID, null, "替换测试", root.nodeId());
+        var forest = new Forest(forestId, ACCOUNT_ID, null, null, "替换测试", root.nodeId());
         forestRepository.saveForest(forest, ACCOUNT_ID);
 
         // 第一次保存

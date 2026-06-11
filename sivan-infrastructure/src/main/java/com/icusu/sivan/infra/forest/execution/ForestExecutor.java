@@ -14,6 +14,9 @@ import com.icusu.sivan.domain.forest.service.EventSink;
 import com.icusu.sivan.domain.forest.service.LeafExecutor;
 import com.icusu.sivan.domain.forest.service.ForestRepository;
 import com.icusu.sivan.domain.forest.service.ModeDispatcher;
+import com.icusu.sivan.domain.forest.service.Span;
+import com.icusu.sivan.domain.forest.service.SpanContext;
+import com.icusu.sivan.domain.forest.service.SpanExporter;
 import com.icusu.sivan.domain.forest.tree.CompressibleNode;
 import com.icusu.sivan.domain.forest.tree.ExecutableNode;
 import com.icusu.sivan.infra.forest.repository.ForestExecutionLogJpaRepository;
@@ -59,11 +62,22 @@ public class ForestExecutor {
      */
     private static final ThreadLocal<AgentMessageBus> agentMessageBus = new ThreadLocal<>();
 
+    /**
+     * 每次执行的启动时间戳，用于 {@link BudgetEnforcer#checkTime} 检查。
+     */
+    private static final ThreadLocal<Long> executionStartMs = new ThreadLocal<>();
+
     /** 获取当前执行的 EventSink — 优先使用装饰器链，回退到终端。 */
     private EventSink activeSink() {
         EventSink active = deliverySink.get();
         return active != null ? active : sink;
     }
+
+    /** 每次执行的 Forest ID，用于日志事件关联。 */
+    private static final ThreadLocal<String> forestIdHolder = new ThreadLocal<>();
+
+    /** 获取当前执行的 Forest ID。 */
+    public static String currentForestId() { return forestIdHolder.get(); }
 
     /** 获取当前执行的 AgentMessageBus。 */
     public static AgentMessageBus activeBus() {
@@ -80,6 +94,10 @@ public class ForestExecutor {
     private final CheckpointHandler checkpointHandler;
     private final ForestExecutionLogJpaRepository executionLogRepository;
     private final ForestMetricsCollector metricsCollector;
+    private final SpanExporter spanExporter;
+
+    /** 每次执行的 SpanContext 根（用于链式追踪）。 */
+    private static final ThreadLocal<SpanContext> traceSpanContext = new ThreadLocal<>();
 
     /**
      * 目标树执行超时（毫秒）。覆盖 {@link ExecutionContext#timeoutMs()} 的默认值。
@@ -95,6 +113,7 @@ public class ForestExecutor {
                           CheckpointHandler checkpointHandler,
                           ForestExecutionLogJpaRepository executionLogRepository,
                           ForestMetricsCollector metricsCollector,
+                          SpanExporter spanExporter,
                           @Value("${sivan.goal.execution-timeout-ms:7200000}") long goalTimeoutMs) {
         this.modeDispatcher = modeDispatcher;
         this.leafExecutors = leafExecutors;
@@ -105,14 +124,22 @@ public class ForestExecutor {
         this.checkpointHandler = checkpointHandler;
         this.executionLogRepository = executionLogRepository;
         this.metricsCollector = metricsCollector;
+        this.spanExporter = spanExporter;
         this.goalTimeoutMs = goalTimeoutMs;
     }
 
     /**
-     * 执行一棵目标树。
+     * 执行一棵目标树（不含 forestId，不会记录 execution_logs）。
      */
     public Flux<ForestEvent> execute(ExecutableNode root, ExecutionContext ctx) {
-        return execute(root, ctx, Delivery.STREAM);
+        return execute(root, ctx, Delivery.STREAM, null);
+    }
+
+    /**
+     * 按指定传递模式执行一棵目标树（不含 forestId，不会记录 execution_logs）。
+     */
+    public Flux<ForestEvent> execute(ExecutableNode root, ExecutionContext ctx, Delivery delivery) {
+        return execute(root, ctx, delivery, null);
     }
 
     /**
@@ -121,14 +148,35 @@ public class ForestExecutor {
      * 内部通过 {@link SinkFactory} 创建 EventSink 装饰器链，
      * 将 {@link EventSink#emit} 路由到对应的输出通道（SSE / 静默 + 领域事件）。
      */
-    public Flux<ForestEvent> execute(ExecutableNode root, ExecutionContext ctx, Delivery delivery) {
+    /**
+     * 按指定传递模式执行一棵目标树。
+     *
+     * @param root      可执行的根节点
+     * @param ctx       执行上下文
+     * @param delivery  传递模式
+     * @param forestId  Forest ID，用于日志事件关联（可为 null，但会跳过 execution_logs）
+     */
+    public Flux<ForestEvent> execute(ExecutableNode root, ExecutionContext ctx, Delivery delivery, String forestId) {
+        if (forestId != null) forestIdHolder.set(forestId);
         EventSink decorated = SinkFactory.create(delivery, sink, executionLogRepository, metricsCollector);
         deliverySink.set(decorated);
         agentMessageBus.set(new AgentMessageBus());
+        SpanContext rootSpan = SpanContext.root();
+        traceSpanContext.set(rootSpan);
         return executeWithContext(root, ctx)
                 .doFinally(s -> {
+                    forestIdHolder.remove();
+                    // 导出根 span
+                    String status = s == reactor.core.publisher.SignalType.ON_COMPLETE ? "completed" : "failed";
+                    spanExporter.export(new Span(
+                            rootSpan.traceId(), null, rootSpan.spanId(),
+                            root.nodeId(), root.nodeType(),
+                            rootSpan.startTime(), System.currentTimeMillis() - rootSpan.startTime().toEpochMilli(),
+                            status));
                     deliverySink.remove();
                     agentMessageBus.remove();
+                    executionStartMs.remove();
+                    traceSpanContext.remove();
                 });
     }
 
@@ -137,6 +185,7 @@ public class ForestExecutor {
         log.info("[执行] 开始 forest: root={} mode={} timeout={}ms",
                 root.nodeId(), root.nodeType(), frozen.timeoutMs());
         long effectiveTimeout = Math.max(frozen.timeoutMs(), goalTimeoutMs);
+        executionStartMs.set(System.currentTimeMillis());
         return executeNode(root, frozen, 0)
                 .doOnComplete(() -> log.info("[执行] 完成 forest: root={}", root.nodeId()))
                 .timeout(Duration.ofMillis(effectiveTimeout))
@@ -172,6 +221,21 @@ public class ForestExecutor {
             return Flux.just(err);
         }
 
+        // 预算检查：执行时间
+        Long startMs = executionStartMs.get();
+        if (startMs != null) {
+            long elapsed = System.currentTimeMillis() - startMs;
+            BudgetEnforcer.BudgetResult timeCheck = budgetEnforcer.checkTime(elapsed, ctx.timeoutMs());
+            if (!timeCheck.allowed()) {
+                node.setStatus(NodeStatus.FAILED);
+                emitStatusChange(node, oldStatus, ctx);
+                ForestEvent err = ForestEvent.error(node.nodeId(), null, ctx.accountId().toString(),
+                        timeCheck.reason());
+                activeSink().emit(err);
+                return Flux.just(err);
+            }
+        }
+
         // 预算检查：节点 token 估算
         if (node instanceof CompressibleNode cn) {
             long estimated = cn.estimateSubtreeTokens();
@@ -195,6 +259,7 @@ public class ForestExecutor {
 
     /**
      * 核心执行逻辑 — 在取消/预算/HITL 检查通过后执行。
+     * 同时记录节点级 Trace Span。
      */
     private Flux<ForestEvent> doExecute(ExecutableNode node, ExecutionContext ctx, int depth, NodeStatus oldStatus) {
         node.setStatus(NodeStatus.RUNNING);
@@ -202,6 +267,10 @@ public class ForestExecutor {
         ForestEvent running = ForestEvent.lifecycle(node.nodeId(), null, ctx.accountId().toString(),
                 ForestEvent.EventType.LIFECYCLE);
         activeSink().emit(running);
+
+        // Trace: 记录节点开始时间
+        Instant nodeStart = Instant.now();
+        SpanContext parentSpan = traceSpanContext.get();
 
         Flux<ForestEvent> result;
         if (node.isLeaf()) {
@@ -223,6 +292,16 @@ public class ForestExecutor {
                     ForestEvent completed = ForestEvent.lifecycle(node.nodeId(), null, ctx.accountId().toString(),
                             ForestEvent.EventType.LIFECYCLE);
                     activeSink().emit(completed);
+
+                    // Trace: 导出节点 Span
+                    Instant nodeEnd = Instant.now();
+                    String traceId = parentSpan != null ? parentSpan.traceId() : node.nodeId();
+                    String parentSpanId = parentSpan != null ? parentSpan.spanId() : null;
+                    Span nodeSpan = Span.finished(traceId, parentSpanId, traceId + "." + node.nodeId(),
+                            node.nodeId(), node.nodeType(),
+                            nodeStart, nodeEnd, finalStatus.name().toLowerCase());
+                    spanExporter.export(nodeSpan);
+
                     return Mono.just(completed);
                 })
         ).onErrorResume(e -> {
@@ -234,9 +313,22 @@ public class ForestExecutor {
             ForestEvent err = ForestEvent.error(node.nodeId(), null, ctx.accountId().toString(),
                     "节点执行失败: " + e.getMessage());
             activeSink().emit(err);
+
+            // Trace: 导出失败的 Span
+            Instant nodeEnd = Instant.now();
+            String traceId = parentSpan != null ? parentSpan.traceId() : node.nodeId();
+            String parentSpanId = parentSpan != null ? parentSpan.spanId() : null;
+            Span nodeSpan = Span.finished(traceId, parentSpanId, traceId + "." + node.nodeId(),
+                    node.nodeId(), node.nodeType(),
+                    nodeStart, nodeEnd, "failed");
+            spanExporter.export(nodeSpan);
+
             return Flux.just(err);
         });
     }
+
+    /** 当前 Forest ID，用于事件关联（可能为 null）。 */
+    private String forestId() { return forestIdHolder.get(); }
 
     // =====================================================================
     // HITL — 已下沉到各 ModeStrategy 实现层 (CheckpointHandler.isHitlRequired)

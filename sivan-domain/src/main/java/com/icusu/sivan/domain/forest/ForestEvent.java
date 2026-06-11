@@ -72,6 +72,21 @@ public final class ForestEvent {
         return new ForestEvent(nodeId, forestId, accountId, EventType.TOOL_RESULT, message);
     }
 
+    /** CONDITIONAL 分支决策：LLM 决定是否继续下一阶段。message 为 JSON 格式 {chosen, skipped, reason}。 */
+    public static ForestEvent branchDecision(String nodeId, String forestId, String accountId, String message) {
+        return new ForestEvent(nodeId, forestId, accountId, EventType.BRANCH_DECISION, message);
+    }
+
+    /** HITL 用户批准恢复。 */
+    public static ForestEvent hitlResume(String nodeId, String forestId, String accountId, String message) {
+        return new ForestEvent(nodeId, forestId, accountId, EventType.HITL_RESUME, message);
+    }
+
+    /** HITL 用户拒绝。 */
+    public static ForestEvent hitlReject(String nodeId, String forestId, String accountId, String message) {
+        return new ForestEvent(nodeId, forestId, accountId, EventType.HITL_REJECT, message);
+    }
+
     // ===== 事件类型枚举 =====
 
     public enum EventType {
@@ -85,11 +100,17 @@ public final class ForestEvent {
         ERROR,
         /** HITL 暂停 */
         PAUSE,
+        /** HITL 用户批准恢复 */
+        HITL_RESUME,
+        /** HITL 用户拒绝 */
+        HITL_REJECT,
         /** 里程碑完成 */
         MILESTONE,
         /** 工具调用 */
         TOOL_CALL,
         /** 工具结果 */
-        TOOL_RESULT
+        TOOL_RESULT,
+        /** CONDITIONAL 分支决策 */
+        BRANCH_DECISION
     }
 }

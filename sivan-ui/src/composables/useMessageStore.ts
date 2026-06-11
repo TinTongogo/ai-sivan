@@ -23,6 +23,7 @@ export interface Message {
   generationGroup?: string
   generationTotal?: number
   chain?: string
+  sections?: any[]
   _key: string
 }
 
@@ -42,6 +43,7 @@ export function useMessageStore() {
     if ((msg as any).totalTokens != null) m.tokens = (msg as any).totalTokens
     if ((msg as any).durationMs != null) m.duration = `${((msg as any).durationMs / 1000).toFixed(1)}s`
     if ((msg as any).thinkingTokens != null) m.thinkingTokens = (msg as any).thinkingTokens
+    if ((msg as any).sections != null) m.sections = (msg as any).sections
     return m
   }
 

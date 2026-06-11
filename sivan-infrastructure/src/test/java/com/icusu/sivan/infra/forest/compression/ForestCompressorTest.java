@@ -30,7 +30,7 @@ class ForestCompressorTest {
                 new MessageFoldStrategy(),
                 new MemoryFoldStrategy()
         ));
-        forest = new Forest(UUID.randomUUID(), UUID.randomUUID(), null, "测试", "root");
+        forest = new Forest(UUID.randomUUID(), UUID.randomUUID(), null, null, "测试", "root");
     }
 
     @Test

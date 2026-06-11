@@ -2,7 +2,6 @@ package com.icusu.sivan.web.agent.controller;
 
 import com.icusu.sivan.common.dto.BaseResponse;
 import com.icusu.sivan.infra.agent.entity.ProjectEntity;
-import com.icusu.sivan.web.agent.dto.LocalPathUpdateRequest;
 import com.icusu.sivan.web.agent.dto.ProjectCreateRequest;
 import com.icusu.sivan.web.agent.dto.ProjectRenameRequest;
 import com.icusu.sivan.web.file.dto.FileEntryResponse;
@@ -60,12 +59,6 @@ public class GroupController {
     @PostMapping("/{id}/unarchive")
     public BaseResponse<ProjectEntity> unarchive(@PathVariable UUID id, @CurrentAccountId UUID accountId) {
         return BaseResponse.success(groupService.unarchive(accountId, id));
-    }
-
-    /** 更新本地路径。 */
-    @PutMapping("/{id}/local-path")
-    public BaseResponse<ProjectEntity> updateLocalPath(@PathVariable UUID id, @Valid @RequestBody LocalPathUpdateRequest request, @CurrentAccountId UUID accountId) {
-        return BaseResponse.success(groupService.updateLocalPath(accountId, id, request.getLocalPath()));
     }
 
     /** 获取本地路径下的文件列表。 */

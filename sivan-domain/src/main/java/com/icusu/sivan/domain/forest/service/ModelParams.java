@@ -22,4 +22,8 @@ public record ModelParams(
     public ModelParams withMaxTokens(int m) {
         return new ModelParams(temperature, m, thinkingTokens, extra);
     }
+
+    public ModelParams withThinking(int t) {
+        return new ModelParams(temperature, maxTokens, t, extra);
+    }
 }

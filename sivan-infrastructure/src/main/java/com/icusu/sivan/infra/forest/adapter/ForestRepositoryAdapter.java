@@ -23,7 +23,6 @@ import java.util.stream.Collectors;
 /**
  * Forest 仓储适配器 — 基于 JPA + 递归 CTE 的完整实现。
  * <p>
- * 替换 {@link NoopForestRepository}，接入真实 PostgreSQL 持久化。
  * 树结构使用 parent_node_id 外键自引用 + 递归 CTE 加载。
  */
 @Component
@@ -60,6 +59,15 @@ public class ForestRepositoryAdapter implements ForestRepository {
         var entity = toEntity(forest);
         forestJpaRepository.save(entity);
         forestJpaRepository.flush();
+    }
+
+    @Override
+    public List<Forest> findByConversationId(UUID conversationId, UUID accountId) {
+        return forestJpaRepository.findByConversationIdOrderByCreatedAtDesc(conversationId)
+                .stream()
+                .filter(e -> e.getAccountId().equals(accountId))
+                .map(this::toDomain)
+                .toList();
     }
 
     // =====================================================================
@@ -105,8 +113,14 @@ public class ForestRepositoryAdapter implements ForestRepository {
     @Override
     public void updateNodeStatus(String nodeId, NodeStatus status, UUID accountId) {
         forestNodeJpaRepository.findById(nodeId).ifPresent(entity -> {
+            OffsetDateTime now = OffsetDateTime.now();
             entity.setStatus(status.name());
-            entity.setUpdatedAt(OffsetDateTime.now());
+            entity.setUpdatedAt(now);
+            if (status == NodeStatus.COMPLETED
+                    || status == NodeStatus.FAILED
+                    || status == NodeStatus.CANCELLED) {
+                entity.setCompletedAt(now);
+            }
             forestNodeJpaRepository.save(entity);
             forestNodeJpaRepository.flush();
         });
@@ -233,6 +247,7 @@ public class ForestRepositoryAdapter implements ForestRepository {
         entity.setForestId(domain.forestId());
         entity.setAccountId(domain.accountId());
         entity.setProjectId(domain.projectId());
+        entity.setConversationId(domain.conversationId());
         entity.setTitle(domain.title());
         entity.setRootNodeId(domain.rootNodeId());
         return entity;
@@ -244,6 +259,7 @@ public class ForestRepositoryAdapter implements ForestRepository {
                 entity.getForestId(),
                 entity.getAccountId(),
                 entity.getProjectId(),
+                entity.getConversationId(),
                 entity.getTitle(),
                 entity.getRootNodeId()
         );
@@ -251,6 +267,7 @@ public class ForestRepositoryAdapter implements ForestRepository {
 
     /** TreeNode → JPA 实体。 */
     private ForestNodeEntity toEntity(TreeNode node, UUID forestId) {
+        OffsetDateTime now = OffsetDateTime.now();
         var builder = ForestNodeEntity.builder()
                 .nodeId(node.nodeId())
                 .forestId(forestId)
@@ -258,17 +275,30 @@ public class ForestRepositoryAdapter implements ForestRepository {
                 .parentNodeId(node.parent() != null ? node.parent().nodeId() : null)
                 .sortOrder(node.order())
                 .kind("INSTANCE")
-                .updatedAt(OffsetDateTime.now());
+                .updatedAt(now);
 
-        // ExecutableNode → mode + status
+        // ExecutableNode → mode + status + completedAt
         if (node instanceof ExecutableNode exec) {
             builder.mode(exec.mode().name());
             builder.status(exec.status().name());
+            if (exec.status() == NodeStatus.COMPLETED
+                    || exec.status() == NodeStatus.FAILED
+                    || exec.status() == NodeStatus.CANCELLED) {
+                builder.completedAt(now);
+            }
         }
 
-        // ContentNode → content + metadata
+        // ContentNode → content + contentHash + metadata
         if (node instanceof ContentNode contentNode) {
-            builder.content(contentNode.content());
+            String content = contentNode.content();
+            builder.content(content);
+            if (content != null && !content.isEmpty()) {
+                // contentHash 用于增量更新判断：SHA256 前 16 位
+                builder.contentHash(computeContentHash(content));
+                // estimateTokens 基于内容长度估算（每中文字符约 2 token）
+                long estimated = (long) (content.length() * 1.5);
+                if (estimated > 0) builder.estimateTokens(estimated);
+            }
             // 收集 metadata（含 FileSnapshotNode 的 filePath）
             Map<String, Object> meta = new HashMap<>();
             if (contentNode.metadata() != null) {
@@ -286,14 +316,27 @@ public class ForestRepositoryAdapter implements ForestRepository {
             }
         }
 
-        // CompressibleNode → importance + estimateTokens
+        // CompressibleNode → importance（estimateTokens 已在 ContentNode 中处理）
         if (node instanceof CompressibleNode comp) {
             builder.importance(comp.importance());
-            long tokens = comp.estimateSubtreeTokens();
-            if (tokens >= 0) builder.estimateTokens(tokens);
         }
 
         return builder.build();
+    }
+
+    /** 计算内容哈希（SHA256 前 16 位），用于增量更新判断。 */
+    private static String computeContentHash(String content) {
+        try {
+            var digest = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(16);
+            for (int i = 0; i < 8; i++) {
+                hex.append(String.format("%02x", hash[i]));
+            }
+            return hex.toString();
+        } catch (Exception e) {
+            return Integer.toHexString(content.hashCode());
+        }
     }
 
     /** 解析 metadata JSON → Map。 */

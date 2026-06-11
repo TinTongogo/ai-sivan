@@ -11,7 +11,7 @@ import java.util.List;
  * 上下文构建结果，包含按 Epoch 分段的内容列表。
  * <p>
  * 用于缓存感知的 Prompt 构建：每个 Segment 对应一个 Epoch，
- * 调用方（ConversationService）据此构造 LLM 消息列表。
+ * 调用方（ForestConversationService）据此构造 LLM 消息列表。
  */
 public class ContextResult {
 

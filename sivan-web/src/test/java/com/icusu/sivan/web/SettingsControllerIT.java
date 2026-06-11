@@ -19,9 +19,9 @@ class SettingsControllerIT extends AbstractWebIntegrationTest {
     @Test
     void shouldPersistAndReadEmbeddingConfig() {
         var config = EmbeddingConfigDTO.builder()
-                .embeddingUrl("http://test-embed:8001")
+                .embeddingUrl("http://127.0.0.1:8001")
                 .embeddingModel("test-embed-model")
-                .rerankerUrl("http://test-rerank:8002")
+                .rerankerUrl("http://127.0.0.1:8002")
                 .rerankerModel("test-rerank-model")
                 .build();
 
@@ -33,8 +33,8 @@ class SettingsControllerIT extends AbstractWebIntegrationTest {
                 .expectStatus().isOk()
                 .expectBody()
                 .jsonPath("$.code").isEqualTo(200)
-                .jsonPath("$.data.embeddingUrl").isEqualTo("http://test-embed:8001")
-                .jsonPath("$.data.rerankerUrl").isEqualTo("http://test-rerank:8002");
+                .jsonPath("$.data.embeddingUrl").isEqualTo("http://127.0.0.1:8001")
+                .jsonPath("$.data.rerankerUrl").isEqualTo("http://127.0.0.1:8002");
 
         // GET 验证回读一致
         webTestClient.get()
@@ -42,9 +42,9 @@ class SettingsControllerIT extends AbstractWebIntegrationTest {
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody()
-                .jsonPath("$.data.embeddingUrl").isEqualTo("http://test-embed:8001")
+                .jsonPath("$.data.embeddingUrl").isEqualTo("http://127.0.0.1:8001")
                 .jsonPath("$.data.embeddingModel").isEqualTo("test-embed-model")
-                .jsonPath("$.data.rerankerUrl").isEqualTo("http://test-rerank:8002")
+                .jsonPath("$.data.rerankerUrl").isEqualTo("http://127.0.0.1:8002")
                 .jsonPath("$.data.rerankerModel").isEqualTo("test-rerank-model");
     }
 

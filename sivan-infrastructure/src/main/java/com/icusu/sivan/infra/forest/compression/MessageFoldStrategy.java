@@ -5,12 +5,14 @@ import com.icusu.sivan.domain.compression.FoldStrategy;
 import com.icusu.sivan.domain.compression.TokenBudget;
 import com.icusu.sivan.domain.forest.tree.ContentNode;
 import com.icusu.sivan.domain.forest.tree.TreeNode;
+import org.springframework.stereotype.Component;
 
 /**
  * MessageNode 折叠策略。
  * <p>
  * 历史消息超过预算 → 折叠为 LLM 摘要格式。
  */
+@Component
 public class MessageFoldStrategy implements FoldStrategy {
 
     /** 当单条消息超过此字符数时认为需要摘要 */

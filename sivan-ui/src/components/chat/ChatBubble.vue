@@ -216,6 +216,14 @@ function handleCodeCopy(e: MouseEvent) {
 
 const renderedContent = computed(() => renderMarkdown(displayContent.value))
 const renderedThinking = computed(() => renderMarkdown(displayThinking.value))
+
+// 检测音频内容：格式为 [audio:data:audio/mp3;base64,xxxxx]
+const audioSrc = computed(() => {
+  const c = displayContent.value
+  if (!c.startsWith('[audio:')) return null
+  const match = c.match(/^\[audio:(data:.+)\]$/)
+  return match ? match[1] : null
+})
 const renderedClassify = computed(() => props.message.classifyText ? renderMarkdown(props.message.classifyText) : '')
 
 const thinkingDurationLabel = computed(() => {
@@ -298,7 +306,16 @@ function formatFileSize(bytes: number): string {
 
       <!-- 气泡正文（含三角形尾巴） -->
       <div class="bubble__body">
-        <div class="bubble__text" :class="{ 'bubble__text--streaming': streaming }" @click="handleCodeCopy"><div v-html="renderedContent"></div></div>
+        <div class="bubble__text" :class="{ 'bubble__text--streaming': streaming }" @click="handleCodeCopy">
+          <template v-if="audioSrc">
+            <audio controls class="bubble__audio" :src="audioSrc" style="width:100%;max-width:300px;height:40px;">
+              {{ t('audioNotSupported') }}
+            </audio>
+          </template>
+          <template v-else>
+            <div v-html="renderedContent"></div>
+          </template>
+        </div>
         <div v-show="streaming && !displayContent" class="bubble__streaming">
           <span class="streaming-dot"></span>
           <span class="streaming-dot"></span>

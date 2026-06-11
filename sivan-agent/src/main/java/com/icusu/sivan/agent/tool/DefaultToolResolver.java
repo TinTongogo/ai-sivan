@@ -58,7 +58,7 @@ public class DefaultToolResolver implements ToolResolver {
 
     /**
      * 为 Chat 路径解析可用工具（带对话上下文感知）。
-     * 注意：MCP 连接由调用方（ConversationService）按对话选择的服务器管理，
+     * 注意：MCP 连接由调用方（ForestConversationService）按对话选择的服务器管理，
      * 此处不做 connectAll，避免绕过用户的工具选择。
      *
      * @param conversationContext 最近对话历史文本，用于语义匹配

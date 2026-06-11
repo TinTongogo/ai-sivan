@@ -67,4 +67,15 @@ public class InstinctPatternEntity extends BaseEntity {
 
     @Column(name = "last_match_at")
     private OffsetDateTime lastMatchAt;
+
+    @Column(name = "success_rate")
+    private Double successRate;
+
+    @Column(name = "weight")
+    @Builder.Default
+    private Double weight = 0.5;
+
+    @Column(name = "draft")
+    @Builder.Default
+    private Boolean draft = false;
 }
