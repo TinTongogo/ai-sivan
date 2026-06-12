@@ -9,6 +9,7 @@ import com.icusu.sivan.web.knowledge.dto.CreateKnowledgeBaseRequest;
 import com.icusu.sivan.web.knowledge.dto.SearchRequest;
 import com.icusu.sivan.web.knowledge.dto.UpdateDocumentRequest;
 import com.icusu.sivan.web.knowledge.dto.UpdateKnowledgeBaseRequest;
+import com.icusu.sivan.domain.shared.vo.Chunk;
 import com.icusu.sivan.web.knowledge.dto.KbDocumentResponse;
 import com.icusu.sivan.web.knowledge.dto.KbOverviewResponse;
 import com.icusu.sivan.web.knowledge.dto.KnowledgeBaseResponse;
@@ -41,7 +42,7 @@ import java.util.UUID;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/knowledge-bases")
+@RequestMapping("/api/v2/knowledge-bases")
 @RequiredArgsConstructor
 public class KnowledgeBaseController {
 
@@ -219,6 +220,23 @@ public class KnowledgeBaseController {
                                               @CurrentAccountId UUID accountId) {
         knowledgeBaseService.deleteDocument(docId, accountId);
         return BaseResponse.success();
+    }
+
+    // ===== 以下为 10-知识库与RAG §6.1 新增端点 =====
+
+    /** 重新索引单篇文档（删除旧分块，重新分块+向量化）。 */
+    @PostMapping("/documents/{docId}/reindex")
+    public BaseResponse<Void> reindexDocument(@PathVariable UUID docId,
+                                               @CurrentAccountId UUID accountId) {
+        knowledgeBaseService.reindexDocument(docId, accountId);
+        return BaseResponse.success();
+    }
+
+    /** 查看文档的分块详情。 */
+    @GetMapping("/documents/{docId}/chunks")
+    public BaseResponse<List<Chunk>> getDocumentChunks(@PathVariable UUID docId,
+                                                        @CurrentAccountId UUID accountId) {
+        return BaseResponse.success(knowledgeBaseService.getDocumentChunks(docId, accountId));
     }
 
     /**

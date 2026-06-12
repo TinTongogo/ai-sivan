@@ -234,6 +234,30 @@ public class KnowledgeBaseService {
         knowledgeBaseRepository.deleteDocument(docId);
     }
 
+    /**
+     * 重新索引单篇文档：删除旧分块，重新分块并建立向量索引（10-知识库与RAG §6.1）。
+     */
+    public void reindexDocument(UUID docId, UUID accountId) {
+        KbDocument doc = knowledgeBaseRepository.findDocumentById(docId)
+                .orElseThrow(() -> ResourceNotFoundException.notFound("文档", docId));
+        // 校验所有权
+        findOwned(accountId, doc.getKbName());
+        // 删除旧分块
+        knowledgeBaseRepository.deleteDocumentChunks(doc.getKbName(), docId);
+        // 重新索引
+        chunkAndIndexText(doc.getKbName(), accountId, doc);
+    }
+
+    /**
+     * 获取文档的所有分块详情（10-知识库与RAG §6.1）。
+     */
+    public List<Chunk> getDocumentChunks(UUID docId, UUID accountId) {
+        KbDocument doc = knowledgeBaseRepository.findDocumentById(docId)
+                .orElseThrow(() -> ResourceNotFoundException.notFound("文档", docId));
+        findOwned(accountId, doc.getKbName());
+        return knowledgeBaseRepository.findChunksByDocId(docId);
+    }
+
     private static final List<String> ALLOWED_EXTENSIONS = List.of("txt", "md", "json", "csv", "html");
 
     /**

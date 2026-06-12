@@ -126,7 +126,7 @@ async function saveInlineDesc(kbName: string) {
   if (editingDescKb.value !== kbName) return
   editingDescKb.value = ''
   try {
-    await api.put(`/knowledge-bases/${encodeURIComponent(kbName)}`, { description: descDraft.value || '' })
+    await api.put(`/v2/knowledge-bases/${encodeURIComponent(kbName)}`, { description: descDraft.value || '' })
     const kb = kbList.value.find(k => k.kbName === kbName)
     if (kb) kb.description = descDraft.value
     if (selectedKbName.value === kbName) selectedKb.value && (selectedKb.value.description = descDraft.value)
@@ -166,7 +166,7 @@ onMounted(() => {
 async function fetchKbList() {
   kbLoading.value = true
   try {
-    const res: any = await api.get('/knowledge-bases')
+    const res: any = await api.get('/v2/knowledge-bases')
     kbList.value = res.data || []
   } catch { /* noop */ } finally { kbLoading.value = false }
 }
@@ -181,7 +181,7 @@ function selectKb(kbName: string) {
 async function fetchDocuments(kbName: string) {
   docsLoading.value = true
   try {
-    const res: any = await api.get(`/knowledge-bases/${kbName}/documents/page`, {
+    const res: any = await api.get(`/v2/knowledge-bases/${kbName}/documents/page`, {
       params: { page: docPage.value - 1, size: docPageSize.value }
     })
     const pageData = res.data || {}
@@ -216,7 +216,7 @@ async function saveKb() {
   if (name.length > KB_NAME_MAX) { message.warning(t('kbNameTooLong', { n: KB_NAME_MAX })); return }
   if ((kbForm.value.description || '').length > KB_DESC_MAX) { message.warning(t('kbDescTooLong', { n: KB_DESC_MAX })); return }
   try {
-    await api.post('/knowledge-bases', kbForm.value)
+    await api.post('/v2/knowledge-bases', kbForm.value)
     message.success(t('createSuccess'))
     showKbModal.value = false
     await fetchKbList()
@@ -227,7 +227,7 @@ async function saveKb() {
 
 async function deleteKb(name: string) {
   try {
-    await api.delete(`/knowledge-bases/${name}`)
+    await api.delete(`/v2/knowledge-bases/${name}`)
     message.success(t('deleteSuccess'))
     if (selectedKbName.value === name) {
       selectedKbName.value = null
@@ -243,7 +243,7 @@ async function rebuildIndex() {
   if (!window.confirm(t('rebuildIndexConfirm') || `确定重建知识库"${selectedKbName.value}"的全部索引？此操作将删除所有现有分块并重新创建。`)) return
   rebuildingIndex.value = true
   try {
-    await api.post(`/knowledge-bases/${selectedKbName.value}/rebuild-index`)
+    await api.post(`/v2/knowledge-bases/${selectedKbName.value}/rebuild-index`)
     message.success(t('rebuildIndexSuccess'))
     await fetchDocuments(selectedKbName.value)
   } catch (e: any) {
@@ -291,7 +291,7 @@ async function uploadFiles(files: File[]) {
     const results = await Promise.allSettled(files.map(file => {
       const formData = new FormData()
       formData.append('file', file)
-      return api.post(`/knowledge-bases/${selectedKbName.value}/documents/upload`, formData)
+      return api.post(`/v2/knowledge-bases/${selectedKbName.value}/documents/upload`, formData)
     }))
     results.forEach(r => r.status === 'fulfilled' ? successCount++ : failCount++)
     if (failCount === 0) message.success(t('uploadSuccessCount', { n: successCount }))
@@ -303,7 +303,7 @@ async function uploadFiles(files: File[]) {
 
 async function deleteDocument(docId: string) {
   try {
-    await api.delete(`/knowledge-bases/documents/${docId}`)
+    await api.delete(`/v2/knowledge-bases/documents/${docId}`)
     message.success(t('deleteSuccess'))
     await fetchDocuments(selectedKbName.value!)
   } catch { message.error(t('deleteFailed')) }
@@ -333,7 +333,7 @@ const allDocsSelected = computed(() =>
 async function batchDeleteDocuments() {
   if (!selectedDocIds.value.length) { message.warning(t('selectDocsToDelete')); return }
   const results = await Promise.allSettled(
-    selectedDocIds.value.map(id => api.delete(`/knowledge-bases/documents/${id}`))
+    selectedDocIds.value.map(id => api.delete(`/v2/knowledge-bases/documents/${id}`))
   )
   const failed = results.filter(r => r.status === 'rejected').length
   if (failed) message.warning(t('deletePartialSuccess', { success: selectedDocIds.value.length - failed, fail: failed }))
@@ -346,7 +346,7 @@ async function batchExportDocuments() {
   if (!selectedDocIds.value.length) return
   if (!selectedKbName.value) return
   try {
-    const response = await api.post(`/knowledge-bases/${selectedKbName.value}/documents/batch-export`,
+    const response = await api.post(`/v2/knowledge-bases/${selectedKbName.value}/documents/batch-export`,
         { docIds: selectedDocIds.value },
         { responseType: 'blob' })
     const blob = new Blob([response as any], { type: 'application/zip' })
@@ -372,7 +372,7 @@ async function batchMoveDocuments() {
   if (!selectedKbName.value) return
   movingDocs.value = true
   try {
-    await api.post(`/knowledge-bases/${selectedKbName.value}/documents/batch-move`, {
+    await api.post(`/v2/knowledge-bases/${selectedKbName.value}/documents/batch-move`, {
       docIds: selectedDocIds.value,
       targetKbName: moveTargetKbName.value,
     })
@@ -396,7 +396,7 @@ async function saveDocument() {
   if (!editForm.value.filename) { message.warning(t('filenameRequired')); return }
   saving.value = true
   try {
-    await api.put(`/knowledge-bases/documents/${editForm.value.docId}`, {
+    await api.put(`/v2/knowledge-bases/documents/${editForm.value.docId}`, {
       filename: editForm.value.filename,
       textContent: editForm.value.textContent,
     })
@@ -417,7 +417,7 @@ async function searchAllKb() {
   searchResults.value = []
   try {
     if (searchScope.value === 'current' && selectedKbName.value) {
-      const res: any = await api.post(`/knowledge-bases/${selectedKbName.value}/search`, {
+      const res: any = await api.post(`/v2/knowledge-bases/${selectedKbName.value}/search`, {
         query: searchForm.value.query,
         topK: searchForm.value.topK,
         mode: searchMode.value,
@@ -425,7 +425,7 @@ async function searchAllKb() {
       })
       searchResults.value = res.data || []
     } else {
-      const res: any = await api.post('/knowledge-bases/search', {
+      const res: any = await api.post('/v2/knowledge-bases/search', {
         query: searchForm.value.query,
         topK: searchForm.value.topK,
         mode: searchMode.value,

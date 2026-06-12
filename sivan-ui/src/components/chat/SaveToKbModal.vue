@@ -28,7 +28,7 @@ async function confirm() {
   if (!kbName.value) { message.warning(t('selectKb')); return }
   if (!filename.value.trim()) { message.warning(t('enterFilename')); return }
   try {
-    await api.post(`/knowledge-bases/${kbName.value}/documents`, {
+    await api.post(`/v2/knowledge-bases/${kbName.value}/documents`, {
       filename: filename.value.trim(),
       textContent: props.text,
     })

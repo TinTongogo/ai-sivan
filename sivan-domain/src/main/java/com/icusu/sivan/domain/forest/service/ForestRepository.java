@@ -49,4 +49,23 @@ public interface ForestRepository {
     /** 更新节点状态 + 执行详情（耗时、token）。 */
     void updateNodeDetails(String nodeId, NodeStatus status, UUID accountId,
                            Integer durationMs, Integer totalTokens);
+
+    // ===== 恢复（09-持久化与恢复 §3.1） =====
+
+    /**
+     * 按根节点状态查询所属森林（用于启动恢复）。
+     * 返回根节点列表，不含子树。调用方需要时自行调用 {@link #findSubtree} 加载完整树。
+     */
+    List<TreeNode> findRootNodesByStatus(NodeStatus status, UUID accountId);
+
+    /**
+     * 查询某节点的下一个待执行兄弟节点（用于断点恢复）。
+     * 按 sort_order 升序找同父节点下第一个 PENDING 状态的后续兄弟节点。
+     *
+     * @param nodeId   当前节点 ID
+     * @param forestId 所属森林 ID
+     * @param accountId 账户 ID
+     * @return 下一个待执行兄弟节点，不存在则返回 null
+     */
+    TreeNode findNextSibling(String nodeId, UUID forestId, UUID accountId);
 }

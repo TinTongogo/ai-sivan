@@ -155,6 +155,29 @@ public class ForestRepositoryAdapter implements ForestRepository {
         });
     }
 
+    @Override
+    public List<TreeNode> findRootNodesByStatus(NodeStatus status, UUID accountId) {
+        List<ForestNodeEntity> roots = forestNodeJpaRepository.findRootNodesByStatus(
+                status.name(), accountId);
+        return roots.stream()
+                .map(this::createNode)
+                .toList();
+    }
+
+    @Override
+    public TreeNode findNextSibling(String nodeId, UUID forestId, UUID accountId) {
+        var currentOpt = forestNodeJpaRepository.findById(nodeId);
+        if (currentOpt.isEmpty()) return null;
+        ForestNodeEntity current = currentOpt.get();
+        String parentNodeId = current.getParentNodeId();
+        if (parentNodeId == null) return null; // 根节点无兄弟
+
+        ForestNodeEntity next = forestNodeJpaRepository.findNextPendingSibling(
+                parentNodeId, forestId, current.getSortOrder());
+        if (next == null) return null;
+        return createNode(next);
+    }
+
     // =====================================================================
     // 树组装
     // =====================================================================
@@ -251,6 +274,13 @@ public class ForestRepositoryAdapter implements ForestRepository {
                 String blockType = metadata.containsKey("blockType")
                         ? String.valueOf(metadata.get("blockType")) : "";
                 var node = new ContextBlockNode(nodeId, blockType, content != null ? content : "");
+                if (!metadata.isEmpty()) node.setMetadata(metadata);
+                yield node;
+            }
+            case "kb_search" -> {
+                var node = new SearchKBNode(nodeId, content != null ? content : "",
+                        metadata.containsKey("kbName") ? String.valueOf(metadata.get("kbName")) : null,
+                        metadata.containsKey("topK") ? Integer.parseInt(String.valueOf(metadata.get("topK"))) : 5);
                 if (!metadata.isEmpty()) node.setMetadata(metadata);
                 yield node;
             }

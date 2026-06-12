@@ -643,11 +643,28 @@ sequenceDiagram
 
 ## 7. 设计检查清单
 
-- [ ] 新增一种检索策略需要改几个文件？→ 1 个（实现 `RetrievalStrategy`）
-- [ ] 新增一个外部数据源需要改几个文件？→ 1 个（实现 `KnowledgeConnector`）
-- [ ] 索引是否支持增量更新（contentHash 去重）？→ 是
-- [ ] 搜索是否支持查询改写 + 多向量融合？→ 是
-- [ ] 默认索引模式是否为 ON_DEMAND（隐私优先）？→ 是
-- [ ] Reranker 是否可插拔？→ 是，`Reranker` 接口
-- [ ] 知识库搜索是否可作为 GoalTree 的叶子节点？→ 是，`SearchKBNode`
-- [ ] 搜索结果是否自动注入 LLM 上下文？→ 是，`ContextInjector`
+### 实现状态（2026-06-12）
+
+| # | 检查项 | 状态 | 说明 |
+|---|--------|------|------|
+| 1 | 新增一种检索策略需改几个文件 | ❌ | 未实现（RetrievalStrategy 接口未设计） |
+| 2 | 新增一个外部数据源需改几个文件 | ❌ | `KnowledgeConnector` 框架未实现 |
+| 3 | 索引支持增量更新（contentHash 去重） | ✅ | `SemanticChunker` 生成 contentHash，文档更新时对比新旧分块 |
+| 4 | 搜索支持查询改写+多向量融合 | ✅ | `QueryRewriter` + `expandedVectorSearch()` |
+| 5 | 默认索引模式为 ON_DEMAND | ❌ | `KnowledgeConnector` 框架未实现 |
+| 6 | Reranker 可插拔 | ✅ | `RerankerService` 接口 |
+| 7 | 知识库搜索可作为 GoalTree 叶子节点 | ✅ | `SearchKBNode` + `SearchKBLeafExecutor`（kb_search 类型） |
+| 8 | 搜索结果自动注入 LLM 上下文 | ✅ | `KbSearchToolRegistrar` + `SearchKBLeafExecutor` |
+| 9 | 知识库管理 API | ⚠️ | 路径为 `/api/knowledge-bases`（非 `/api/v2/`），使用 kbName 而非 kbId |
+| 10 | 文档管理 API（reindex） | ✅ | `POST /documents/{docId}/reindex` |
+| 11 | 文档分块详情 API | ✅ | `GET /documents/{docId}/chunks` |
+| 12 | 前端知识库管理页面 | ⚠️ | 缺文档索引状态显示、分块详情视图 |
+
+### 实现文件
+
+| 组件 | 路径 |
+|------|------|
+| `SearchKBNode` | `sivan-domain/.../forest/tree/SearchKBNode.java` |
+| `SearchKBLeafExecutor` | `sivan-agent/.../forest/SearchKBLeafExecutor.java` |
+| `KbSearchPort` | `sivan-domain/.../knowledge/KbSearchPort.java` |
+| `KbSearchPortImpl` | `sivan-web/.../knowledge/service/KbSearchPortImpl.java` |

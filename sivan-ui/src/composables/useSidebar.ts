@@ -187,7 +187,7 @@ export function useSidebar() {
   async function fetchKnowledgeBases() {
     if (kbFetched) return
     try {
-      const res: any = await api.get('/knowledge-bases')
+      const res: any = await api.get('/v2/knowledge-bases')
       knowledgeBases.value = res.data || []
       kbFetched = true
     } catch { /* noop */ }

@@ -9,7 +9,7 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 /**
- * 知识库文档实体。
+ * 知识库文档实体（10-知识库与RAG §6.2）。
  */
 @Data
 @Builder
@@ -26,16 +26,19 @@ public class KbDocument {
     private Integer charCount;
     private Integer chunkCount;
     private String textContent;
-    private String status;     // PARSING / READY / FAILED
+    /** 索引状态，兼容旧版字符串状态。 */
+    @Builder.Default
+    private DocumentIndexStatus indexStatus = DocumentIndexStatus.PENDING;
+    /** 全文 contentHash（用于增量索引去重）。 */
+    private String contentHash;
+    /** 索引失败时的错误信息。 */
     private String errorMessage;
     private LocalDateTime createdAt;
+    /** 最后索引时间。 */
+    private LocalDateTime indexedAt;
 
-    public static final String STATUS_PARSING = "PARSING";
-    public static final String STATUS_READY = "READY";
-    public static final String STATUS_FAILED = "FAILED";
-
-    public void markReady() { this.status = STATUS_READY; }
-    public void markFailed(String reason) { this.status = STATUS_FAILED; this.errorMessage = reason; }
-    public void markParsing() { this.status = STATUS_PARSING; }
-    public boolean isReady() { return STATUS_READY.equals(this.status); }
+    public void markReady() { this.indexStatus = DocumentIndexStatus.INDEXED; }
+    public void markFailed(String reason) { this.indexStatus = DocumentIndexStatus.FAILED; this.errorMessage = reason; }
+    public void markParsing() { this.indexStatus = DocumentIndexStatus.PENDING; }
+    public boolean isReady() { return DocumentIndexStatus.INDEXED.equals(this.indexStatus); }
 }

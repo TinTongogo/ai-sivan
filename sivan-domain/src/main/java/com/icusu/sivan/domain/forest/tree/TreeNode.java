@@ -20,7 +20,8 @@ import java.util.List;
     @JsonSubTypes.Type(value = MessageNode.class, name = "message"),
     @JsonSubTypes.Type(value = MemoryNode.class, name = "memory"),
     @JsonSubTypes.Type(value = ContextBlockNode.class, name = "context_block"),
-    @JsonSubTypes.Type(value = FileSnapshotNode.class, name = "file_snapshot")
+    @JsonSubTypes.Type(value = FileSnapshotNode.class, name = "file_snapshot"),
+    @JsonSubTypes.Type(value = SearchKBNode.class, name = "kb_search")
 })
 public interface TreeNode {
 
