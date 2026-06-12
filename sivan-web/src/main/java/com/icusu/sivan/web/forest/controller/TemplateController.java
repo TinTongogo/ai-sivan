@@ -1,5 +1,6 @@
 package com.icusu.sivan.web.forest.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.icusu.sivan.common.dto.BaseResponse;
 import com.icusu.sivan.common.exception.DomainException;
 import com.icusu.sivan.common.exception.ResourceNotFoundException;
@@ -33,11 +34,14 @@ public class TemplateController {
 
     private final TemplateRepository templateRepository;
     private final GoalExecutionService goalExecutionService;
+    private final ObjectMapper objectMapper;
 
     public TemplateController(TemplateRepository templateRepository,
-                              GoalExecutionService goalExecutionService) {
+                              GoalExecutionService goalExecutionService,
+                              ObjectMapper objectMapper) {
         this.templateRepository = templateRepository;
         this.goalExecutionService = goalExecutionService;
+        this.objectMapper = objectMapper;
     }
 
     /** 模板列表（按账号）。 */
@@ -48,7 +52,7 @@ public class TemplateController {
         return BaseResponse.success(list);
     }
 
-    /** 创建模板。 */
+    /** 创建模板 — 从 rootNode JSON 反序列化为 ExecutableNode 存储。 */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public BaseResponse<TemplateResponse> create(@RequestBody TemplateRequest request,
@@ -56,12 +60,11 @@ public class TemplateController {
         if (request.getName() == null || request.getName().isBlank()) {
             throw new DomainException("模板名称不能为空");
         }
-        // TODO: 反序列化 rootNode JSON 为 ExecutableNode，当前使用占位
-        ExecutableNode root = new com.icusu.sivan.domain.forest.tree.TaskNode(request.getName());
+        ExecutableNode root = deserializeRootNode(request.getRootNode());
         GoalTreeTemplate template = new GoalTreeTemplate(accountId, request.getName(),
                 request.getDescription(), root);
         templateRepository.save(template);
-        log.info("模板已创建: name={} accountId={}", request.getName(), accountId);
+        log.info("模板已创建: name={} accountId={} templateId={}", request.getName(), accountId, template.templateId());
         return BaseResponse.created(toResponse(template));
     }
 
@@ -73,15 +76,22 @@ public class TemplateController {
         return BaseResponse.success(toResponse(template));
     }
 
-    /** 更新模板。 */
+    /** 更新模板 — 重建根节点。 */
     @PutMapping("/{templateId}")
     public BaseResponse<TemplateResponse> update(@PathVariable UUID templateId,
                                                   @RequestBody TemplateRequest request,
                                                   @CurrentAccountId UUID accountId) {
-        GoalTreeTemplate template = findOwned(templateId, accountId);
-        // 实际应用中需要重建根节点，当前简化处理
+        findOwned(templateId, accountId);
+        if (request.getRootNode() != null) {
+            ExecutableNode root = deserializeRootNode(request.getRootNode());
+            GoalTreeTemplate updated = new GoalTreeTemplate(accountId,
+                    request.getName() != null ? request.getName() : "",
+                    request.getDescription(), root);
+            // 保留原 templateId（TemplateRepository.save 由基础设施层控制回写）
+            templateRepository.save(updated);
+        }
         log.info("模板已更新: templateId={} name={}", templateId, request.getName());
-        return BaseResponse.success(toResponse(template));
+        return BaseResponse.success(toResponse(findOwned(templateId, accountId)));
     }
 
     /** 删除模板。 */
@@ -112,6 +122,23 @@ public class TemplateController {
     }
 
     // ====== 内部 ======
+
+    /**
+     * 将请求中的 rootNode Map 反序列化为 ExecutableNode。
+     * 利用 TreeNode 上的 @JsonTypeInfo + @JsonSubTypes 注解实现多态反序列化。
+     */
+    private ExecutableNode deserializeRootNode(Map<String, Object> rootNode) {
+        if (rootNode == null || rootNode.isEmpty()) {
+            throw new DomainException("模板根节点不能为空");
+        }
+        try {
+            String json = objectMapper.writeValueAsString(rootNode);
+            return objectMapper.readValue(json, ExecutableNode.class);
+        } catch (Exception e) {
+            log.error("反序列化模板根节点失败: {}", e.getMessage());
+            throw new DomainException("模板根节点格式无效: " + e.getMessage());
+        }
+    }
 
     private GoalTreeTemplate findOwned(UUID templateId, UUID accountId) {
         GoalTreeTemplate template = templateRepository.findById(templateId)
