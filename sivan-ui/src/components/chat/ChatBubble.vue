@@ -213,7 +213,14 @@ function handleCodeCopy(e: MouseEvent) {
   })
 }
 
-const renderedContent = computed(() => renderMarkdown(displayContent.value))
+const renderedContent = computed(() => {
+  let html = renderMarkdown(displayContent.value)
+  // 20-编排产出展示方案: (§Agent) → 可点击 badge
+  html = html.replace(/\(§([^)]+)\)/g, (_, agent) =>
+    `<span class="agent-badge" onclick="event.stopPropagation()" title="${agent} 的产出">🔍 ${agent}</span>`
+  )
+  return html
+})
 const renderedThinking = computed(() => renderMarkdown(displayThinking.value))
 
 // 检测音频内容：格式为 [audio:data:audio/mp3;base64,xxxxx]
@@ -328,6 +335,16 @@ function formatFileSize(bytes: number): string {
         <span v-if="meta?.duration" class="meta__item">{{ meta.duration }}</span>
         <span v-if="meta?.tokens != null" class="meta__item">{{ meta.tokens.toLocaleString() }} tokens</span>
         <span v-if="meta?.model" class="meta__item">{{ meta.model }}</span>
+      </div>
+
+      <!-- 编排时间线条（20-编排产出展示方案: Layer 2 入口） -->
+      <div v-if="message.role === 'assistant' && message.sections?.length" class="bubble__timeline">
+        <span class="timeline__label">执行记录</span>
+        <span class="timeline__phases">
+          <span v-for="(s, i) in message.sections" :key="i" class="timeline__dot" :class="'timeline__dot--' + (s.status || '').toLowerCase()">
+            <span class="timeline__name">{{ s.agent || s.phase }}</span>
+          </span>
+        </span>
       </div>
 
       <!-- 编排阶段详情（仅 AI 消息，有 sections 时展示） -->
@@ -1158,5 +1175,58 @@ function formatFileSize(bytes: number): string {
 }
 .bubble__text tbody tr:hover {
   background: var(--clr-fill-hover);
+}
+
+/* ── 编排时间线条（20-编排产出展示方案） ── */
+.bubble__timeline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  font-size: var(--fs-caption, 11px);
+  color: var(--clr-secondary, #666);
+  border-top: 1px solid var(--clr-hairline, #eee);
+  margin-top: 4px;
+}
+.timeline__label {
+  font-weight: var(--fw-semibold, 600);
+  white-space: nowrap;
+}
+.timeline__phases {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.timeline__dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.timeline__dot + .timeline__dot::before {
+  content: "·";
+  margin-right: 2px;
+  color: var(--clr-quaternary, #ccc);
+}
+.timeline__dot--completed { color: var(--clr-success, #52c41a); }
+.timeline__dot--running { color: var(--clr-accent, #409eff); animation: pulse 1.5s infinite; }
+.timeline__dot--failed { color: var(--clr-danger, #ff4d4f); }
+.timeline__dot--pending { color: var(--clr-quaternary, #bbb); }
+.timeline__name { white-space: nowrap; }
+
+/* ── Agent 内联标注（20-编排产出展示方案） ── */
+:deep(.agent-badge) {
+  display: inline;
+  padding: 0 4px;
+  font-size: var(--fs-caption, 11px);
+  color: var(--clr-accent, #409eff);
+  background: var(--clr-accent-soft, #ecf5ff);
+  border-radius: 3px;
+  cursor: default;
+  white-space: nowrap;
+}
+:deep(.agent-badge:hover) {
+  background: var(--clr-accent, #409eff);
+  color: #fff;
 }
 </style>

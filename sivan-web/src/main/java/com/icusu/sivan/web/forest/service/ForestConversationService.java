@@ -1,5 +1,6 @@
 package com.icusu.sivan.web.forest.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.icusu.sivan.agent.model.ModelRouter;
 import com.icusu.sivan.common.enums.MessageStatus;
@@ -431,6 +432,17 @@ public class ForestConversationService {
                                                     signal == reactor.core.publisher.SignalType.ON_COMPLETE
                                                             ? MessageStatus.COMPLETED : MessageStatus.FAILED);
                                             prep.assistantMsg.setModel(prep.modelName);
+                                            // 20-编排产出展示方案: 从执行树构建 sections
+                                            if (forest != null && forest.rootNodeId() != null) {
+                                                try {
+                                                    String sectionsJson = buildSectionsFromTree(forest, accountId);
+                                                    if (sectionsJson != null) {
+                                                        prep.assistantMsg.setSections(sectionsJson);
+                                                    }
+                                                } catch (Exception e) {
+                                                    log.debug("[Sections] 构建编排阶段详情失败: {}", e.getMessage());
+                                                }
+                                            }
                                             if (totalTokens[0] > 0)
                                                 prep.assistantMsg.setTotalTokens(totalTokens[0]);
                                             prep.assistantMsg.setDurationMs(durationMs);
@@ -1134,5 +1146,65 @@ public class ForestConversationService {
     private static String truncateStr(String s, int maxLen) {
         if (s == null) return "";
         return s.length() <= maxLen ? s : s.substring(0, maxLen) + "...";
+    }
+
+    // =====================================================================
+    // 20-编排产出展示方案: 从执行树构建 sections
+    // =====================================================================
+
+    /**
+     * 从 Forest 的执行树中提取各阶段的产出，构建 sections JSON 字符串。
+     * 遍历所有 TaskNode，提取 agentName、content、status 等字段。
+     */
+    private String buildSectionsFromTree(Forest forest, UUID accountId) {
+        try {
+            com.icusu.sivan.domain.forest.tree.TreeNode root = forestRepository.findSubtree(forest.rootNodeId(), accountId);
+            if (root == null) return null;
+
+            List<Map<String, Object>> sections = new java.util.ArrayList<>();
+            collectTaskSections(root, sections);
+
+            return sections.isEmpty() ? null : objectMapper.writeValueAsString(sections);
+        } catch (Exception e) {
+            log.debug("[Sections] 构建失败: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /** 递归收集 TaskNode 的阶段信息。 */
+    @SuppressWarnings("unchecked")
+    private void collectTaskSections(com.icusu.sivan.domain.forest.tree.TreeNode node, List<Map<String, Object>> sections) {
+        if (node instanceof com.icusu.sivan.domain.forest.tree.ContentNode cn) {
+            String agentName = null;
+            Object raw = cn.metadata().get("agentName");
+            if (raw instanceof String s) agentName = s;
+
+            // TaskNode 且有 agentName → 作为独立阶段
+            if (agentName != null && !agentName.isBlank()
+                    && node instanceof com.icusu.sivan.domain.forest.tree.ExecutableNode en) {
+                Map<String, Object> section = new java.util.LinkedHashMap<>();
+                section.put("agent", agentName);
+                // 以 content 的前 40 字作为阶段名
+                String content = cn.content();
+                String phase = content != null && content.length() > 40
+                        ? content.substring(0, 40) + "..." : content;
+                section.put("phase", phase != null ? phase : agentName);
+                section.put("status", en.status().name());
+                section.put("content", content);
+                // 推理过程
+                if (cn.metadata().containsKey("thinking")) {
+                    section.put("thinking", cn.metadata().get("thinking"));
+                }
+                // 耗时（从 metadata 获取）
+                Object dur = cn.metadata().get("_durationMs");
+                if (dur instanceof Number n) section.put("durationMs", n.longValue());
+                sections.add(section);
+            }
+        }
+
+        // 递归子节点
+        for (com.icusu.sivan.domain.forest.tree.TreeNode child : node.children()) {
+            collectTaskSections(child, sections);
+        }
     }
 }

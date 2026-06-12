@@ -17,8 +17,8 @@ const emit = defineEmits<{
   saveToKb: [text: string]
 }>()
 
-/** 思考区展开/折叠 */
-const thinkingOpen = ref(props.live || false)
+/** 思考区展开/折叠：默认折叠（仅在实时流式时展开） */
+const thinkingOpen = ref(false)
 
 const hasThinking = computed(() => !!props.phase.thinking)
 const hasContent = computed(() => !!props.phase.content)

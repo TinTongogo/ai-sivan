@@ -2,7 +2,7 @@
  * Forest 树节点类型 — 与后端 TreeNode 接口对应。
  */
 
-export type NodeStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+export type NodeStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED' | 'SKIPPED';
 
 export type Mode = 'SEQUENTIAL' | 'PARALLEL' | 'CONDITIONAL' | 'HIERARCHICAL' | 'CONSENSUS';
 
@@ -42,4 +42,5 @@ export const STATUS_TEXT: Record<NodeStatus, string> = {
   COMPLETED: '完成',
   FAILED: '失败',
   CANCELLED: '已取消',
+  SKIPPED: '跳过',
 };
