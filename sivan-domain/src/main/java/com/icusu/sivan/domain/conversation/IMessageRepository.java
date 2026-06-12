@@ -48,4 +48,7 @@ public interface IMessageRepository {
 
     /** 统计指定生成组中的消息数量 */
     int countByGenerationGroup(UUID generationGroup);
+
+    /** 全文搜索消息内容（按账号分页）。 */
+    List<Message> search(UUID accountId, String keyword, int page, int size);
 }

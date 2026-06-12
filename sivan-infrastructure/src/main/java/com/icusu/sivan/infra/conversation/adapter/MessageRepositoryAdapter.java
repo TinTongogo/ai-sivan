@@ -128,6 +128,15 @@ public class MessageRepositoryAdapter implements IMessageRepository {
     public int countByGenerationGroup(UUID generationGroup) {
         return jpaRepository.countByGenerationGroup(generationGroup);
     }
+
+    @Override
+    public List<Message> search(UUID accountId, String keyword, int page, int size) {
+        if (keyword == null || keyword.isBlank()) return List.of();
+        return jpaRepository.searchByContent(accountId, keyword.trim(), size, page * size)
+                .stream()
+                .map(this::toDomain)
+                .toList();
+    }
     // ---- 转换方法 ----
 
     /** 将实体转换为领域对象。 */

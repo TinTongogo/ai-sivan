@@ -22,6 +22,8 @@ public class Conversation {
     private UUID accountId;
     private UUID projectId;
     private String title;
+    /** ACTIVE / ARCHIVED / DELETED */
+    private String status;
     private Integer messageCount;
     private List<String> knowledgeBaseIds;
     private List<String> mcpServerIds;

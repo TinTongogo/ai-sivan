@@ -146,6 +146,12 @@ public class ForestConversationService {
         messageCrudService.deleteMessage(accountId, messageId);
     }
 
+    /** 查询对话关联的 GoalTree 列表（14-对话管理 §4）。 */
+    public List<Forest> getForestsByConversation(UUID accountId, UUID conversationId) {
+        conversationCrudService.findOwned(accountId, conversationId);
+        return forestRepository.findByConversationId(conversationId, accountId);
+    }
+
     public int countMessages(UUID accountId, UUID conversationId) {
         return messageCrudService.countMessages(accountId, conversationId);
     }

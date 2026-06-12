@@ -28,6 +28,10 @@ public class Message {
     private String role;
     private String content;
     private String contentType;
+    /** 'normal' / 'goal_start' / 'goal_end' / 'summary' */
+    private String msgType;
+    @Builder.Default
+    private Double importance = 0.0;
     private String thinking;
     private String targetAgent;
     private UUID replyToId;

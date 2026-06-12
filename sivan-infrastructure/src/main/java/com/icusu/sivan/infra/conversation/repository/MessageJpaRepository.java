@@ -43,4 +43,15 @@ public interface MessageJpaRepository extends JpaRepository<MessageEntity, UUID>
     List<MessageEntity> findByGenerationGroupOrderByGenerationIndexAsc(UUID generationGroup);
 
     int countByGenerationGroup(UUID generationGroup);
+
+    /** 全文搜索消息内容（按账号）。 */
+    @Query(value = "SELECT * FROM messages m " +
+           "JOIN conversations c ON m.conversation_id = c.conversation_id " +
+           "WHERE c.account_id = :accountId " +
+           "AND m.content ILIKE '%' || :keyword || '%' " +
+           "ORDER BY m.created_at DESC LIMIT :limit OFFSET :offset", nativeQuery = true)
+    List<MessageEntity> searchByContent(@Param("accountId") UUID accountId,
+                                        @Param("keyword") String keyword,
+                                        @Param("limit") int limit,
+                                        @Param("offset") int offset);
 }

@@ -1,5 +1,6 @@
 package com.icusu.sivan.infra.forest.execution;
 
+import com.icusu.sivan.common.Mode;
 import com.icusu.sivan.common.NodeStatus;
 import com.icusu.sivan.common.event.GoalTreeCompleted;
 import com.icusu.sivan.common.event.NodeExecutionFailed;
@@ -101,6 +102,9 @@ public class ForestExecutor {
     /** 每次执行的 SpanContext 根（用于链式追踪）。 */
     private static final ThreadLocal<SpanContext> traceSpanContext = new ThreadLocal<>();
 
+    /** 是否跳过追踪采样（按 mode 分频，12-可观测性 §4.1）。 */
+    private static final ThreadLocal<Boolean> tracingSkipped = new ThreadLocal<>();
+
     /**
      * 目标树执行超时（毫秒）。覆盖 {@link ExecutionContext#timeoutMs()} 的默认值。
      */
@@ -167,20 +171,29 @@ public class ForestExecutor {
         agentMessageBus.set(new AgentMessageBus());
         SpanContext rootSpan = SpanContext.root();
         traceSpanContext.set(rootSpan);
+        // 采样决策：按根节点 mode 分频（12-可观测性 §4.1）
+        boolean sample = shouldSample(root);
+        tracingSkipped.set(!sample);
+        if (!sample) {
+            log.debug("[Trace] 跳过采样: mode={} nodeId={}", root.mode(), root.nodeId());
+        }
         return executeWithContext(root, ctx)
                 .doFinally(s -> {
                     forestIdHolder.remove();
-                    // 导出根 span
-                    String status = s == reactor.core.publisher.SignalType.ON_COMPLETE ? "completed" : "failed";
-                    spanExporter.export(new Span(
-                            rootSpan.traceId(), null, rootSpan.spanId(),
-                            root.nodeId(), root.nodeType(),
-                            rootSpan.startTime(), System.currentTimeMillis() - rootSpan.startTime().toEpochMilli(),
-                            status));
+                    if (sample) {
+                        // 导出根 span
+                        String status = s == reactor.core.publisher.SignalType.ON_COMPLETE ? "completed" : "failed";
+                        spanExporter.export(new Span(
+                                rootSpan.traceId(), null, rootSpan.spanId(),
+                                root.nodeId(), root.nodeType(),
+                                rootSpan.startTime(), System.currentTimeMillis() - rootSpan.startTime().toEpochMilli(),
+                                status));
+                    }
                     deliverySink.remove();
                     agentMessageBus.remove();
                     executionStartMs.remove();
                     traceSpanContext.remove();
+                    tracingSkipped.remove();
                 });
     }
 
@@ -272,9 +285,12 @@ public class ForestExecutor {
                 ForestEvent.EventType.LIFECYCLE, oldStatus, NodeStatus.RUNNING);
         activeSink().emit(running);
 
-        // Trace: 记录节点开始时间
-        Instant nodeStart = Instant.now();
+        // Trace: 创建子 SpanContext，子节点以此 span 为 parent
+        boolean traceEnabled = !Boolean.TRUE.equals(tracingSkipped.get());
         SpanContext parentSpan = traceSpanContext.get();
+        SpanContext nodeSpanCtx = (parentSpan != null) ? parentSpan.child(node.nodeId()) : SpanContext.root();
+        traceSpanContext.set(nodeSpanCtx);
+        Instant nodeStart = Instant.now();
 
         Flux<ForestEvent> result;
         if (node.isLeaf()) {
@@ -301,14 +317,14 @@ public class ForestExecutor {
                             ForestEvent.EventType.LIFECYCLE, NodeStatus.RUNNING, node.status());
                     activeSink().emit(completed);
 
-                    // Trace: 导出节点 Span
-                    Instant nodeEnd = Instant.now();
-                    String traceId = parentSpan != null ? parentSpan.traceId() : node.nodeId();
-                    String parentSpanId = parentSpan != null ? parentSpan.spanId() : null;
-                    Span nodeSpan = Span.finished(traceId, parentSpanId, traceId + "." + node.nodeId(),
-                            node.nodeId(), node.nodeType(),
-                            nodeStart, nodeEnd, finalStatus.name().toLowerCase());
-                    spanExporter.export(nodeSpan);
+                    // Trace: 导出节点 Span（跳过采样时跳过）
+                    if (traceEnabled) {
+                        Instant nodeEnd = Instant.now();
+                        Span nodeSpan = Span.finished(nodeSpanCtx.traceId(), nodeSpanCtx.parentSpanId(), nodeSpanCtx.spanId(),
+                                node.nodeId(), node.nodeType(),
+                                nodeStart, nodeEnd, finalStatus.name().toLowerCase());
+                        spanExporter.export(nodeSpan);
+                    }
 
                     // 路由反馈：更新 Beta 参数 + 写入 embedding（异步，不阻塞）
                     try {
@@ -336,14 +352,14 @@ public class ForestExecutor {
                     "节点执行失败: " + e.getMessage(), NodeStatus.RUNNING, NodeStatus.FAILED);
             activeSink().emit(err);
 
-            // Trace: 导出失败的 Span
-            Instant nodeEnd = Instant.now();
-            String traceId = parentSpan != null ? parentSpan.traceId() : node.nodeId();
-            String parentSpanId = parentSpan != null ? parentSpan.spanId() : null;
-            Span nodeSpan = Span.finished(traceId, parentSpanId, traceId + "." + node.nodeId(),
-                    node.nodeId(), node.nodeType(),
-                    nodeStart, nodeEnd, "failed");
-            spanExporter.export(nodeSpan);
+            // Trace: 导出失败的 Span（跳过采样时跳过）
+            if (traceEnabled) {
+                Instant nodeEnd = Instant.now();
+                Span nodeSpan = Span.finished(nodeSpanCtx.traceId(), nodeSpanCtx.parentSpanId(), nodeSpanCtx.spanId(),
+                        node.nodeId(), node.nodeType(),
+                        nodeStart, nodeEnd, "failed");
+                spanExporter.export(nodeSpan);
+            }
 
             // 路由反馈（失败）
             try {
@@ -362,6 +378,22 @@ public class ForestExecutor {
 
     /** 当前 Forest ID，用于事件关联（可能为 null）。 */
     private String forestId() { return forestIdHolder.get(); }
+
+    /**
+     * 采样决策（12-可观测性 §4.1）。
+     * SUMMARY/CONDITIONAL/CONSENSUS 100%、PARALLEL 10%、SEQUENTIAL/HIERARCHICAL 50%。
+     */
+    private static boolean shouldSample(ExecutableNode root) {
+        if (root == null) return true;
+        Mode m = root.mode();
+        if (m == null) return true;
+        return switch (m) {
+            case CONDITIONAL, CONSENSUS -> true;
+            case PARALLEL -> root.nodeId().hashCode() % 10 == 0;
+            case SEQUENTIAL, HIERARCHICAL -> root.nodeId().hashCode() % 2 == 0;
+            default -> true;
+        };
+    }
 
     // =====================================================================
     // HITL — 已下沉到各 ModeStrategy 实现层 (CheckpointHandler.isHitlRequired)

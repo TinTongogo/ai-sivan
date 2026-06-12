@@ -43,6 +43,19 @@ spring:
   codec:
     max-in-memory-size: 10MB
 
+# Prometheus + Micrometer 可观测性（12-可观测性）
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,prometheus
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    tags:
+      application: ai-sivan
+
 # JWT 配置
 jwt:
   secret: sivan-jwt-secret-key-change-in-production-minimum-256-bits

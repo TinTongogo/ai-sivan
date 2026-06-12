@@ -168,6 +168,15 @@ public class MessageCrudService {
         return toMessageResponse(message);
     }
 
+    /** 全文搜索消息（14-对话管理 §3）。 */
+    public List<MessageResponse> searchMessages(UUID accountId, String keyword, int page, int size) {
+        if (keyword == null || keyword.isBlank()) return List.of();
+        return messageRepository.search(accountId, keyword, page, size)
+                .stream()
+                .map(m -> toMessageResponse(m, null, java.util.Collections.emptyMap()))
+                .toList();
+    }
+
     // ============ 辅助方法 ============
 
     /**

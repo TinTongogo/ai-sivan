@@ -30,6 +30,7 @@ public class ForestConversationController {
 
     private final ForestConversationService forestConversationService;
     private final StreamManager streamManager;
+    private final com.icusu.sivan.web.conversation.service.MessageCrudService messageCrudService;
 
     // ============ 对话 CRUD ============
 
@@ -164,6 +165,34 @@ public class ForestConversationController {
     public BaseResponse<Integer> countMessages(@PathVariable UUID conversationId,
                                                 @CurrentAccountId UUID accountId) {
         return BaseResponse.success(forestConversationService.countMessages(accountId, conversationId));
+    }
+
+    /** 查询对话关联的 GoalTree 列表（14-对话管理 §4）。 */
+    @GetMapping("/{conversationId}/goals")
+    public BaseResponse<List<Map<String, Object>>> getConversationGoals(
+            @PathVariable UUID conversationId,
+            @CurrentAccountId UUID accountId) {
+        List<com.icusu.sivan.domain.forest.Forest> forests =
+                forestConversationService.getForestsByConversation(accountId, conversationId);
+        List<Map<String, Object>> items = forests.stream()
+                .map(f -> Map.<String, Object>of(
+                        "goalId", f.forestId().toString(),
+                        "title", f.title() != null ? f.title() : "",
+                        "rootNodeId", f.rootNodeId(),
+                        "createdAt", f.createdAt() != null ? f.createdAt().toString() : ""
+                ))
+                .toList();
+        return BaseResponse.success(items);
+    }
+
+    /** 全文搜索消息（14-对话管理 §3）。 */
+    @GetMapping("/messages/search")
+    public BaseResponse<List<MessageResponse>> searchMessages(
+            @RequestParam String keyword,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @CurrentAccountId UUID accountId) {
+        return BaseResponse.success(messageCrudService.searchMessages(accountId, keyword, page, size));
     }
 
     /**
