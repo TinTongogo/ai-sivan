@@ -104,11 +104,11 @@ class ConversationServiceTest {
 
         conversationService = new ForestConversationService(conversationRepository, messageRepository,
                 new com.icusu.sivan.infra.shared.sse.StreamManager(),
-                null, null, null, null,
+                null, null, null, null, null, null, null,
                 conversationCrudService, messageCrudService, null, null, null, null, null, null, null, null, null);
     }
 
-    // ============ 对话 CRUD 委托 ============
+    // ============ 对话 CRUD 委托 ===========
 
     @Test
     void create_shouldDelegate() {

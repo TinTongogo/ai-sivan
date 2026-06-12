@@ -44,7 +44,23 @@ public class MessageCrudService {
     public MessageResponse sendMessage(UUID accountId, UUID conversationId, SendMessageRequest request) {
         Conversation conversation = conversationCrudService.findOwned(accountId, conversationId);
 
-        Message message = buildUserMessage(conversationId, accountId, conversation, request);
+        // 解析 replyToId：若引用的是旧版本，重定向到同组最新版本
+        UUID resolvedReplyToId = resolveLatestGeneration(request.getReplyToId());
+
+        Message message = Message.builder()
+                .conversationId(conversationId)
+                .accountId(accountId)
+                .projectId(conversation.getProjectId())
+                .role(Message.ROLE_USER)
+                .content(request.getContent())
+                .contentType(request.getContentType() != null ? request.getContentType() : "text")
+                .targetAgent(request.getTargetAgent())
+                .replyToId(resolvedReplyToId)
+                .status(MessageStatus.COMPLETED)
+                .images(MessageAttachmentsSerializer.serializeImages(request.getImages()))
+                .audios(MessageAttachmentsSerializer.serializeAudios(request.getAudios()))
+                .attachments(MessageAttachmentsSerializer.serializeAttachments(request.getAttachments()))
+                .build();
 
         message = messageRepository.save(message);
 
@@ -52,6 +68,24 @@ public class MessageCrudService {
         conversationRepository.update(conversation);
 
         return toMessageResponse(message);
+    }
+
+    /**
+     * 若 replyToId 指向的消息有 generationGroup，重定向到同组中 generationIndex 最大的最新版本。
+     */
+    public UUID resolveLatestGeneration(UUID replyToId) {
+        if (replyToId == null) return null;
+        return messageRepository.findById(replyToId)
+                .flatMap(target -> {
+                    UUID genGroup = target.getGenerationGroup();
+                    if (genGroup == null) return java.util.Optional.empty();
+                    return messageRepository.findByGenerationGroup(genGroup).stream()
+                            .max(java.util.Comparator.comparingInt(
+                                    m -> m.getGenerationIndex() != null ? m.getGenerationIndex() : 0))
+                            .map(Message::getMessageId)
+                            .filter(latestId -> !latestId.equals(replyToId));
+                })
+                .orElse(replyToId);
     }
 
     /**

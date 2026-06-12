@@ -23,12 +23,13 @@ public class AgentDefinition {
 
     private UUID agentId;
     private UUID accountId;
-    private UUID projectId;
     private String agentName;
     private String displayName;
     private String description;
     private String category;
-    private String systemPrompt;
+    /** 系统提示词。默认空字符串，持久化层有 NOT NULL 约束，写入前必须设值。 */
+    @Builder.Default
+    private String systemPrompt = "";
     private String craftDeclaration;
     private List<String> skillIds;
     private ToolRequirement toolRequirements;
@@ -93,7 +94,7 @@ public class AgentDefinition {
     }
 
     /** 从请求更新字段（仅更新非 null 值），版本号自增。 */
-    public void updateFrom(String displayName, String description, String category, String systemPrompt, String craftDeclaration, List<String> skillIds, ToolRequirement toolRequirements, UUID projectId, AgentStatus status) {
+    public void updateFrom(String displayName, String description, String category, String systemPrompt, String craftDeclaration, List<String> skillIds, ToolRequirement toolRequirements, AgentStatus status) {
         if (displayName != null) this.displayName = displayName;
         if (description != null) this.description = description;
         if (category != null) this.category = category;
@@ -101,7 +102,6 @@ public class AgentDefinition {
         if (craftDeclaration != null) this.craftDeclaration = craftDeclaration;
         if (skillIds != null) this.skillIds = skillIds;
         if (toolRequirements != null) this.toolRequirements = toolRequirements;
-        if (projectId != null) this.projectId = projectId;
         if (status != null) this.status = status;
         incrementVersion();
     }

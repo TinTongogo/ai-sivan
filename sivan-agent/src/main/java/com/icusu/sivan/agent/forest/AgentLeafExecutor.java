@@ -18,10 +18,14 @@ import com.icusu.sivan.infra.forest.entity.ForestAgentMessageEntity;
 import com.icusu.sivan.infra.forest.repository.ForestAgentMessageJpaRepository;
 import com.icusu.sivan.domain.forest.ForestEvent;
 import com.icusu.sivan.domain.forest.context.ExecutionContext;
+import com.icusu.sivan.infra.prompt.PromptAssembler;
 import com.icusu.sivan.domain.forest.service.AgentMessage;
 import com.icusu.sivan.domain.forest.service.AgentMessageBus;
 import com.icusu.sivan.domain.forest.service.EventSink;
 import com.icusu.sivan.domain.forest.service.LeafExecutor;
+import com.icusu.sivan.agent.routing.ForestNodeAdapter;
+import com.icusu.sivan.agent.routing.ToolRouter;
+import com.icusu.sivan.domain.forest.context.ExecutionContext;
 import com.icusu.sivan.domain.forest.tree.ContentNode;
 import com.icusu.sivan.domain.forest.tree.TreeNode;
 import com.icusu.sivan.infra.forest.execution.ForestExecutor;
@@ -56,22 +60,28 @@ public class AgentLeafExecutor implements LeafExecutor {
 
     private final DefaultModelRouter modelRouter;
     private final ToolRegistry toolRegistry;
+    private final ToolRouter toolRouter;
     private final IToolUsageRepository toolUsageRepository;
     private final ForestAgentMessageJpaRepository a2aMessageRepository;
     private final IAgentRepository agentRepository;
     private final ISkillRepository skillRepository;
+    private final PromptAssembler promptAssembler;
 
     public AgentLeafExecutor(DefaultModelRouter modelRouter, ToolRegistry toolRegistry,
+                             ToolRouter toolRouter,
                              IToolUsageRepository toolUsageRepository,
                              ForestAgentMessageJpaRepository a2aMessageRepository,
                              IAgentRepository agentRepository,
-                             ISkillRepository skillRepository) {
+                             ISkillRepository skillRepository,
+                             PromptAssembler promptAssembler) {
         this.modelRouter = modelRouter;
         this.toolRegistry = toolRegistry;
+        this.toolRouter = toolRouter;
         this.toolUsageRepository = toolUsageRepository;
         this.a2aMessageRepository = a2aMessageRepository;
         this.agentRepository = agentRepository;
         this.skillRepository = skillRepository;
+        this.promptAssembler = promptAssembler;
     }
 
     @Override
@@ -93,20 +103,41 @@ public class AgentLeafExecutor implements LeafExecutor {
                     "获取模型失败: " + e.getMessage()));
         }
 
-        // 获取工具列表：优先使用元数据中指定的
+        // 获取工具列表：优先使用 ToolRouter 按叶子类型路由，其次使用元数据中指定的
         List<ToolSpec> tools;
         if (node instanceof ContentNode cn) {
-            Object raw = cn.metadata().get("preferredToolSpecs");
-            if (raw instanceof List<?> list && !list.isEmpty()) {
-                tools = list.stream()
-                        .filter(ToolSpec.class::isInstance)
-                        .map(ToolSpec.class::cast)
-                        .toList();
-            } else {
-                tools = toolRegistry.allSpecs();
+            // 构建 ForestNodeAdapter 供 ToolRouter 使用
+            String nodeType = supportedType();
+            String agentName = (String) cn.metadata().get("agentName");
+            String serverId = (String) cn.metadata().get("serverId");
+            UUID acctId = resolveAccountId(node);
+            Map<String, String> meta = new HashMap<>();
+            for (var entry : cn.metadata().entrySet()) {
+                if (entry.getValue() instanceof String s) {
+                    meta.put(entry.getKey(), s);
+                }
+            }
+            ForestNodeAdapter adapter = ForestNodeAdapter.from(
+                    node.nodeId(), nodeType, agentName, serverId, acctId, meta);
+
+            // 通过 ToolRouter 按策略路由
+            ExecutionContext execCtx = ctx;
+            tools = toolRouter.resolve(adapter, taskContent, execCtx);
+
+            // 如果路由结果为空，降级到元数据中指定的工具
+            if (tools.isEmpty()) {
+                Object raw = cn.metadata().get("preferredToolSpecs");
+                if (raw instanceof List<?> list && !list.isEmpty()) {
+                    tools = list.stream()
+                            .filter(ToolSpec.class::isInstance)
+                            .map(ToolSpec.class::cast)
+                            .toList();
+                }
             }
         } else {
-            tools = toolRegistry.allSpecs();
+            tools = toolRouter.resolve(
+                    ForestNodeAdapter.from(node.nodeId(), supportedType(), null, null, null, Map.of()),
+                    taskContent, ctx);
         }
 
         // 注册 A2A 通信工具（始终可用，去重）
@@ -151,6 +182,10 @@ public class AgentLeafExecutor implements LeafExecutor {
                 })
                 .onErrorResume(e -> {
                     log.error("[Agent] 执行异常: {}", e.getMessage(), e);
+                    // 标记节点为 FAILED，避免 ForestExecutor 自动改为 COMPLETED
+                    if (node instanceof com.icusu.sivan.domain.forest.tree.ExecutableNode en) {
+                        en.setStatus(com.icusu.sivan.common.NodeStatus.FAILED);
+                    }
                     return Flux.just(ForestEvent.error(node.nodeId(), null, accountId.toString(),
                             "执行异常: " + e.getMessage()));
                 });
@@ -282,6 +317,13 @@ public class AgentLeafExecutor implements LeafExecutor {
                     }
                     sb.append(
                         "\n\n你可以使用 send_agent_message 工具与同一任务中的其他 Agent 协作。");
+                    // 记录使用次数
+                    try {
+                        agent.recordUsage();
+                        agentRepository.save(agent);
+                    } catch (Exception e) {
+                        log.warn("[Agent] 记录使用统计失败: name={} error={}", agentName, e.getMessage());
+                    }
                     log.info("[Agent] 使用 Agent 定义: name={} skillCount={}",
                             agentName, agent.getSkillIds() != null ? agent.getSkillIds().size() : 0);
                     return sb.toString();
@@ -424,8 +466,12 @@ public class AgentLeafExecutor implements LeafExecutor {
                             contents.add(new Content.Text(textAcc.toString()));
                         }
                         for (ToolCallAcc acc : toolAccs.values()) {
+                            if (acc.id == null || acc.id.isBlank()) {
+                                log.warn("[Agent] 跳过 ID 为空 tool call: name={}", acc.name);
+                                continue;
+                            }
                             contents.add(new Content.ToolCall(
-                                    acc.id != null ? acc.id : "",
+                                    acc.id,
                                     acc.name != null ? acc.name : "",
                                     parseToolArgs(acc.args.toString())));
                         }
@@ -485,15 +531,21 @@ public class AgentLeafExecutor implements LeafExecutor {
                                     truncateStr(content, 50));
                         }
 
-                        // 注入本轮收到的 A2A 消息
-                        injectPendingA2AMessages(newMessages, pendingMessages);
-
                         if (!otherCalls.isEmpty()) {
+                            // 有工具调用时，A2A 消息注入延后到 handleToolCalls 内
+                            // 在 tool results 之后注入，避免破坏 tool_calls → tool_result 的相邻约束
                             return handleToolCalls(model, newMessages, tools, node, accountId, round, otherCalls,
                                     pendingMessages, bus, agentId, convId, forestId);
                         }
-                        // 仅 A2A 消息，无其他工具 → 继续下一轮
-                        return reactLoop(model, newMessages, tools, node, accountId, round + 1,
+                        // 仅 A2A 消息：添加 tool results 后再继续，满足 tool_calls → tool_result 约束
+                        List<Msg> messagesWithA2AResults = new ArrayList<>(newMessages);
+                        for (Content.ToolCall a2aCall : a2aCalls) {
+                            messagesWithA2AResults.add(Msg.of(Role.TOOL,
+                                    List.of(new Content.ToolResult(a2aCall.id(), true,
+                                            "A2A 消息已发送"))));
+                        }
+                        injectPendingA2AMessages(messagesWithA2AResults, pendingMessages);
+                        return reactLoop(model, messagesWithA2AResults, tools, node, accountId, round + 1,
                                 pendingMessages, bus, agentId, convId, forestId);
                     }));
         });
@@ -513,7 +565,7 @@ public class AgentLeafExecutor implements LeafExecutor {
                         json("name", tc.name(), "args", toJsonString(tc.args()), "id", tc.id())));
 
         List<Mono<ToolCallResult>> monos = toolCalls.stream()
-                .map(tc -> executeSingleTool(tc, accountId, node, convId))
+                .map(tc -> executeSingleTool(tc, accountId, node, convId).cache())
                 .toList();
 
         Flux<ForestEvent> resultEvents = Flux.mergeSequential(monos)
@@ -559,7 +611,11 @@ public class AgentLeafExecutor implements LeafExecutor {
             }
             enhancedTc = new Content.ToolCall(tc.id(), tcName, mergedArgs);
         }
-        Map<String, Object> attrs = Map.of("_accountId", acctId.toString());
+        Map<String, Object> attrs = new java.util.HashMap<>(Map.of("_accountId", acctId.toString()));
+        if (toolNode instanceof ContentNode cn) {
+            Object kbNames = cn.metadata().get("_kbNames");
+            if (kbNames instanceof String s && !s.isEmpty()) attrs.put("_kbNames", s);
+        }
         var toolCtx = com.icusu.sivan.core.context.ExecutionContext.create(null, List.of(), attrs);
         return executor.execute(enhancedTc, toolCtx)
                 .map(r -> new ToolCallResult(tc.id(), tc.name(), r.success(),

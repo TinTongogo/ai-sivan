@@ -42,6 +42,23 @@ public class StreamManager {
 
     private final Map<UUID, ActiveStream> streams = new ConcurrentHashMap<>();
 
+    /** Flashback 广播通道（独立于消息流，供前端订阅闪现推送）。 */
+    private final Sinks.Many<String> flashbackSink = Sinks.many().multicast().onBackpressureBuffer();
+
+    /**
+     * 订阅 Flashback 推送。
+     */
+    public Flux<String> subscribeFlashback() {
+        return flashbackSink.asFlux();
+    }
+
+    /**
+     * 推送 Flashback 事件到前端。
+     */
+    public void emitFlashback(UUID accountId, String jsonEvent) {
+        flashbackSink.tryEmitNext(jsonEvent);
+    }
+
     /**
      * 为指定消息创建流，返回 Sink 供生产者写入。
      * 同一 msgId 重复调用返回已存在的 Sink，避免异步场景下 sink 被覆盖导致事件丢失。

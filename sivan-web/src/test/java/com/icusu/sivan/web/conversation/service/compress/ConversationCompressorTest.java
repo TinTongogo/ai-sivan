@@ -1,5 +1,6 @@
 package com.icusu.sivan.web.conversation.service.compress;
 
+import com.icusu.sivan.domain.compression.MessageImportanceScorer;
 import com.icusu.sivan.domain.conversation.CompressResult;
 import com.icusu.sivan.domain.conversation.IMessageRepository;
 import com.icusu.sivan.domain.conversation.Message;
@@ -26,7 +27,7 @@ class ConversationCompressorTest {
 
     @BeforeEach
     void setUp() {
-        compressor = new ConversationCompressor(messageRepository);
+        compressor = new ConversationCompressor(messageRepository, new MessageImportanceScorer());
     }
 
     // ── selectLevel ──

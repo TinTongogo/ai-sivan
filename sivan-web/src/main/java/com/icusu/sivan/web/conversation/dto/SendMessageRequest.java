@@ -37,4 +37,5 @@ public class SendMessageRequest {
 
     /** 流式输出（默认开启） */
     private boolean stream = true;
+
 }

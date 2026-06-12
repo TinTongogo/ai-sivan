@@ -5,6 +5,7 @@ import com.icusu.sivan.web.tool.dto.CreateMcpServerRequest;
 import com.icusu.sivan.web.tool.dto.McpConnectionRequest;
 import com.icusu.sivan.web.tool.dto.UpdateMcpServerRequest;
 import com.icusu.sivan.web.tool.dto.McpServerResponse;
+import com.icusu.sivan.domain.tool.PreflightResult;
 import com.icusu.sivan.web.tool.dto.McpTestResult;
 import com.icusu.sivan.web.tool.service.McpServerConfigService;
 import jakarta.validation.Valid;
@@ -30,7 +31,7 @@ import java.util.UUID;
  * MCP 服务器配置管理控制器。
  */
 @RestController
-@RequestMapping("/api/mcp-servers")
+@RequestMapping("/api/v2/mcp-servers")
 @RequiredArgsConstructor
 public class McpServerConfigController {
 
@@ -77,6 +78,38 @@ public class McpServerConfigController {
     @PostMapping("/test")
     public Mono<BaseResponse<McpTestResult>> testConnection(@Valid @RequestBody McpConnectionRequest request) {
         return Mono.fromCallable(() -> BaseResponse.success(mcpServerConfigService.testConnection(request)))
+                .subscribeOn(Schedulers.boundedElastic());
+    }
+
+    // =====================================================================
+    // 以下为 07-工具动态感知 §5.2 新增 API
+    // =====================================================================
+
+    /** 手动连接 MCP 服务器。 */
+    @PostMapping("/{serverId}/connect")
+    public Mono<BaseResponse<McpServerResponse>> connect(@PathVariable UUID serverId, @CurrentAccountId UUID accountId) {
+        return Mono.fromCallable(() -> BaseResponse.success(mcpServerConfigService.connect(accountId, serverId)))
+                .subscribeOn(Schedulers.boundedElastic());
+    }
+
+    /** 手动断开 MCP 服务器。 */
+    @PostMapping("/{serverId}/disconnect")
+    public Mono<BaseResponse<McpServerResponse>> disconnect(@PathVariable UUID serverId, @CurrentAccountId UUID accountId) {
+        return Mono.fromCallable(() -> BaseResponse.success(mcpServerConfigService.disconnect(accountId, serverId)))
+                .subscribeOn(Schedulers.boundedElastic());
+    }
+
+    /** 查看 MCP 服务器提供的工具列表。 */
+    @GetMapping("/{serverId}/tools")
+    public Mono<BaseResponse<List<McpTestResult.ToolInfo>>> listTools(@PathVariable UUID serverId, @CurrentAccountId UUID accountId) {
+        return Mono.fromCallable(() -> BaseResponse.success(mcpServerConfigService.listTools(accountId, serverId)))
+                .subscribeOn(Schedulers.boundedElastic());
+    }
+
+    /** 运行 MCP 服务器预检检查。 */
+    @PostMapping("/{serverId}/preflight")
+    public Mono<BaseResponse<List<PreflightResult>>> preflight(@PathVariable UUID serverId, @CurrentAccountId UUID accountId) {
+        return Mono.fromCallable(() -> BaseResponse.success(mcpServerConfigService.preflight(accountId, serverId)))
                 .subscribeOn(Schedulers.boundedElastic());
     }
 }

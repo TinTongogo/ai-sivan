@@ -8,7 +8,7 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 /**
- * MCP 服务器响应 DTO。
+ * MCP 服务器响应 DTO（07-工具动态感知 §5.1）。
  */
 @Data
 @Builder
@@ -21,6 +21,10 @@ public class McpServerResponse {
     private String apiKey;
     private String transport;
     private Boolean active;
+    private String connectionStatus;
+    private String lastError;
+    private LocalDateTime lastConnectedAt;
+    private Integer toolCount;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

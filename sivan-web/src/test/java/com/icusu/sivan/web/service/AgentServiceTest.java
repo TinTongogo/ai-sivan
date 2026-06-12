@@ -114,33 +114,18 @@ class AgentServiceTest {
     }
 
     /**
-     * 未指定项目时应返回所有智能体。
+     * 列出账号下所有智能体。
      */
     @Test
-    void list_shouldReturnAllWhenNoProject() {
+    void list_shouldReturnAllForAccount() {
         AgentDefinition a1 = AgentDefinition.builder()
                 .agentId(UUID.randomUUID()).accountId(accountId).agentName("A1").build();
         when(agentRepository.findAllByAccount(accountId)).thenReturn(List.of(a1));
 
-        List<AgentResponse> list = agentService.list(accountId, null);
+        List<AgentResponse> list = agentService.list(accountId);
 
         assertEquals(1, list.size());
         verify(agentRepository).findAllByAccount(accountId);
-    }
-
-    /**
-     * 指定项目时应按项目过滤智能体。
-     */
-    @Test
-    void list_shouldFilterByProject() {
-        UUID projectId = UUID.randomUUID();
-        when(agentRepository.findAllByAccountAndProject(accountId, projectId))
-                .thenReturn(List.of());
-
-        List<AgentResponse> list = agentService.list(accountId, projectId);
-
-        assertTrue(list.isEmpty());
-        verify(agentRepository).findAllByAccountAndProject(accountId, projectId);
     }
 
     /**

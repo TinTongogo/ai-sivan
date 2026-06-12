@@ -70,8 +70,12 @@ export function useChatStream(deps: {
     if (currentConversationId.value) {
       const runningAsst = store.messages.value.find(m => m.role === 'assistant' && m.status === 'RUNNING')
       if (runningAsst?.messageId) {
-        runningAsst.status = 'FAILED'
-        if (!runningAsst.content) runningAsst.content = t('cancelSend')
+        runningAsst.status = 'CANCELLED'
+        if (runningAsst.content) {
+          runningAsst.content += '\n\n*' + t('cancelSend') + '*'
+        } else {
+          runningAsst.content = t('cancelSend')
+        }
         const cid = currentConversationId.value
         api.post(`/v2/conversations/${cid}/stream/${runningAsst.messageId}/cancel`)
           .catch((err: any) => console.warn('取消请求失败(不影响 SSE 断开):', err))
@@ -193,7 +197,6 @@ export function useChatStream(deps: {
     const text = payload?.content ?? inputText.value.trim()
     const hasAttachments = !!((payload as any)?.attachments?.length || payload?.images?.length)
     if (!text && !hasAttachments) return
-    if (streaming.value) return
 
     if (!currentConversationId.value) {
       try {
@@ -359,7 +362,6 @@ export function useChatStream(deps: {
   async function handleRegenerate(index: number) {
     const oldMsg = store.messages.value[index]
     if (!oldMsg.messageId) return
-    if (streaming.value) return
 
     const newGenIndex = (oldMsg.generationIndex || 1) + 1
     const startTime = Date.now()

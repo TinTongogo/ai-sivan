@@ -15,13 +15,28 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * 四策略路由引擎（全响应式，零阻塞）。
+ * Agent 路由引擎 — 为任务匹配合适的智能体。
+ * <p>
+ * 流程：
+ * <ol>
+ *   <li>查询账户下所有已注册 Agent（用户通过智能体管理页面创建）</li>
+ *   <li>无 Agent → 自动创建"通用助手"作为兜底，后续用户可在管理页面添加更多角色</li>
+ *   <li>单个 Agent → 直接使用</li>
+ *   <li>多个 Agent → 多策略评分融合，选置信度最高的 Agent</li>
+ *   <li>置信度不足 → 回退到"通用助手"</li>
+ * </ol>
+ * <p>
+ * Agent 的创建和管理通过智能体管理页面（AgentController）完成，
+ * 创建时使用 {@link com.icusu.sivan.agent.prompt.AgentPrompts#AGENT_CREATE_SYSTEM} 等提示词
+ * 生成可复用的角色配置（不包含具体任务内容）。
  */
 @Slf4j
 @Component
 public class RoutingEngine {
 
     private static final double CONFIDENCE_THRESHOLD = 0.65;
+    private static final String FALLBACK_AGENT_NAME = "通用助手";
+
     private final List<RoutingStrategy> strategies;
     private final IAgentRepository agentRepository;
     private final RoutingDecisionRecorder routingDecisionRecorder;
@@ -39,8 +54,8 @@ public class RoutingEngine {
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMap(agents -> {
                     if (agents.isEmpty()) {
-                        log.warn("无可用的 Agent，accountId={}", accountId);
-                        return Mono.empty();
+                        // 无 Agent → 创建通用助手兜底
+                        return Mono.fromCallable(() -> ensureFallbackAgent(accountId));
                     }
                     if (agents.size() == 1) {
                         AgentDefinition solo = agents.getFirst();
@@ -68,6 +83,30 @@ public class RoutingEngine {
                 });
     }
 
+    /**
+     * 确保账户有兜底 Agent。如无任何 Agent，创建"通用助手"。
+     * @return Agent 名称
+     */
+    private String ensureFallbackAgent(UUID accountId) {
+        List<AgentDefinition> existing = agentRepository.findAllByAccount(accountId);
+        if (!existing.isEmpty()) {
+            return existing.getFirst().getAgentName();
+        }
+        AgentDefinition fallback = AgentDefinition.builder()
+                .accountId(accountId)
+                .agentName(FALLBACK_AGENT_NAME)
+                .displayName(FALLBACK_AGENT_NAME)
+                .description("可处理各类通用任务，无特定领域限制")
+                .category("general")
+                .systemPrompt("你是一位通用的智能助手，擅长理解用户意图并完成各类任务。")
+                .createdBy("system")
+                .build();
+        fallback.activate();
+        agentRepository.save(fallback);
+        log.info("已创建兜底 Agent: accountId={}", accountId.toString().substring(0, 8));
+        return FALLBACK_AGENT_NAME;
+    }
+
     private String selectBest(List<RoutingResult> results, String taskDescription, UUID accountId,
                                UUID conversationId, int agentCount) {
         RoutingResult bestResult = null;
@@ -81,19 +120,13 @@ public class RoutingEngine {
             if (bestResult == null || result.getConfidence() > bestResult.getConfidence()) {
                 bestResult = result;
             }
-            log.debug("策略 {} 结果: agent={}, confidence={}", result.getStrategyName(), result.getSelectedAgent(), result.getConfidence());
         }
         String lastError = errors.isEmpty() ? null : String.join("; ", errors);
 
         if (bestResult == null || bestResult.getConfidence() < CONFIDENCE_THRESHOLD) {
-            log.info("策略融合置信度不足 ({}), 触发自动创建",
+            log.info("策略融合置信度不足 ({}), 回退到通用助手",
                     bestResult != null ? bestResult.getConfidence() : 0);
-            routingDecisionRecorder.record(new RoutingDecisionRecorder.RecordRequest(
-                    accountId, null, conversationId, taskDescription,
-                    "fallback", "AUTO_CREATE", false,
-                    "全策略置信度不足，触发自动创建", 0.0, lastError,
-                    buildContext(taskDescription, accountId, agentCount, "fallback", null, lastError)));
-            return null;
+            return ensureFallbackAgent(accountId);
         }
 
         routingDecisionRecorder.record(new RoutingDecisionRecorder.RecordRequest(

@@ -717,4 +717,25 @@ public class KnowledgeBaseService {
                 .metadata(result.getMetadata())
                 .build();
     }
+
+    /**
+     * 重建当前账户下所有知识库的向量索引。
+     * 在 Embedding/Reranker 配置变更后必须调用，使新配置生效。
+     */
+    @Transactional
+    public void rebuildAllIndexes(UUID accountId) {
+        List<KnowledgeBase> allKbs = knowledgeBaseRepository.findAllByAccount(accountId);
+        if (allKbs.isEmpty()) {
+            log.info("无可重建的知识库（accountId={}）", accountId);
+            return;
+        }
+        for (KnowledgeBase kb : allKbs) {
+            try {
+                rebuildIndex(accountId, kb.getKbName());
+                log.info("知识库索引重建完成: kbName={}", kb.getKbName());
+            } catch (Exception e) {
+                log.error("知识库索引重建失败: kbName={}, error={}", kb.getKbName(), e.getMessage());
+            }
+        }
+    }
 }

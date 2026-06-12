@@ -1,6 +1,9 @@
 package com.icusu.sivan.domain.forest;
 
+import com.icusu.sivan.common.NodeStatus;
+
 import java.time.Instant;
+import java.util.Map;
 
 /**
  * 森林事件族 — 跨上下文的不可变值对象。
@@ -16,14 +19,27 @@ public final class ForestEvent {
     private final EventType type;
     private final String message;
     private final Instant occurredAt;
+    private final String statusBefore;
+    private final String statusAfter;
+    private final Map<String, Object> metadata;
 
     public ForestEvent(String nodeId, String forestId, String accountId,
                        EventType type, String message) {
+        this(nodeId, forestId, accountId, type, message, null, null, null);
+    }
+
+    public ForestEvent(String nodeId, String forestId, String accountId,
+                       EventType type, String message,
+                       NodeStatus statusBefore, NodeStatus statusAfter,
+                       Map<String, Object> metadata) {
         this.nodeId = nodeId;
         this.forestId = forestId;
         this.accountId = accountId;
         this.type = type;
         this.message = message;
+        this.statusBefore = statusBefore != null ? statusBefore.name() : null;
+        this.statusAfter = statusAfter != null ? statusAfter.name() : null;
+        this.metadata = metadata;
         this.occurredAt = Instant.now();
     }
 
@@ -37,17 +53,49 @@ public final class ForestEvent {
     public EventType getType() { return type; }
     public String message() { return message; }
     public String getMessage() { return message; }
+    public String statusBefore() { return statusBefore; }
+    public String getStatusBefore() { return statusBefore; }
+    public String statusAfter() { return statusAfter; }
+    public String getStatusAfter() { return statusAfter; }
+    public Map<String, Object> metadata() { return metadata; }
+    public Map<String, Object> getMetadata() { return metadata; }
     public Instant occurredAt() { return occurredAt; }
     public Instant getOccurredAt() { return occurredAt; }
 
     // ===== 工厂方法 =====
 
+    /** 创建生命周期事件（不含状态变更）。 */
     public static ForestEvent lifecycle(String nodeId, String forestId, String accountId, EventType eventType) {
         return new ForestEvent(nodeId, forestId, accountId, eventType, eventType.name());
     }
 
+    /** 创建生命周期事件（携带节点状态变更）。 */
+    public static ForestEvent lifecycleWithStatus(
+            String nodeId, String forestId, String accountId,
+            EventType eventType, NodeStatus statusBefore, NodeStatus statusAfter) {
+        return new ForestEvent(nodeId, forestId, accountId, eventType, eventType.name(),
+                statusBefore, statusAfter, null);
+    }
+
+    /** 创建生命周期事件（携带节点状态变更 + 元数据）。 */
+    public static ForestEvent lifecycleWithStatusAndMeta(
+            String nodeId, String forestId, String accountId,
+            EventType eventType, NodeStatus statusBefore, NodeStatus statusAfter,
+            Map<String, Object> metadata) {
+        return new ForestEvent(nodeId, forestId, accountId, eventType, eventType.name(),
+                statusBefore, statusAfter, metadata);
+    }
+
     public static ForestEvent error(String nodeId, String forestId, String accountId, String message) {
         return new ForestEvent(nodeId, forestId, accountId, EventType.ERROR, message);
+    }
+
+    /** 创建错误事件（携带节点状态变更）。 */
+    public static ForestEvent errorWithStatus(
+            String nodeId, String forestId, String accountId, String message,
+            NodeStatus statusBefore, NodeStatus statusAfter) {
+        return new ForestEvent(nodeId, forestId, accountId, EventType.ERROR, message,
+                statusBefore, statusAfter, null);
     }
 
     public static ForestEvent detail(String nodeId, String forestId, String accountId, String message) {

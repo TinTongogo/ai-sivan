@@ -288,7 +288,7 @@ function handleSend() {
   const raw = props.modelValue.trim()
   const hasAttachments = selectedAttachments.value.length > 0
   if (!raw && !hasAttachments) return
-  if (props.streaming) return
+  // 允许 streaming 时继续发送新消息（并发任务），不阻断
 
   // check pending uploads
   if (selectedAttachments.value.some(a => !a.fileId)) {

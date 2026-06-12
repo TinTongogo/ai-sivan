@@ -124,6 +124,7 @@ public class BashService {
             DANGEROUS_OBFUSCATION);
 
 
+    @SafeVarargs
     private static Pattern[] mergePatterns(List<Pattern>... groups) {
         int total = 0;
         for (var g : groups) total += g.size();

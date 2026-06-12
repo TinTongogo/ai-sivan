@@ -20,6 +20,9 @@ public interface ForestRepository {
 
     void saveForest(Forest forest, UUID accountId);
 
+    /** 按账号查询所有森林执行记录（按创建时间倒序）。 */
+    List<Forest> listByAccountId(UUID accountId);
+
     /** 按对话 ID 查询关联的森林执行记录（按时间倒序）。 */
     List<Forest> findByConversationId(UUID conversationId, UUID accountId);
 
@@ -42,4 +45,8 @@ public interface ForestRepository {
     void saveTree(TreeNode root, UUID forestId, UUID accountId);
 
     void updateNodeStatus(String nodeId, NodeStatus status, UUID accountId);
+
+    /** 更新节点状态 + 执行详情（耗时、token）。 */
+    void updateNodeDetails(String nodeId, NodeStatus status, UUID accountId,
+                           Integer durationMs, Integer totalTokens);
 }

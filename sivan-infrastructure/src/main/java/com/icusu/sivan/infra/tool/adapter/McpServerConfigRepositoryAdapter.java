@@ -91,6 +91,10 @@ public class McpServerConfigRepositoryAdapter implements IMcpServerConfigReposit
                 .apiKey(apiKeyEncryptor.decrypt(entity.getApiKey()))
                 .transport(entity.getTransport())
                 .active(entity.getActive())
+                .connectionStatus(entity.getConnectionStatus())
+                .lastError(entity.getLastError())
+                .lastConnectedAt(entity.getLastConnectedAt())
+                .toolCount(entity.getToolCount())
                 .createdAt(entity.getCreatedAt() != null ? entity.getCreatedAt().toLocalDateTime() : null)
                 .updatedAt(entity.getUpdatedAt() != null ? entity.getUpdatedAt().toLocalDateTime() : null)
                 .build();
@@ -108,6 +112,10 @@ public class McpServerConfigRepositoryAdapter implements IMcpServerConfigReposit
         entity.setApiKey(apiKeyEncryptor.encrypt(config.getApiKey()));
         entity.setTransport(config.getTransport() != null ? config.getTransport() : "sse");
         entity.setActive(config.getActive() != null ? config.getActive() : true);
+        entity.setConnectionStatus(config.getConnectionStatus());
+        entity.setLastError(config.getLastError());
+        entity.setLastConnectedAt(config.getLastConnectedAt());
+        entity.setToolCount(config.getToolCount());
         return entity;
     }
 }

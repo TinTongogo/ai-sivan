@@ -33,7 +33,6 @@ const emit = defineEmits<{
   delete: []
   'update:thinkingOpen': [value: boolean]
   showPipeline: []
-  showRoutingDecision: [routingDecisionId: string]
 }>()
 
 const _internalThinkingOpen = ref(false)
@@ -325,7 +324,6 @@ function formatFileSize(bytes: number): string {
 
       <!-- 底部元信息（仅 AI） -->
       <div v-if="message.role === 'assistant' && (meta?.duration || meta?.tokens != null || meta?.model || message.messageId)" class="bubble__meta">
-        <span v-if="message.chain && message.chain.includes('-')" class="meta__item meta__routing-btn" @click.stop="emit('showRoutingDecision', message.chain)">{{ t('routingDecision') }}</span>
         <span v-if="message.messageId" class="meta__item meta__pipeline-btn" @click.stop="emit('showPipeline')">{{ t('viewPipeline') }}</span>
         <span v-if="meta?.duration" class="meta__item">{{ meta.duration }}</span>
         <span v-if="meta?.tokens != null" class="meta__item">{{ meta.tokens.toLocaleString() }} tokens</span>
@@ -789,13 +787,6 @@ function formatFileSize(bytes: number): string {
 }
 .meta__pipeline-btn:hover {
   opacity: 0.75;
-}
-.meta__routing-btn {
-  color: var(--clr-accent);
-  font-weight: var(--fw-medium);
-  font-size: var(--fs-caption);
-  cursor: pointer;
-  transition: opacity 0.15s;
 }
 .meta__routing-btn:hover {
   opacity: 0.75;

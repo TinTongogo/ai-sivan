@@ -32,7 +32,6 @@ public class AgentService {
 
         AgentDefinition config = AgentDefinition.builder()
                 .accountId(accountId)
-                .projectId(request.getProjectId())
                 .agentName(request.getAgentName())
                 .displayName(request.getDisplayName())
                 .description(request.getDescription())
@@ -44,6 +43,7 @@ public class AgentService {
                 .agentType(AgentType.USER)
                 .status(AgentStatus.ACTIVE)
                 .version(1)
+                .createdBy(accountId.toString())
                 .build();
 
         agentRepository.save(config);
@@ -57,11 +57,9 @@ public class AgentService {
     }
 
     /** 查询智能体列表。 */
-    public List<AgentResponse> list(UUID accountId, UUID projectId) {
-        List<AgentDefinition> agents = projectId != null
-                ? agentRepository.findAllByAccountAndProject(accountId, projectId)
-                : agentRepository.findAllByAccount(accountId);
-        return agents.stream().map(this::toResponse).toList();
+    public List<AgentResponse> list(UUID accountId) {
+        return agentRepository.findAllByAccount(accountId).stream()
+                .map(this::toResponse).toList();
     }
 
     /** 更新智能体配置。 */
@@ -70,7 +68,6 @@ public class AgentService {
         config.updateFrom(request.getDisplayName(), request.getDescription(), request.getCategory(),
                 request.getSystemPrompt(), request.getCraftDeclaration(), request.getSkillIds(),
                 request.getToolRequirements(),
-                request.getProjectId(),
                 request.getStatus() != null ? AgentStatus.valueOf(request.getStatus()) : null);
         agentRepository.save(config);
         return toResponse(config);

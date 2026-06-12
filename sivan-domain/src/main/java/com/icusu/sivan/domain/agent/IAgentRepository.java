@@ -21,19 +21,9 @@ public interface IAgentRepository {
     Optional<AgentDefinition> findByAccountAndName(UUID accountId, String agentName);
 
     /**
-     * 根据账号、项目和名称查找智能体。
-     */
-    Optional<AgentDefinition> findByAccountAndProjectAndName(UUID accountId, UUID projectId, String agentName);
-
-    /**
      * 获取指定用户的所有智能体。
      */
     List<AgentDefinition> findAllByAccount(UUID accountId);
-
-    /**
-     * 获取指定用户和项目的智能体列表。
-     */
-    List<AgentDefinition> findAllByAccountAndProject(UUID accountId, UUID projectId);
 
     /**
      * 保存智能体（新建或更新）。

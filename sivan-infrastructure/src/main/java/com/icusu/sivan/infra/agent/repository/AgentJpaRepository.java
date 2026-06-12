@@ -16,11 +16,7 @@ public interface AgentJpaRepository extends JpaRepository<AgentEntity, UUID> {
 
     Optional<AgentEntity> findByAccountIdAndAgentName(UUID accountId, String agentName);
 
-    Optional<AgentEntity> findByAccountIdAndProjectIdAndAgentName(UUID accountId, UUID projectId, String agentName);
-
     List<AgentEntity> findByAccountId(UUID accountId);
-
-    List<AgentEntity> findByAccountIdAndProjectId(UUID accountId, UUID projectId);
 
     boolean existsByAccountIdAndAgentNameAndAgentIdNot(UUID accountId, String agentName, UUID excludeId);
 

@@ -31,15 +31,13 @@ public class AgentEntity extends BaseEntity {
     @Column(name = "account_id", nullable = false)
     private UUID accountId;
 
-    @Column(name = "project_id")
-    private UUID projectId;
-
     @Column(name = "agent_name", nullable = false, length = 64)
     private String agentName;
 
     @Column(name = "display_name", nullable = false, length = 128)
     private String displayName;
 
+    /** 智能体简介（用于渐进式披露匹配），由 LLM 或用户提供。 */
     @Column(columnDefinition = "TEXT")
     private String description;
 

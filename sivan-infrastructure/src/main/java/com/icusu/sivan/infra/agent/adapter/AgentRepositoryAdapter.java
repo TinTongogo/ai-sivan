@@ -46,29 +46,11 @@ public class AgentRepositoryAdapter implements IAgentRepository {
     }
 
     /**
-     * 根据账号、项目和名称查询智能体。
-     */
-    @Override
-    public Optional<AgentDefinition> findByAccountAndProjectAndName(UUID accountId, UUID projectId, String agentName) {
-        return jpaRepository.findByAccountIdAndProjectIdAndAgentName(accountId, projectId, agentName)
-                .map(this::toDomain);
-    }
-
-    /**
      * 查询账号下所有智能体。
      */
     @Override
     public List<AgentDefinition> findAllByAccount(UUID accountId) {
         return jpaRepository.findByAccountId(accountId).stream().map(this::toDomain).toList();
-    }
-
-    /**
-     * 查询账号下指定项目中的智能体。
-     */
-    @Override
-    public List<AgentDefinition> findAllByAccountAndProject(UUID accountId, UUID projectId) {
-        return jpaRepository.findByAccountIdAndProjectId(accountId, projectId).stream()
-                .map(this::toDomain).toList();
     }
 
     /**
@@ -149,7 +131,6 @@ public class AgentRepositoryAdapter implements IAgentRepository {
         return AgentDefinition.builder()
                 .agentId(entity.getAgentId())
                 .accountId(entity.getAccountId())
-                .projectId(entity.getProjectId())
                 .agentName(entity.getAgentName())
                 .displayName(entity.getDisplayName())
                 .description(entity.getDescription())
@@ -176,7 +157,6 @@ public class AgentRepositoryAdapter implements IAgentRepository {
         AgentEntity entity = new AgentEntity();
         entity.setAgentId(config.getAgentId());
         entity.setAccountId(config.getAccountId());
-        entity.setProjectId(config.getProjectId());
         entity.setAgentName(config.getAgentName());
         entity.setDisplayName(config.getDisplayName());
         entity.setDescription(config.getDescription());

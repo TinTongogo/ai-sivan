@@ -70,6 +70,14 @@ public class ForestRepositoryAdapter implements ForestRepository {
                 .toList();
     }
 
+    @Override
+    public List<Forest> listByAccountId(UUID accountId) {
+        return forestJpaRepository.findByAccountIdOrderByCreatedAtDesc(accountId)
+                .stream()
+                .map(this::toDomain)
+                .toList();
+    }
+
     // =====================================================================
     // TreeNode 子树
     // =====================================================================
@@ -120,6 +128,27 @@ public class ForestRepositoryAdapter implements ForestRepository {
                     || status == NodeStatus.FAILED
                     || status == NodeStatus.CANCELLED) {
                 entity.setCompletedAt(now);
+            }
+            forestNodeJpaRepository.save(entity);
+            forestNodeJpaRepository.flush();
+        });
+    }
+
+    @Override
+    public void updateNodeDetails(String nodeId, NodeStatus status, UUID accountId,
+                                   Integer durationMs, Integer totalTokens) {
+        forestNodeJpaRepository.findById(nodeId).ifPresent(entity -> {
+            OffsetDateTime now = OffsetDateTime.now();
+            entity.setStatus(status.name());
+            entity.setUpdatedAt(now);
+            if (status == NodeStatus.COMPLETED
+                    || status == NodeStatus.FAILED
+                    || status == NodeStatus.CANCELLED) {
+                entity.setCompletedAt(now);
+            }
+            // estimateTokens 列复用为实际 token 消耗
+            if (totalTokens != null && totalTokens > 0) {
+                entity.setEstimateTokens(totalTokens.longValue());
             }
             forestNodeJpaRepository.save(entity);
             forestNodeJpaRepository.flush();

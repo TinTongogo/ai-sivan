@@ -105,6 +105,12 @@ public class HierarchicalModeStrategy implements ModeStrategy {
         AtomicReference<String> accumulatedOutput = new AtomicReference<>(initialContext);
         return Flux.fromIterable(executors)
                 .concatMap(child -> {
+                    // 检查前一步是否失败，失败则跳过剩余步骤
+                    if (child.status() == NodeStatus.FAILED) {
+                        log.warn("[HIERARCHICAL] 前序步骤失败，跳过: nodeId={}", child.nodeId().substring(0, 8));
+                        return Flux.empty();
+                    }
+
                     String prevOutput = accumulatedOutput.get();
                     if (!prevOutput.isEmpty() && child instanceof com.icusu.sivan.domain.forest.tree.ContentNode cn) {
                         cn.metadata().put("accumulatedContext", prevOutput);

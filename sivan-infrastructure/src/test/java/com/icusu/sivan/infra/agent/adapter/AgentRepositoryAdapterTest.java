@@ -84,29 +84,23 @@ class AgentRepositoryAdapterTest extends AbstractIntegrationTest {
         assertEquals(3, agents.size());
     }
 
-    /** 按项目过滤 Agent。 */
+    /** 应返回该账号下所有 Agent。 */
     @Test
-    void shouldFilterByProject() {
+    void shouldReturnAllAgentsForAccount() {
         UUID accountId = UUID.randomUUID();
-        UUID projectId = UUID.randomUUID();
+        for (int i = 0; i < 3; i++) {
+            AgentDefinition config = AgentDefinition.builder()
+                    .accountId(accountId)
+                    .agentName("agent-" + i)
+                    .displayName("Agent " + i)
+                    .systemPrompt("prompt")
+                    .agentType(AgentType.USER)
+                    .build();
+            agentRepository.save(config);
+        }
 
-        AgentDefinition withProject = AgentDefinition.builder()
-                .accountId(accountId).projectId(projectId)
-                .agentName("project-agent").displayName("项目 Agent")
-                .systemPrompt("prompt").agentType(AgentType.USER)
-                .build();
-        agentRepository.save(withProject);
-
-        AgentDefinition withoutProject = AgentDefinition.builder()
-                .accountId(accountId)
-                .agentName("no-project-agent").displayName("无项目 Agent")
-                .systemPrompt("prompt").agentType(AgentType.USER)
-                .build();
-        agentRepository.save(withoutProject);
-
-        List<AgentDefinition> projectAgents = agentRepository.findAllByAccountAndProject(accountId, projectId);
-        assertEquals(1, projectAgents.size());
-        assertEquals("project-agent", projectAgents.get(0).getAgentName());
+        List<AgentDefinition> agents = agentRepository.findAllByAccount(accountId);
+        assertEquals(3, agents.size());
     }
 
     /** version 为手动管理字段，持久化后值不变。 */

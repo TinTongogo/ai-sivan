@@ -35,12 +35,16 @@ public class ExecutionLogSink implements EventSink {
                 || event.type() == ForestEvent.EventType.MILESTONE)
                 && event.forestId() != null) {
             try {
-                repository.save(ForestExecutionLogEntity.builder()
+                ForestExecutionLogEntity entity = ForestExecutionLogEntity.builder()
                         .nodeId(event.nodeId())
                         .forestId(UUID.fromString(event.forestId()))
                         .eventType(event.type().name())
+                        .statusBefore(event.statusBefore())
+                        .statusAfter(event.statusAfter())
                         .message(event.message())
-                        .build());
+                        .metadata(event.metadata())
+                        .build();
+                repository.save(entity);
             } catch (Exception e) {
                 log.debug("写入执行日志失败（不影响执行）: {}", e.getMessage());
             }

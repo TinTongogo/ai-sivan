@@ -5,6 +5,7 @@ import com.icusu.sivan.core.message.Content;
 import com.icusu.sivan.core.message.Msg;
 import com.icusu.sivan.core.message.Role;
 import com.icusu.sivan.core.model.Model;
+import com.icusu.sivan.infra.prompt.PromptAssembler;
 import com.icusu.sivan.domain.forest.ForestEvent;
 import com.icusu.sivan.domain.forest.context.ExecutionContext;
 import com.icusu.sivan.domain.forest.service.EventSink;
@@ -31,9 +32,11 @@ public class ChatLeafExecutor implements LeafExecutor {
     private static final Logger log = LoggerFactory.getLogger(ChatLeafExecutor.class);
 
     private final DefaultModelRouter modelRouter;
+    private final PromptAssembler promptAssembler;
 
-    public ChatLeafExecutor(DefaultModelRouter modelRouter) {
+    public ChatLeafExecutor(DefaultModelRouter modelRouter, PromptAssembler promptAssembler) {
         this.modelRouter = modelRouter;
+        this.promptAssembler = promptAssembler;
     }
 
     @Override
@@ -61,9 +64,24 @@ public class ChatLeafExecutor implements LeafExecutor {
 
         log.info("[ChatLeaf] 执行对话: nodeId={} contentLen={}", node.nodeId(), content.length());
 
-        List<Msg> messages = List.of(
-                Msg.of(Role.USER, List.of(new Content.Text(content)))
-        );
+        // 优先使用 PromptAssembler 构建消息
+        List<Msg> messages;
+        if (node instanceof ContentNode cn) {
+            Object raw = cn.metadata().get("prebuiltMessages");
+            if (raw instanceof List<?> list && !list.isEmpty()) {
+                messages = new java.util.ArrayList<>();
+                for (Object item : list) {
+                    if (item instanceof Msg m) messages.add(m);
+                }
+                messages.add(Msg.of(Role.USER, List.of(new Content.Text(content))));
+            } else {
+                // 无预构建消息 → 使用 PromptAssembler 装配
+                messages = promptAssembler.assemble("CHAT", "default", content, null, null);
+            }
+        } else {
+            messages = promptAssembler.assemble("CHAT", "default", content, null, null);
+        }
+        log.debug("[ChatLeaf] 消息数={} (含历史)", messages.size());
 
         return Flux.from(model.chat(messages, List.of(), Model.ModelParams.defaults()))
                 .flatMap(response -> {

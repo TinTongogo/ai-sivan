@@ -14,10 +14,11 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 /**
- * mcp_server_configs 表 JPA 实体，表示 MCP 服务器连接配置。
+ * mcp_server_configs 表 JPA 实体，表示 MCP 服务器连接配置（07-工具动态感知 §5.1）。
  */
 @Data
 @Entity
@@ -52,4 +53,20 @@ public class McpServerConfigEntity extends BaseEntity {
     @Column(name = "active", nullable = false)
     @Builder.Default
     private Boolean active = true;
+
+    /** 连接状态：DISCONNECTED / CONNECTING / CONNECTED / ERROR */
+    @Column(name = "connection_status", length = 16)
+    private String connectionStatus;
+
+    /** 最后错误信息 */
+    @Column(name = "last_error", length = 512)
+    private String lastError;
+
+    /** 最后连接时间 */
+    @Column(name = "last_connected_at")
+    private LocalDateTime lastConnectedAt;
+
+    /** 工具数量 */
+    @Column(name = "tool_count")
+    private Integer toolCount;
 }

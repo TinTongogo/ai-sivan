@@ -9,7 +9,6 @@ import ProjectSettingsDrawer from '../../components/chat/ProjectSettingsDrawer.v
 import SaveToKbModal from '../../components/chat/SaveToKbModal.vue'
 import RateModal from '../../components/chat/RateModal.vue'
 import PipelineDialog from '../../components/chat/PipelineDialog.vue'
-import RoutingDecisionDialog from '../../components/chat/RoutingDecisionDialog.vue'
 import PhaseProgressBar from '../../components/orchestration/PhaseProgressBar.vue'
 import { useMessage } from '../../utils/message'
 import { relativeTime } from '../../utils/time'
@@ -356,14 +355,6 @@ function handleShowPipeline(m: any) {
   showPipelineModal.value = true
 }
 
-const showRoutingDecisionModal = ref(false)
-const routingDecisionId = ref('')
-function handleShowRoutingDecision(id: string) {
-  if (!id) return
-  routingDecisionId.value = id
-  showRoutingDecisionModal.value = true
-}
-
 // ====== 生成版本切换 ======
 const generationCache = new Map<string, any[]>()
 let generationFetchInFlight = new Set<string>()
@@ -405,12 +396,11 @@ async function switchGeneration(m: Message, index: number) {
 
   // 同步更新已打开对话框的引用
   if (showPipelineModal.value) pipelineMsgId.value = nextVer.messageId
-  if (showRoutingDecisionModal.value) routingDecisionId.value = nextVer.chain
 }
 
 // ====== mount ======
 onMounted(async () => {
-  await Promise.all([sidebar.fetchConversations(), sidebar.fetchContextData()])
+  await Promise.all([sidebar.fetchConversations(), sidebar.fetchContextData(), sidebar.fetchKnowledgeBases()])
   if (currentConversationId.value) {
     loadingMessages.value = true
     const conv = conversations.value.find(c => c.conversationId === currentConversationId.value)
@@ -640,7 +630,6 @@ onMounted(async () => {
                 @regenerate="chatStream.handleRegenerate(virtualRow.index)"
                 @switch-generation="switchGeneration(messages[virtualRow.index], virtualRow.index)"
                 @show-pipeline="handleShowPipeline(messages[virtualRow.index])"
-                @show-routing-decision="handleShowRoutingDecision"
               >
                 <template v-if="messages[virtualRow.index].role === 'user'" #time>
                   {{ messages[virtualRow.index].createdAt ? relativeTime(messages[virtualRow.index].createdAt) : '' }}
@@ -755,11 +744,6 @@ onMounted(async () => {
       :messageId="pipelineMsgId"
       :conversationId="currentConversationId"
       @close="showPipelineModal = false"
-    />
-    <RoutingDecisionDialog
-      v-if="showRoutingDecisionModal && routingDecisionId"
-      :routingDecisionId="routingDecisionId"
-      @close="showRoutingDecisionModal = false"
     />
 
     <!-- 删除确认弹窗 -->

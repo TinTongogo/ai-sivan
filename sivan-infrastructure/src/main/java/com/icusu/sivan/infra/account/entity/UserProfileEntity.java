@@ -48,7 +48,7 @@ public class UserProfileEntity extends BaseEntity {
     @Builder.Default
     private boolean active = true;
 
-    @Column(columnDefinition = "vector(2048)")
+    @Column(columnDefinition = "vector(1024)")
     @ColumnTransformer(write = "?::vector")
     @Type(FloatArrayVectorType.class)
     private float[] vector;

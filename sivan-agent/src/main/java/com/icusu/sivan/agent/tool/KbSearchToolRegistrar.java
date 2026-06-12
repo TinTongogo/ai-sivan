@@ -52,17 +52,39 @@ public class KbSearchToolRegistrar {
                         return Mono.just(ToolResult.failure("kb_search", "query 参数缺失"));
                     }
 
-                    UUID accountId = ctx != null ? ctx.attribute("_accountId") : null;
+                    UUID accountId = ctx != null ? resolveAccountId(ctx.attribute("_accountId")) : null;
 
-                    @SuppressWarnings("unchecked")
-                    List<String> kbNames = args.get("kbName") != null
-                            ? List.of((String) args.get("kbName"))
+                    // 确定可搜索的知识库列表
+                    List<String> kbNames = null;
+                    String llmSpecifiedKb = (String) args.get("kbName");
+
+                    // 获取对话上下文已选知识库
+                    String convKbStr = ctx != null ? ctx.attribute("_kbNames") : null;
+                    List<String> allowedKbs = convKbStr != null && !convKbStr.isEmpty()
+                            ? List.of(convKbStr.split(","))
                             : null;
 
+                    if (llmSpecifiedKb != null) {
+                        // LLM 指定了知识库 → 验证是否在对话已选范围内
+                        if (allowedKbs != null && !allowedKbs.contains(llmSpecifiedKb)) {
+                            return Mono.just(ToolResult.success("kb_search",
+                                    "未启用知识库「" + llmSpecifiedKb + "」，请在右侧工具栏中选择"));
+                        }
+                        kbNames = List.of(llmSpecifiedKb);
+                    } else if (allowedKbs != null && !allowedKbs.isEmpty()) {
+                        // LLM 未指定 → 搜索对话已选的全部知识库
+                        kbNames = allowedKbs;
+                    } else {
+                        // 对话未选择任何知识库 → 不搜索
+                        return Mono.just(ToolResult.success("kb_search",
+                                "当前对话未启用任何知识库，请在右侧工具栏中选择后再搜索"));
+                    }
+
                     int topK = args.get("topK") instanceof Number n ? n.intValue() : 5;
+                    final List<String> finalKbNames = kbNames;
 
                     return Mono.fromCallable(() -> {
-                        String result = ragRetrievalPort.retrieveContext(query, kbNames, accountId);
+                        String result = ragRetrievalPort.retrieveContext(query, finalKbNames, accountId);
                         if (result == null || result.isBlank()) {
                             return ToolResult.success("kb_search", "知识库中未找到相关内容");
                         }
@@ -71,5 +93,14 @@ public class KbSearchToolRegistrar {
                 });
 
         log.info("kb_search 工具注册完成");
+    }
+
+    /** 从上下文的 _accountId 属性中解析 UUID（兼容 String 和 UUID 两种存储类型）。 */
+    private static UUID resolveAccountId(Object raw) {
+        if (raw instanceof UUID u) return u;
+        if (raw instanceof String s && !s.isEmpty()) {
+            try { return UUID.fromString(s); } catch (Exception ignored) {}
+        }
+        return null;
     }
 }

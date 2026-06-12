@@ -104,7 +104,7 @@ function selectFont(family: string) {
   showFontBrowser.value = false
 }
 
-type Section = 'general' | 'account' | 'llm' | 'mcp' | 'rag' | 'agreement'
+type Section = 'general' | 'account' | 'llm' | 'mcp' | 'agreement'
 const activeSection = ref<Section>('general')
 
 const sections: { key: Section; labelKey: string }[] = [
@@ -112,7 +112,6 @@ const sections: { key: Section; labelKey: string }[] = [
   { key: 'account', labelKey: 'account' },
   { key: 'llm', labelKey: 'llm' },
   { key: 'mcp', labelKey: 'mcp' },
-  { key: 'rag', labelKey: 'rag' },
   { key: 'agreement', labelKey: 'agreement' },
 ]
 
@@ -327,8 +326,6 @@ function toggleCapability(code: string) {
 // 用途标签选项
 const tagOptions = [
   { value: 'chat', labelKey: 'tagChat' },
-  { value: 'embedding', labelKey: 'tagEmbedding' },
-  { value: 'reranker', labelKey: 'tagReranker' },
 ]
 
 // 当前 provider 已勾选的用途标签集合
@@ -500,12 +497,6 @@ async function setAsDefault(idx: number) {
   message.success(t('saved'))
 }
 
-/** 为 Embedding/Reranker 提供商设为默认。 */
-async function setAsDefaultRag(providerId: string) {
-  await settings.setDefault(providerId)
-  message.success(t('saved'))
-}
-
 const providerTypeOptions = computed(() => [
   { value: 'openai', label: 'OpenAI' },
   { value: 'anthropic', label: 'Anthropic' },
@@ -628,20 +619,6 @@ const mcpTransportOptions = [
   { value: 'sse', labelKey: 'mcpTransportSse' },
   { value: 'streamable-http', labelKey: 'mcpTransportHttp' },
 ]
-
-// 标记了 embedding 的提供商列表
-const embeddingProviders = computed(() =>
-  settings.llmProviders.filter(p =>
-    p.tags && p.tags.split(',').map(t => t.trim()).includes('embedding')
-  )
-)
-
-// 标记了 reranker 的提供商列表
-const rerankerProviders = computed(() =>
-  settings.llmProviders.filter(p =>
-    p.tags && p.tags.split(',').map(t => t.trim()).includes('reranker')
-  )
-)
 
 // providerType 或 model 变化时，按模型名推断能力标签（仅新建/未保存时自动填充）
 watch(() => currentProvider.value?.providerType, (newType) => {
@@ -1151,42 +1128,7 @@ onMounted(() => {
             </div>
           </div>
 
-          <!-- RAG 配置（已合并到 LLM 配置） -->
-          <div v-if="activeSection === 'rag'" class="settings-panel">
-            <p class="settings-panel__desc">{{ t('ragMergedDesc') }}</p>
-            <div v-if="embeddingProviders.length" class="model-config-group">
-              <h3 class="model-config__title">{{ t('embeddingTitle') }}</h3>
-              <div v-for="p in embeddingProviders" :key="p.providerId" class="rag-provider-card">
-                <div class="rag-provider__info">
-                  <div class="rag-provider__name">{{ p.name || p.providerType }}</div>
-                  <div class="rag-provider__detail">{{ p.baseUrl }} / {{ p.model }}</div>
-                </div>
-                <div class="rag-provider__actions">
-                  <span v-if="p.isDefault" class="llm-default-badge">{{ t('defaultBadge') }}</span>
-                  <button v-else-if="p.providerId" class="llm-sidebar__action-btn llm-sidebar__set-default" @click.stop="setAsDefaultRag(p.providerId)">{{ t('defaultProvider') }}</button>
-                </div>
-              </div>
-            </div>
-            <div v-if="rerankerProviders.length" class="model-config-group">
-              <h3 class="model-config__title">{{ t('rerankerTitle') }}</h3>
-              <div v-for="p in rerankerProviders" :key="p.providerId" class="rag-provider-card">
-                <div class="rag-provider__info">
-                  <div class="rag-provider__name">{{ p.name || p.providerType }}</div>
-                  <div class="rag-provider__detail">{{ p.baseUrl }} / {{ p.model }}</div>
-                </div>
-                <div class="rag-provider__actions">
-                  <span v-if="p.isDefault" class="llm-default-badge">{{ t('defaultBadge') }}</span>
-                  <button v-else-if="p.providerId" class="llm-sidebar__action-btn llm-sidebar__set-default" @click.stop="setAsDefaultRag(p.providerId)">{{ t('defaultProvider') }}</button>
-                </div>
-              </div>
-            </div>
-            <div v-if="!embeddingProviders.length && !rerankerProviders.length" class="placeholder-content">
-              {{ t('ragNoProvider') }}
-            </div>
-            <p class="settings-panel__desc" style="margin-top:16px">
-              <a href="#" @click.prevent="activeSection = 'llm'">{{ t('ragGotoLlm') }}</a>
-            </p>
-          </div>
+
 
           <!-- 服务协议 -->
           <div v-if="activeSection === 'agreement'" class="settings-panel">
@@ -1865,37 +1807,12 @@ onMounted(() => {
   font-size: var(--fs-callout);
 }
 
-.rag-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 16px;
-}
 
-.rag-provider-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 14px;
-  margin-bottom: 8px;
-  border: 1px solid var(--clr-separator-light);
-  border-radius: var(--rad-md);
-  background: var(--clr-fill);
-}
-.rag-provider-card:hover .llm-sidebar__action-btn {
-  opacity: 1;
-}
-.rag-provider__name {
-  font-size: var(--fs-callout);
-  font-weight: var(--fw-medium);
-  color: var(--clr-label);
-}
-.rag-provider__detail {
-  font-size: var(--fs-footnote);
-  color: var(--clr-tertiary);
-  margin-top: 2px;
-  word-break: break-all;
-}
+
+
+
+
+
 
 .form-actions {
   display: flex;
@@ -1904,27 +1821,11 @@ onMounted(() => {
   margin-top: 8px;
 }
 
-.rag-test-results {
-  margin-top: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.rag-test-item {
-  font-size: var(--fs-footnote);
-  padding: 4px 8px;
-  border-radius: var(--rad-md);
-}
-.rag-test-item.is-ok {
-  color: var(--clr-accent);
-}
-.rag-test-item.is-err {
-  color: var(--clr-red);
-}
-.rag-test-label {
-  font-weight: var(--fw-medium);
-  margin-right: 4px;
-}
+
+
+
+
+
 
 /* 服务协议 */
 .agreement-content {

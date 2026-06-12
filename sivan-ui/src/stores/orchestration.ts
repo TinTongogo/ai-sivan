@@ -61,10 +61,10 @@ export const useOrchestrationStore = defineStore('orchestration', () => {
     return Math.round((progress.value.completedPhases / progress.value.totalPhases) * 100)
   })
 
-  /** 进度概要文本 */
+  /** 进度概要文本（不含当前阶段名——阶段名由 PhaseProgressBar 步骤条展示） */
   const summary = computed(() => {
     if (!progress.value) return ''
-    return `阶段 ${progress.value.completedPhases}/${progress.value.totalPhases} · ${currentPhase.value || ''}`
+    return `${progress.value.completedPhases}/${progress.value.totalPhases}`
   })
 
   /** 由 SSE progress 事件驱动，直接替换运行时进度 */

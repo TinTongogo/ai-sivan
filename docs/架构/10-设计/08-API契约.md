@@ -404,9 +404,24 @@ class GoalNotificationHandler extends TextWebSocketHandler {
 
 ## 5. 设计检查清单
 
-- [ ] 新增一个端点需要改几个文件？→ 1 个（Controller 方法）
-- [ ] SSE 协议是否前后端类型一致？→ 是，`SseEvent` TypeScript 类型同步
-- [ ] 所有错误是否统一格式？→ 是，`ApiError` 标准结构
-- [ ] 认证是否在所有端点强制？→ 是，`@CurrentAccountId` 解析 JWT
-- [ ] WebSocket 是否只用在后端主动推送场景？→ 是，非双向
-- [ ] API 文档是否自动生成？→ 是，springdoc-openapi
+### 实现状态（2026-06-12）
+
+| # | 检查项 | 状态 | 说明 |
+|---|--------|------|------|
+| 1 | 新增一个端点需改几个文件 | ✅ | 只需 Controller 方法+可能 DTO |
+| 2 | SSE 事件协议前后端一致 | ⚠️ | 文档 `step_start/step_end` 与实际 `phase_start/phase_end` 不匹配（前端实现优先） |
+| 3 | 错误统一格式 | ✅ | `ApiError` record + `GlobalExceptionHandler` 使用 |
+| 4 | 认证在所有端点强制 | ✅ | `@CurrentAccountId` 解析 JWT |
+| 5 | WebSocket 推送 | ❌ | 未实现，当前由 SSE 替代方案覆盖 |
+| 6 | API 文档自动生成 | ✅ | springdoc-openapi |
+| 7 | GoalTree 模板 CRUD API | ✅ | `TemplateController` — GET/POST/PUT/DELETE `/api/v2/templates` + POST `/instantiate` |
+| 8 | Goal 列表分页 | ✅ | `GET /api/v2/goals` 支持 page/size |
+| 9 | Goal 详情 | ✅ | `GET /api/v2/goals/{goalId}` |
+| 10 | MCP 路径前缀统一 | ✅ | `/api/v2/mcp-servers` |
+
+### 与文档的差异说明
+
+1. **创建即执行**：`POST /api/v2/goals` 创建后立即返回 SSE 流，文档的独立 `POST /start` 端点未实现（实践上合并更高效）
+2. **SSE 流经 POST 而非 GET**：实际流式对话使用 `POST /{conversationId}/stream`，而非文档的 `GET /conversations/{id}/stream`
+3. **WebSocket 暂未实现**：SSE 已覆盖核心推送需求，WebSocket 作为未来扩展保留
+4. **事件协议差异**：前端实现的是编排阶段事件（`phase_start/phase_end/progress`），而非文档的步骤事件（`step_start/step_end`）

@@ -6,7 +6,6 @@ import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.util.List;
-import java.util.UUID;
 
 /**
  * 创建智能体请求 DTO。
@@ -35,6 +34,4 @@ public class CreateAgentRequest {
 
     private List<String> skillIds;
     private ToolRequirement toolRequirements;
-
-    private UUID projectId;
 }

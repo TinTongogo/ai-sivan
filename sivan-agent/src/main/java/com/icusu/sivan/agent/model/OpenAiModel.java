@@ -24,6 +24,7 @@ import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.util.retry.Retry;
 import reactor.netty.http.client.HttpClient;
 import reactor.netty.resources.ConnectionProvider;
 
@@ -155,6 +156,9 @@ public class OpenAiModel implements Model {
                         .flatMap(errBody -> Mono.error(new RuntimeException(
                                 resp.statusCode() + " from " + modelName + ": " + errBody))))
                 .bodyToFlux(String.class)
+                .retryWhen(Retry.backoff(2, Duration.ofSeconds(1))
+                        .filter(e -> e instanceof org.springframework.web.reactive.function.client.WebClientRequestException)
+                        .onRetryExhaustedThrow((spec, sig) -> sig.failure()))
                 .timeout(timeout)
                 .doOnNext(raw -> {
                     if (firstChunkLogged.compareAndSet(false, true)) {

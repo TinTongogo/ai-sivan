@@ -57,4 +57,11 @@ public class RoutingDecisionEntity extends BaseCreateOnlyEntity {
 
     @Column(columnDefinition = "TEXT")
     private String reasoning;
+
+    /** 任务 embedding 向量（1024 维，pgvector）。由 hibernate-vector 自动类型映射。 */
+    @Column(name = "task_embedding", columnDefinition = "vector(1024)")
+    private float[] taskEmbedding;
+
+    @Column(name = "duration_ms")
+    private Integer durationMs;
 }

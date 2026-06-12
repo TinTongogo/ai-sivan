@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from '../../utils/i18n'
 import { useOrchestrationStore } from '../../stores/orchestration'
 
+const { t } = useI18n()
 const store = useOrchestrationStore()
 
 const hasProgress = computed(() => store.isOrchestrating && store.progress !== null)
@@ -14,7 +16,7 @@ const phases = computed(() => store.progress?.phases || [])
       <div class="phase-progress-track">
         <div class="phase-progress-fill" :style="{ width: store.percentComplete + '%' }"></div>
       </div>
-      <span class="phase-progress-text">{{ store.percentComplete }}% · {{ store.summary }}</span>
+      <span class="phase-progress-text">{{ t('phaseProgress', { pct: store.percentComplete, done: store.progress.completedPhases, total: store.progress.totalPhases }) }}</span>
     </div>
     <div class="phase-step-bar">
       <span

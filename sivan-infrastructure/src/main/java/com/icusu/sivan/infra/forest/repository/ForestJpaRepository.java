@@ -19,4 +19,6 @@ public interface ForestJpaRepository extends JpaRepository<ForestEntity, UUID> {
     Optional<ForestEntity> findByRootNodeIdAndAccountId(String rootNodeId, UUID accountId);
 
     List<ForestEntity> findByConversationIdOrderByCreatedAtDesc(UUID conversationId);
+
+    List<ForestEntity> findByAccountIdOrderByCreatedAtDesc(UUID accountId);
 }

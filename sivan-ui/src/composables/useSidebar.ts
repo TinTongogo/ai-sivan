@@ -10,6 +10,7 @@ interface Conversation {
   title: string
   messageCount: number
   mcpServerIds?: string[]
+  knowledgeBaseIds?: string[]
   lastMessageAt?: string
   createdAt?: string
 }
@@ -146,7 +147,12 @@ export function useSidebar() {
 
   const showTitlebar = computed(() => !!currentConversationId.value || selectedGroupId.value !== null)
 
-  const selectedKbNames = computed(() => groupKbNames.value)
+  const conversationKbNames = ref<string[]>([])
+  const selectedKbNames = computed(() => {
+    // 优先使用对话级 KB 配置，无对话时使用项目级
+    if (currentConversationId.value && conversationKbNames.value.length > 0) return conversationKbNames.value
+    return groupKbNames.value
+  })
   const availableKbs = computed(() => {
     if (!groupKbNames.value.length) return []
     const bound = new Set(groupKbNames.value)
@@ -444,15 +450,21 @@ export function useSidebar() {
   }
 
   async function onConversationKbChange(kbNames: string[]) {
-    // 同步更新项目级 KB 绑定
-    onGroupKbChange(kbNames)
-    // 持久化到对话级别
+    // 只更新对话级 KB 配置，不修改项目级
+    conversationKbNames.value = kbNames
     if (currentConversationId.value) {
       try {
         await api.put(`/v2/conversations/${currentConversationId.value}`, { knowledgeBaseIds: kbNames.length ? kbNames : null })
       } catch { /* 静默失败 */ }
     }
   }
+
+  // 进入对话时加载对话级 KB 配置
+  watch(currentConversationId, (cid) => {
+    if (!cid) { conversationKbNames.value = []; return }
+    const conv = conversations.value.find(c => c.conversationId === cid)
+    conversationKbNames.value = conv?.knowledgeBaseIds || []
+  })
 
   // ── watcher ──
   watch(settingsOpen, async (open) => {

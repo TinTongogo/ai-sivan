@@ -11,5 +11,12 @@ public record NodeStatusChanged(
         NodeStatus newStatus,
         String forestId,
         String accountId,
-        Instant occurredAt
-) {}
+        Instant occurredAt,
+        Integer durationMs,
+        Integer totalTokens
+) {
+    public NodeStatusChanged(String nodeId, NodeStatus oldStatus, NodeStatus newStatus,
+                             String forestId, String accountId, Instant occurredAt) {
+        this(nodeId, oldStatus, newStatus, forestId, accountId, occurredAt, null, null);
+    }
+}

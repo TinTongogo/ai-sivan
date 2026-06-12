@@ -1,6 +1,6 @@
 package com.icusu.sivan.web.shared.handler;
 
-import com.icusu.sivan.common.dto.BaseResponse;
+import com.icusu.sivan.common.dto.ApiError;
 import com.icusu.sivan.common.exception.DomainException;
 import com.icusu.sivan.common.exception.ResourceNotFoundException;
 import com.icusu.sivan.common.exception.UnauthorizedException;
@@ -16,13 +16,15 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.bind.support.WebExchangeBindException;
 import org.springframework.web.server.MethodNotAllowedException;
+import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.server.UnsupportedMediaTypeStatusException;
 
+import java.time.Instant;
 import java.util.Locale;
 import java.util.stream.Collectors;
 
 /**
- * 全局异常处理器，统一返回 BaseResponse 格式。
+ * 全局异常处理器，统一返回 ApiError 格式（08-API契约 §4.4）。
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -35,7 +37,7 @@ public class GlobalExceptionHandler {
         this.messageSource = messageSource;
     }
 
-    /** 解析异常消息：优先使用 messageCode 通过 MessageSource 本地化，否则回退到 ex.getMessage()。 */
+    /** 解析异常消息。 */
     private String resolveMessage(DomainException ex) {
         if (ex.getMessageCode() != null) {
             Locale locale = LocaleContextHolder.getLocale();
@@ -44,28 +46,41 @@ public class GlobalExceptionHandler {
         return ex.getMessage();
     }
 
+    /** 构建 ApiError。 */
+    private ApiError error(int code, String message, String detail, ServerWebExchange exchange) {
+        String path = exchange != null ? exchange.getRequest().getURI().getPath() : "";
+        return new ApiError(code, message, detail, path, Instant.now());
+    }
+
     /** 处理资源未找到异常，返回 404。 */
     @ExceptionHandler(ResourceNotFoundException.class)
-    public ResponseEntity<BaseResponse<Void>> handleNotFound(ResourceNotFoundException ex) {
+    public ResponseEntity<ApiError> handleNotFound(ResourceNotFoundException ex, ServerWebExchange exchange) {
         String message = resolveMessage(ex);
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                .body(BaseResponse.notFound(message));
+                .body(error(ApiError.GOAL_NOT_FOUND, message, null, exchange));
     }
 
     /** 处理未授权异常，返回 401。 */
     @ExceptionHandler(UnauthorizedException.class)
-    public ResponseEntity<BaseResponse<Void>> handleUnauthorized(UnauthorizedException ex) {
+    public ResponseEntity<ApiError> handleUnauthorized(UnauthorizedException ex, ServerWebExchange exchange) {
         String message = resolveMessage(ex);
-        log.warn("[401] UnauthorizedException: {} 线程={}", message, Thread.currentThread().getName());
+        log.warn("[401] UnauthorizedException: {}", message);
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(BaseResponse.unauthorized(message));
+                .body(error(401, message, null, exchange));
     }
 
     /** 处理领域异常，根据错误码映射 HTTP 状态码。 */
     @ExceptionHandler(DomainException.class)
-    public ResponseEntity<BaseResponse<Void>> handleDomain(DomainException ex) {
+    public ResponseEntity<ApiError> handleDomain(DomainException ex, ServerWebExchange exchange) {
         String message = resolveMessage(ex);
         log.warn("[{}] DomainException: {}", ex.getCode(), message);
+        int code = switch (ex.getCode()) {
+            case 400 -> ApiError.VALIDATION_ERROR;
+            case 403 -> ApiError.POLICY_VIOLATION;
+            case 404 -> ApiError.GOAL_NOT_FOUND;
+            case 409 -> ApiError.VALIDATION_ERROR;
+            default -> ApiError.INTERNAL_ERROR;
+        };
         HttpStatus status = switch (ex.getCode()) {
             case 400 -> HttpStatus.BAD_REQUEST;
             case 403 -> HttpStatus.FORBIDDEN;
@@ -74,57 +89,53 @@ public class GlobalExceptionHandler {
             default -> HttpStatus.BAD_REQUEST;
         };
         return ResponseEntity.status(status)
-                .body(BaseResponse.error(ex.getCode(), message));
+                .body(error(code, message, null, exchange));
     }
 
     /** 处理参数校验异常，返回 400 及校验错误详情。 */
     @ExceptionHandler(WebExchangeBindException.class)
-    public ResponseEntity<BaseResponse<Void>> handleValidation(WebExchangeBindException ex) {
-        String message = ex.getBindingResult().getFieldErrors().stream()
+    public ResponseEntity<ApiError> handleValidation(WebExchangeBindException ex, ServerWebExchange exchange) {
+        String detail = ex.getBindingResult().getFieldErrors().stream()
                 .map(FieldError::getDefaultMessage)
                 .collect(Collectors.joining("; "));
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(BaseResponse.badRequest(message));
+                .body(error(ApiError.VALIDATION_ERROR, "参数校验失败", detail, exchange));
     }
 
-    /** 处理 HTTP 方法不支持异常（如 POST 打到 GET-only 端点），返回 405。 */
+    /** 处理 HTTP 方法不支持异常。 */
     @ExceptionHandler(MethodNotAllowedException.class)
-    public ResponseEntity<BaseResponse<Void>> handleMethodNotAllowed(MethodNotAllowedException ex) {
+    public ResponseEntity<ApiError> handleMethodNotAllowed(MethodNotAllowedException ex, ServerWebExchange exchange) {
         return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
-                .body(BaseResponse.error(405, ex.getMessage()));
+                .body(error(ApiError.VALIDATION_ERROR, ex.getMessage(), null, exchange));
     }
 
-    /** 处理不支持的 Content-Type 异常，返回 415。 */
+    /** 处理不支持的 Content-Type 异常。 */
     @ExceptionHandler(UnsupportedMediaTypeStatusException.class)
-    public ResponseEntity<BaseResponse<Void>> handleUnsupportedMediaType(UnsupportedMediaTypeStatusException ex) {
+    public ResponseEntity<ApiError> handleUnsupportedMediaType(UnsupportedMediaTypeStatusException ex, ServerWebExchange exchange) {
         return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
-                .body(BaseResponse.error(415, ex.getMessage()));
+                .body(error(ApiError.VALIDATION_ERROR, ex.getMessage(), null, exchange));
     }
 
     /** 处理非法参数异常，返回 400。 */
     @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<BaseResponse<Void>> handleIllegalArgument(IllegalArgumentException ex) {
+    public ResponseEntity<ApiError> handleIllegalArgument(IllegalArgumentException ex, ServerWebExchange exchange) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(BaseResponse.badRequest(ex.getMessage()));
+                .body(error(ApiError.VALIDATION_ERROR, ex.getMessage(), null, exchange));
     }
 
     /** 处理数据完整性冲突异常，返回 409。 */
     @ExceptionHandler(DataIntegrityViolationException.class)
-    public ResponseEntity<BaseResponse<Void>> handleDataIntegrity(DataIntegrityViolationException ex) {
+    public ResponseEntity<ApiError> handleDataIntegrity(DataIntegrityViolationException ex, ServerWebExchange exchange) {
         log.error("数据完整性冲突", ex);
-        Locale locale = LocaleContextHolder.getLocale();
-        String message = messageSource.getMessage("error.data.conflict", null, "操作失败：数据冲突，请稍后重试", locale);
         return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(BaseResponse.error(409, message));
+                .body(error(ApiError.VALIDATION_ERROR, "操作失败：数据冲突，请稍后重试", null, exchange));
     }
 
     /** 处理未预期异常，返回 500。 */
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<BaseResponse<Void>> handleUnknown(Exception ex) {
+    public ResponseEntity<ApiError> handleUnknown(Exception ex, ServerWebExchange exchange) {
         log.error("未处理的异常", ex);
-        Locale locale = LocaleContextHolder.getLocale();
-        String message = messageSource.getMessage("error.server.internal", null, "服务器内部错误", locale);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(BaseResponse.internalError(message));
+                .body(error(ApiError.INTERNAL_ERROR, "服务器内部错误", null, exchange));
     }
 }

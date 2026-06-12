@@ -20,6 +20,7 @@ public class TaskNode implements ExecutableNode, CompressibleNode, ContentNode {
     private final String nodeId;
     private final Mode mode;
     private final String content;
+    private String nodeType;          // 默认 "task"，chat 路径设为 "message"
     private final Map<String, Object> metadata = new HashMap<>();
     private TreeNode parent;
     private NodeStatus status;
@@ -30,15 +31,24 @@ public class TaskNode implements ExecutableNode, CompressibleNode, ContentNode {
     private long estimateSubtreeTokens = -1;
 
     public TaskNode(String content) {
-        this(UUID.randomUUID().toString(), content, NodeStatus.PENDING);
+        this(UUID.randomUUID().toString(), content, NodeStatus.PENDING, "task");
     }
 
     public TaskNode(String nodeId, String content, NodeStatus status) {
+        this(nodeId, content, status, "task");
+    }
+
+    public TaskNode(String content, String nodeType) {
+        this(UUID.randomUUID().toString(), content, NodeStatus.PENDING, nodeType);
+    }
+
+    private TaskNode(String nodeId, String content, NodeStatus status, String nodeType) {
         this.nodeId = nodeId;
         this.content = content;
         this.status = status;
         this.mode = Mode.NONE;
         this.importance = 0.7;
+        this.nodeType = nodeType;
     }
 
     // ===== TreeNode =====
@@ -65,7 +75,10 @@ public class TaskNode implements ExecutableNode, CompressibleNode, ContentNode {
     public void setOrder(int order) { this.order = order; }
 
     @Override
-    public String nodeType() { return "task"; }
+    public String nodeType() { return nodeType; }
+
+    /** 更改节点类型（用于在运行时决定走 ChatLeafExecutor 还是 AgentLeafExecutor）。 */
+    public void setNodeType(String nodeType) { this.nodeType = nodeType; }
 
     // ===== ExecutableNode =====
 

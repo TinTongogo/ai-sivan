@@ -1,6 +1,7 @@
 package com.icusu.sivan.infra.forest.compression;
 
 import com.icusu.sivan.common.NodeStatus;
+import com.icusu.sivan.domain.compression.TokenBudgetManager;
 import com.icusu.sivan.domain.forest.Forest;
 import com.icusu.sivan.domain.forest.tree.InnerGoalNode;
 import com.icusu.sivan.domain.forest.tree.TaskNode;
@@ -29,7 +30,7 @@ class ForestCompressorTest {
                 new InnerGoalFoldStrategy(),
                 new MessageFoldStrategy(),
                 new MemoryFoldStrategy()
-        ));
+        ), new TokenBudgetManager(null));
         forest = new Forest(UUID.randomUUID(), UUID.randomUUID(), null, null, "测试", "root");
     }
 
@@ -89,7 +90,7 @@ class ForestCompressorTest {
 
     @Test
     void emptyStrategyListDoesNotThrow() {
-        var empty = new ForestCompressor(List.of());
+        var empty = new ForestCompressor(List.of(), new TokenBudgetManager(null));
         var task = new TaskNode("测试");
         assertDoesNotThrow(() -> empty.compress(forest, task, "view", 1000));
     }

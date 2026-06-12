@@ -15,7 +15,18 @@ public record Persona(
 ) {
     public static Persona defaultPersona() {
         return new Persona("default", "灵枢",
-                "你是一个私人 AI 助理，名叫灵枢。\n你擅长任务分解、代码审查、知识问答。\n当前日期: {{date}}\n用户名称: {{name}}",
+                "你是一个私人 AI 助理，名叫灵枢。\n你擅长任务分解、代码审查、知识问答。",
                 Map.of("name", "用户", "date", LocalDate.now().toString()));
+    }
+
+    /** 将人格指令注入系统提示词。 */
+    public String injectInto(String basePrompt) {
+        StringBuilder sb = new StringBuilder(basePrompt);
+        sb.append("\n\n## 人格设定\n").append(systemPrompt);
+        sb.append("\n- 当前日期: ").append(LocalDate.now());
+        if (variables != null && variables.containsKey("name")) {
+            sb.append("\n- 用户: ").append(variables.get("name"));
+        }
+        return sb.toString();
     }
 }

@@ -3,6 +3,7 @@ package com.icusu.sivan.infra.forest.compression;
 import com.icusu.sivan.domain.compression.FoldDecision;
 import com.icusu.sivan.domain.compression.FoldStrategy;
 import com.icusu.sivan.domain.compression.TokenBudget;
+import com.icusu.sivan.domain.compression.TokenBudgetManager;
 import com.icusu.sivan.domain.forest.Forest;
 import com.icusu.sivan.domain.forest.tree.CompressibleNode;
 import com.icusu.sivan.domain.forest.tree.TreeNode;
@@ -25,10 +26,11 @@ public class ForestCompressor {
     private static final Logger log = LoggerFactory.getLogger(ForestCompressor.class);
 
     private final Map<String, FoldStrategy> strategies;
+    private final TokenBudgetManager budgetManager;
 
-    public ForestCompressor(List<FoldStrategy> strategyList) {
-        this.strategies = strategyList.stream()
-                .collect(Collectors.toMap(FoldStrategy::supportedType, s -> s));
+    public ForestCompressor(List<FoldStrategy> strategyList, TokenBudgetManager budgetManager) {
+        this.strategies = strategyList.stream().collect(Collectors.toMap(FoldStrategy::supportedType, s -> s));
+        this.budgetManager = budgetManager;
     }
 
     /**
@@ -86,26 +88,9 @@ public class ForestCompressor {
     /**
      * 根据场景和总预算构建各类型的分配预算。
      */
-    private static TokenBudget buildBudget(String scene, int maxTokens) {
-        return switch (scene) {
-            case "view" -> new TokenBudget(maxTokens, Map.of(
-                    "task", maxTokens / 4,
-                    "message", maxTokens / 3,
-                    "memory", maxTokens / 6,
-                    "inner_goal", maxTokens / 4
-            ));
-            case "send" -> new TokenBudget(maxTokens, Map.of(
-                    "task", maxTokens / 3,
-                    "message", maxTokens / 4,
-                    "memory", maxTokens / 8,
-                    "inner_goal", maxTokens / 4
-            ));
-            default -> new TokenBudget(maxTokens, Map.of(
-                    "task", maxTokens / 4,
-                    "message", maxTokens / 4,
-                    "memory", maxTokens / 4,
-                    "inner_goal", maxTokens / 4
-            ));
-        };
+    private TokenBudget buildBudget(String scene, int maxTokens) {
+        // 通过 TokenBudgetManager 按场景分配预算
+        Map<String, Integer> allocation = budgetManager.allocate(scene, maxTokens);
+        return new TokenBudget(maxTokens, allocation);
     }
 }

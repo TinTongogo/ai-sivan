@@ -92,6 +92,25 @@ public class GoalExecutionService {
     }
 
     /**
+     * 仅调度执行（不持久化森林结构，适用于 ForestConversationService 等调用方已持久化的场景）。
+     *
+     * @param forest   Forest 聚合根（用于获取 forestId）
+     * @param root     可执行的根节点
+     * @param ctx      执行上下文
+     * @param delivery 传递模式
+     * @return 执行事件流
+     */
+    public Flux<ForestEvent> executeOnly(Forest forest, ExecutableNode root, ExecutionContext ctx, Delivery delivery) {
+        UUID forestId = forest.forestId();
+        activeExecutions.put(forestId, ctx);
+        ExecutionCommand cmd = new ExecutionCommand(root, ctx, delivery, forestId.toString());
+        return forestScheduler.submit(cmd)
+                .doFinally(signal -> {
+                    activeExecutions.remove(forestId);
+                });
+    }
+
+    /**
      * 取消正在执行的目标树。
      *
      * @param forestId 目标树 ID

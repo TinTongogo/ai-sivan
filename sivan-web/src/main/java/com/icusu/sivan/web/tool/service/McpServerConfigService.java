@@ -19,13 +19,15 @@ import java.util.List;
 import java.util.UUID;
 
 @Slf4j
-/** MCP 服务器配置管理服务，管理 MCP 工具服务器连接。 */
+/** MCP 服务器配置管理服务，管理 MCP 工具服务器连接。
+ * 功能涵盖：CRUD、连接/断开、工具列表查询、预检（07-工具动态感知）。 */
 @Service
 @RequiredArgsConstructor
 public class McpServerConfigService {
 
     private final IMcpServerConfigRepository mcpServerConfigRepository;
     private final McpConnectionManager mcpConnectionManager;
+    private final com.icusu.sivan.agent.tool.ToolPreflight toolPreflight;
 
     /**
      * 创建 MCP 服务器配置（仅保存到数据库，不建立连接）。连接在使用时按需建立。
@@ -192,8 +194,69 @@ public class McpServerConfigService {
                 .apiKey(null) // 不再返回 API key
                 .transport(config.getTransport())
                 .active(config.getActive())
+                .connectionStatus(config.getConnectionStatus())
+                .lastError(config.getLastError())
+                .lastConnectedAt(config.getLastConnectedAt())
+                .toolCount(config.getToolCount())
                 .createdAt(config.getCreatedAt())
                 .updatedAt(config.getUpdatedAt())
                 .build();
+    }
+
+    // =====================================================================
+    // 新增：连接/断开/工具列表/预检（07-工具动态感知 §5.2）
+    // =====================================================================
+
+    /** 手动连接 MCP 服务器。 */
+    public McpServerResponse connect(UUID accountId, UUID serverId) {
+        McpServerConfig config = findOwned(accountId, serverId);
+        mcpConnectionManager.connectSync(serverId);
+        // 更新连接状态
+        boolean connected = mcpConnectionManager.isConnected(serverId);
+        config.setConnectionStatus(connected ? "CONNECTED" : "ERROR");
+        if (connected) {
+            config.setLastConnectedAt(java.time.LocalDateTime.now());
+            config.setLastError(null);
+        } else {
+            config.setLastError("连接失败，请检查服务器地址和凭证");
+        }
+        mcpServerConfigRepository.save(config);
+        return toResponse(config);
+    }
+
+    /** 手动断开 MCP 服务器。 */
+    public McpServerResponse disconnect(UUID accountId, UUID serverId) {
+        McpServerConfig config = findOwned(accountId, serverId);
+        mcpConnectionManager.disconnect(serverId);
+        config.setConnectionStatus("DISCONNECTED");
+        mcpServerConfigRepository.save(config);
+        return toResponse(config);
+    }
+
+    /** 查看 MCP 服务器的工具列表。 */
+    public List<McpTestResult.ToolInfo> listTools(UUID accountId, UUID serverId) {
+        McpServerConfig config = findOwned(accountId, serverId);
+        var clientOpt = mcpConnectionManager.getClient(serverId);
+        if (clientOpt.isEmpty()) {
+            throw new com.icusu.sivan.common.exception.DomainException("MCP 服务器未连接，请先连接");
+        }
+        var client = clientOpt.get();
+        List<McpSchema.Tool> tools = client.listTools();
+        return tools.stream()
+                .map(t -> McpTestResult.ToolInfo.builder()
+                        .name(t.name())
+                        .title(t.title())
+                        .description(t.description())
+                        .inputSchema(t.inputSchema() != null
+                                ? new com.fasterxml.jackson.databind.ObjectMapper().convertValue(t.inputSchema(), java.util.Map.class)
+                                : null)
+                        .build())
+                .toList();
+    }
+
+    /** 运行 MCP 服务器预检。 */
+    public List<com.icusu.sivan.domain.tool.PreflightResult> preflight(UUID accountId, UUID serverId) {
+        findOwned(accountId, serverId);
+        return toolPreflight.check(serverId.toString()).block();
     }
 }

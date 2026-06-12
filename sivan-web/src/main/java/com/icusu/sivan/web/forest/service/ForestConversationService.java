@@ -1,6 +1,7 @@
 package com.icusu.sivan.web.forest.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.icusu.sivan.agent.model.ModelRouter;
 import com.icusu.sivan.common.enums.MessageStatus;
 import com.icusu.sivan.common.exception.DomainException;
 import com.icusu.sivan.common.exception.ResourceNotFoundException;
@@ -12,22 +13,28 @@ import com.icusu.sivan.domain.conversation.IConversationRepository;
 import com.icusu.sivan.domain.conversation.IMessageRepository;
 import com.icusu.sivan.domain.conversation.Message;
 import com.icusu.sivan.domain.forest.Forest;
-import com.icusu.sivan.domain.forest.ForestEvent;
 import com.icusu.sivan.domain.forest.context.Delivery;
 import com.icusu.sivan.domain.forest.context.ExecutionContext;
 import com.icusu.sivan.domain.forest.service.ForestRepository;
 import com.icusu.sivan.domain.forest.service.TreeMatcher;
 import com.icusu.sivan.domain.forest.tree.ExecutableNode;
 import com.icusu.sivan.domain.forest.tree.TaskNode;
-import com.icusu.sivan.domain.shared.event.MessageCompletedEvent;
 import com.icusu.sivan.domain.memory.InstinctPattern;
+import com.icusu.sivan.domain.shared.event.MessageCompletedEvent;
 import com.icusu.sivan.domain.task.TaskFeatures;
+import com.icusu.sivan.agent.routing.RoutingDecisionRecorder;
+import com.icusu.sivan.agent.routing.engine.PgRouteEngine;
+import com.icusu.sivan.domain.forest.tree.TaskNode;
+import com.icusu.sivan.domain.routing.RouteResult;
+import com.icusu.sivan.infra.forest.repository.ForestAgentMessageJpaRepository;
 import com.icusu.sivan.infra.forest.compression.ForestCompressor;
 import com.icusu.sivan.infra.forest.execution.ForestExecutor;
+import com.icusu.sivan.infra.forest.execution.GoalExecutionService;
 import com.icusu.sivan.infra.forest.sink.ForestMetricsCollector;
 import com.icusu.sivan.infra.memory.instinct.InstinctPatternService;
 import com.icusu.sivan.infra.shared.sse.SseFormatter;
 import com.icusu.sivan.infra.shared.sse.StreamManager;
+import com.icusu.sivan.web.forest.dto.ForestTreeResponse;
 import com.icusu.sivan.web.conversation.dto.*;
 import com.icusu.sivan.web.conversation.service.ConversationCompressionService;
 import com.icusu.sivan.web.conversation.service.ConversationCrudService;
@@ -36,7 +43,6 @@ import com.icusu.sivan.web.conversation.service.PromptContextService;
 import com.icusu.sivan.web.conversation.service.PromptContextService.ChatToolResult;
 import com.icusu.sivan.web.conversation.service.message.MessageAttachmentsSerializer;
 import com.icusu.sivan.web.conversation.service.tree.ContextResult;
-import com.icusu.sivan.agent.model.ModelRouter;
 import com.icusu.sivan.web.service.GroupService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -51,10 +57,11 @@ import reactor.core.scheduler.Schedulers;
 
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
-import java.util.function.Consumer;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
+
 /**
  * Forest 对话服务 — 对话 CRUD、消息收发、流式 LLM 调用与 Forest 编排执行。
  * <p>
@@ -72,7 +79,11 @@ public class ForestConversationService {
     private final ConversationCompressionService conversationCompressionService;
     private final TreeMatcher treeMatcher;
     private final ForestExecutor forestExecutor;
+    private final GoalExecutionService goalExecutionService;
     private final ForestCompressor forestCompressor;
+    private final PgRouteEngine pgRouteEngine;
+    private final ForestAgentMessageJpaRepository a2aMessageRepo;
+    private final RoutingDecisionRecorder routingDecisionRecorder;
     private final ConversationCrudService conversationCrudService;
     private final MessageCrudService messageCrudService;
     private final PromptContextService promptContextService;
@@ -154,7 +165,21 @@ public class ForestConversationService {
         Conversation conversation = conversationCrudService.findOwned(accountId, conversationId);
 
         // 先保存用户消息（含图片），确保前端能展示
-        Message userMessage = MessageCrudService.buildUserMessage(conversationId, accountId, conversation, request);
+        UUID resolvedReplyToId = messageCrudService.resolveLatestGeneration(request.getReplyToId());
+        Message userMessage = Message.builder()
+                .conversationId(conversationId)
+                .accountId(accountId)
+                .projectId(conversation.getProjectId())
+                .role(Message.ROLE_USER)
+                .content(request.getContent())
+                .contentType(request.getContentType() != null ? request.getContentType() : "text")
+                .targetAgent(request.getTargetAgent())
+                .replyToId(resolvedReplyToId)
+                .status(MessageStatus.COMPLETED)
+                .images(MessageAttachmentsSerializer.serializeImages(request.getImages()))
+                .audios(MessageAttachmentsSerializer.serializeAudios(request.getAudios()))
+                .attachments(MessageAttachmentsSerializer.serializeAttachments(request.getAttachments()))
+                .build();
         messageRepository.save(userMessage);
 
         // 保存 MCP 工具选择到对话
@@ -179,7 +204,7 @@ public class ForestConversationService {
     }
 
     private Flux<String> doOrchestrateAndRoute(UUID conversationId, SendMessageRequest request,
-                                                Conversation conversation, UUID accountId) {
+                                               Conversation conversation, UUID accountId) {
         OrchPrep prep = prepareOrchestration(conversation, request.getModelProviderId(), accountId);
         return runOrchestration(conversationId, request, conversation, accountId, prep);
     }
@@ -222,7 +247,7 @@ public class ForestConversationService {
      * 统一执行路径：TreeMatcher 构建树 → ForestExecutor 执行 → SSE 推送 → 持久化。
      */
     private Flux<String> runOrchestration(UUID conversationId, SendMessageRequest request,
-                                           Conversation conversation, UUID accountId, OrchPrep prep) {
+                                          Conversation conversation, UUID accountId, OrchPrep prep) {
         log.info("Forest 执行启动: conversationId={}, msgId={}", conversationId, prep.msgId);
 
         Consumer<String> progress = msg -> log.debug("编排进度: {}", msg);
@@ -261,7 +286,7 @@ public class ForestConversationService {
                                     ? String.format("%.0f%%", p.getSuccessRate() * 100) : "N/A";
                             prep.sink.tryEmitNext(SseFormatter.buildMatchTemplateEvent(
                                     "已匹配模板「" + p.getExecutionMode() + "」- 成功率 " + sr
-                                    + "（" + (p.getTotalCount() != null ? p.getTotalCount() : 0) + "次）"));
+                                            + "（" + (p.getTotalCount() != null ? p.getTotalCount() : 0) + "次）"));
                             treeMono = Mono.just(cachedTree);
                         } else {
                             treeMono = treeMatcher.match(request.getContent(), accountId);
@@ -280,13 +305,22 @@ public class ForestConversationService {
                             .flatMap(tree -> {
                                 String projectPath = groupService.getProjectRootPath(accountId, conversation.getProjectId());
 
-                                Forest forest = persistForestTree(tree, request.getContent(),
-                                        accountId, conversation.getProjectId(), conversation.getConversationId());
+                                // 先创建 Forest（获取 forestId），再设 metadata，再持久化
+                                Forest forest = new Forest(UUID.randomUUID(), accountId,
+                                        conversation.getProjectId(), conversationId,
+                                        request.getContent().length() > 50
+                                                ? request.getContent().substring(0, 47) + "..."
+                                                : request.getContent(),
+                                        tree.nodeId());
 
                                 forestCompressor.compress(forest, tree, "send", prep.maxPromptTokens);
                                 String agent = request.getTargetAgent();
+                                List<String> convKbIds = conversation.getKnowledgeBaseIds();
                                 addRuntimeMetadata(tree, prebuiltMsgs, coreTools, forest.forestId(),
-                                        projectPath, accountId, agent);
+                                        projectPath, accountId, agent, convKbIds, conversationId);
+
+                                // 持久化（metadata 已写入，一起存库）
+                                persistForest(forest, tree, accountId);
 
                                 ExecutionContext execCtx = ExecutionContext.create(accountId,
                                         conversation.getProjectId(), conversationId);
@@ -305,7 +339,7 @@ public class ForestConversationService {
                                 final int totalLeaves = countLeaves(tree);
                                 final long startProgressMs = System.currentTimeMillis();
 
-                                forestExecutor.execute(tree, execCtx, Delivery.SUMMARY)
+                                goalExecutionService.executeOnly(forest, tree, execCtx, Delivery.SUMMARY)
                                         .doOnNext(event -> {
                                             switch (event.type()) {
                                                 case DETAIL -> {
@@ -394,6 +428,7 @@ public class ForestConversationService {
                                             if (totalTokens[0] > 0)
                                                 prep.assistantMsg.setTotalTokens(totalTokens[0]);
                                             prep.assistantMsg.setDurationMs(durationMs);
+                                            prep.assistantMsg.setChain(forest.forestId().toString());
                                             if (thinkingTokens[0] > 0)
                                                 prep.assistantMsg.setThinkingTokens(thinkingTokens[0]);
                                             if (thinkingDurationMs > 0)
@@ -525,12 +560,21 @@ public class ForestConversationService {
 
                         TaskNode tree = new TaskNode(userContent);
                         String projectPath = groupService.getProjectRootPath(accountId, conversation.getProjectId());
-                        Forest forest = persistForestTree(tree, userContent,
-                                accountId, conversation.getProjectId(), conversation.getConversationId());
+                        Forest forest = new Forest(UUID.randomUUID(), accountId,
+                                conversation.getProjectId(), conversationId,
+                                userContent.length() > 50 ? userContent.substring(0, 47) + "..." : userContent,
+                                tree.nodeId());
                         forestCompressor.compress(forest, tree, "send", contextLength);
                         tree.metadata().put("prebuiltMessages", prebuiltMsgs);
                         tree.metadata().put("_accountId", accountId.toString());
                         if (projectPath != null) tree.metadata().put("_fileRootPath", projectPath);
+                        List<String> convKbIds = conversation.getKnowledgeBaseIds();
+                        if (convKbIds != null && !convKbIds.isEmpty()) {
+                            tree.metadata().put("_kbNames", String.join(",", convKbIds));
+                        }
+                        addRuntimeMetadata(tree, prebuiltMsgs, null, forest.forestId(),
+                                projectPath, accountId, null, convKbIds, conversationId);
+                        persistForest(forest, tree, accountId);
                         ExecutionContext execCtx = ExecutionContext.create(accountId,
                                 conversation.getProjectId(), conversationId);
 
@@ -548,7 +592,7 @@ public class ForestConversationService {
                         final long regStartMs = System.currentTimeMillis();
                         String modelName = resolveModelName(providerId, accountId);
 
-                        forestExecutor.execute(tree, execCtx, Delivery.SUMMARY)
+                        goalExecutionService.executeOnly(forest, tree, execCtx, Delivery.SUMMARY)
                                 .doOnNext(event -> {
                                     switch (event.type()) {
                                         case DETAIL -> {
@@ -621,6 +665,7 @@ public class ForestConversationService {
                                     if (totalTokens[0] > 0)
                                         finalAssistantMsg.setTotalTokens(totalTokens[0]);
                                     finalAssistantMsg.setDurationMs(durationMs);
+                                    finalAssistantMsg.setChain(forest.forestId().toString());
                                     if (thinkingTokens[0] > 0)
                                         finalAssistantMsg.setThinkingTokens(thinkingTokens[0]);
                                     if (thinkingDurationMs > 0)
@@ -710,7 +755,23 @@ public class ForestConversationService {
      */
     public void cancelStream(UUID accountId, UUID conversationId, UUID messageId) {
         conversationCrudService.findOwned(accountId, conversationId);
+
+        // 取消 SSE 流 + 标记消息
         cleanupStream(messageId);
+
+        // 取消 Forest 执行
+        messageRepository.findById(messageId).ifPresent(msg -> {
+            String chain = msg.getChain();
+            if (chain != null && !chain.isBlank()) {
+                try {
+                    UUID forestId = UUID.fromString(chain);
+                    goalExecutionService.cancelExecution(forestId);
+                    log.info("[取消] Forest 执行已取消: forestId={} msgId={}", chain.substring(0, 8), messageId);
+                } catch (Exception e) {
+                    log.warn("[取消] 取消失败: {}", e.getMessage());
+                }
+            }
+        });
     }
 
     /**
@@ -753,9 +814,123 @@ public class ForestConversationService {
         }
     }
 
+    /**
+     * 获取消息的 Forest 执行树。
+     * 通过 conversationId 查找关联的 Forest，再获取完整的执行树结构。
+     */
+    public ForestTreeResponse getMessageForest(UUID accountId, UUID conversationId, UUID messageId) {
+        conversationCrudService.findOwned(accountId, conversationId);
+
+        // 先从消息的 chain 字段获取 forestId
+        Forest forest = messageRepository.findById(messageId)
+                .map(msg -> {
+                    String chain = msg.getChain();
+                    if (chain != null && !chain.isBlank()) {
+                        try {
+                            return forestRepository.findForestById(UUID.fromString(chain), accountId);
+                        } catch (Exception e) {
+                            log.debug("chain 中的 forestId 无效: {}", chain);
+                        }
+                    }
+                    return null;
+                })
+                .orElse(null);
+
+        // 回退：按对话查找最近的 Forest
+        if (forest == null) {
+            java.util.List<Forest> forests = forestRepository.findByConversationId(conversationId, accountId);
+            if (forests.isEmpty()) {
+                log.debug("无 Forest 记录: conversationId={}", conversationId);
+                return null;
+            }
+            forest = forests.getFirst();
+        }
+        String rootNodeId = forest.rootNodeId();
+        if (rootNodeId == null) return null;
+
+        // 加载子树
+        com.icusu.sivan.domain.forest.tree.TreeNode root = forestRepository.findSubtree(rootNodeId, accountId);
+        if (root == null) return null;
+
+        // 构建进度
+        int total = countForestLeaves(root);
+        int completed = countCompletedLeaves(root);
+
+        ForestTreeResponse resp = new ForestTreeResponse();
+        resp.setForestId(forest.forestId().toString());
+        resp.setRoot(toForestTreeNode(root));
+        resp.setProgress(new ForestTreeResponse.Progress(completed, total));
+        return resp;
+    }
+
+    private ForestTreeResponse.TreeNode toForestTreeNode(com.icusu.sivan.domain.forest.tree.TreeNode node) {
+        ForestTreeResponse.TreeNode tn = new ForestTreeResponse.TreeNode();
+        tn.setNodeId(node.nodeId());
+        tn.setName(node instanceof com.icusu.sivan.domain.forest.tree.ContentNode cn ? cn.content() : node.nodeType());
+        tn.setLeaf(node.isLeaf());
+        if (node instanceof com.icusu.sivan.domain.forest.tree.ExecutableNode en) {
+            tn.setStatus(en.status().name());
+            tn.setMode(en.mode() != com.icusu.sivan.common.Mode.NONE ? en.mode().name() : null);
+        } else {
+            tn.setStatus("PENDING");
+        }
+        if (node instanceof com.icusu.sivan.domain.forest.tree.ContentNode cn) {
+            Object agentName = cn.metadata().get("agentName");
+            if (agentName instanceof String s) tn.setAgent(s);
+            Object routeTier = cn.metadata().get("_routeTier");
+            if (routeTier instanceof Integer i) tn.setRouteTier(i);
+            Object routeConf = cn.metadata().get("_routeConfidence");
+            if (routeConf instanceof Double d) tn.setRouteConfidence(d);
+        }
+        // 加载 A2A 消息
+        String nid = node.nodeId();
+        if (a2aMessageRepo != null) {
+            try {
+                var a2aList = a2aMessageRepo.findByScopeNodeId(nid);
+                if (a2aList != null && !a2aList.isEmpty()) {
+                    tn.setA2aMessages(a2aList.stream()
+                            .map(e -> new ForestTreeResponse.A2aMessage(
+                                    e.getSourceAgent(), e.getTargetAgent(),
+                                    e.getTopic(), e.getMessageType()))
+                            .toList());
+                }
+            } catch (Exception e) {
+                log.debug("加载 A2A 消息失败: nodeId={}", nid);
+            }
+        }
+        if (!node.children().isEmpty()) {
+            tn.setChildren(node.children().stream()
+                    .filter(c -> c instanceof com.icusu.sivan.domain.forest.tree.ExecutableNode)
+                    .map(this::toForestTreeNode)
+                    .toList());
+        }
+        return tn;
+    }
+
+    private static int countForestLeaves(com.icusu.sivan.domain.forest.tree.TreeNode node) {
+        if (node.isLeaf()) return 1;
+        return node.children().stream()
+                .filter(c -> c instanceof com.icusu.sivan.domain.forest.tree.ExecutableNode)
+                .mapToInt(ForestConversationService::countForestLeaves)
+                .sum();
+    }
+
+    private static int countCompletedLeaves(com.icusu.sivan.domain.forest.tree.TreeNode node) {
+        if (node.isLeaf()) {
+            return node instanceof com.icusu.sivan.domain.forest.tree.ExecutableNode en
+                    && en.status() == com.icusu.sivan.common.NodeStatus.COMPLETED ? 1 : 0;
+        }
+        return node.children().stream()
+                .filter(c -> c instanceof com.icusu.sivan.domain.forest.tree.ExecutableNode)
+                .mapToInt(ForestConversationService::countCompletedLeaves)
+                .sum();
+    }
+
     // ============ 内部辅助 ============
 
-    /** 递归统计树中的叶子节点（TaskNode）数量。 */
+    /**
+     * 递归统计树中的叶子节点（TaskNode）数量。
+     */
     private static int countLeaves(ExecutableNode node) {
         if (node.children().isEmpty()) return 1;
         int count = 0;
@@ -767,7 +942,9 @@ public class ForestConversationService {
         return Math.max(count, 1);
     }
 
-    /** 构建 progress SSE 事件 JSON。 */
+    /**
+     * 构建 progress SSE 事件 JSON。
+     */
     private static String buildProgressJson(int completed, int total, long elapsedMs) {
         return "{\"type\":\"progress\",\"data\":{\"status\":\"RUNNING\","
                 + "\"totalPhases\":" + total
@@ -779,117 +956,177 @@ public class ForestConversationService {
     }
 
 
-    /** 从用户输入中提取任务特征（启发式规则，用于本能模板匹配）。 */
-    private static TaskFeatures extractTaskFeatures(String input) { 
-        return new TaskFeatures( 
-                detectComplexity(input), 
-                detectDependency(input), 
-                detectInputStructure(input), 
-                detectDomain(input), 
-                detectOutputType(input) 
-        ); 
-    } 
+    /**
+     * 从用户输入中提取任务特征（启发式规则，用于本能模板匹配）。
+     */
+    private static TaskFeatures extractTaskFeatures(String input) {
+        return new TaskFeatures(
+                detectComplexity(input),
+                detectDependency(input),
+                detectInputStructure(input),
+                detectDomain(input),
+                detectOutputType(input)
+        );
+    }
 
-    private static TaskFeatures.Complexity detectComplexity(String input) { 
-        int len = input != null ? input.length() : 0; 
-        if (len < 30) return TaskFeatures.Complexity.LEVEL_1; 
-        if (len < 200) return TaskFeatures.Complexity.LEVEL_2; 
-        if (len < 800) return TaskFeatures.Complexity.LEVEL_3; 
-        if (len < 3000) return TaskFeatures.Complexity.LEVEL_4; 
-        return TaskFeatures.Complexity.LEVEL_5; 
-    } 
+    private static TaskFeatures.Complexity detectComplexity(String input) {
+        int len = input != null ? input.length() : 0;
+        if (len < 30) return TaskFeatures.Complexity.LEVEL_1;
+        if (len < 200) return TaskFeatures.Complexity.LEVEL_2;
+        if (len < 800) return TaskFeatures.Complexity.LEVEL_3;
+        if (len < 3000) return TaskFeatures.Complexity.LEVEL_4;
+        return TaskFeatures.Complexity.LEVEL_5;
+    }
 
-    private static TaskFeatures.Dependency detectDependency(String input) { 
-        if (input == null) return TaskFeatures.Dependency.INDEPENDENT; 
-        String lower = input.toLowerCase(); 
-        if (lower.contains("同时") || lower.contains("并行") || lower.contains("parallel")) 
-            return TaskFeatures.Dependency.PARALLEL; 
-        if (lower.contains("如果") || lower.contains("判断") || lower.contains("条件") || lower.contains("否则")) 
-            return TaskFeatures.Dependency.CONDITIONAL; 
-        if (lower.contains("然后") || lower.contains("之后再") || lower.contains("接着") || lower.contains("步骤")) 
-            return TaskFeatures.Dependency.SEQUENTIAL; 
-        return TaskFeatures.Dependency.INDEPENDENT; 
-    } 
+    private static TaskFeatures.Dependency detectDependency(String input) {
+        if (input == null) return TaskFeatures.Dependency.INDEPENDENT;
+        String lower = input.toLowerCase();
+        if (lower.contains("同时") || lower.contains("并行") || lower.contains("parallel"))
+            return TaskFeatures.Dependency.PARALLEL;
+        if (lower.contains("如果") || lower.contains("判断") || lower.contains("条件") || lower.contains("否则"))
+            return TaskFeatures.Dependency.CONDITIONAL;
+        if (lower.contains("然后") || lower.contains("之后再") || lower.contains("接着") || lower.contains("步骤"))
+            return TaskFeatures.Dependency.SEQUENTIAL;
+        return TaskFeatures.Dependency.INDEPENDENT;
+    }
 
-    private static TaskFeatures.InputStructure detectInputStructure(String input) { 
-        if (input == null) return TaskFeatures.InputStructure.FREE_TEXT; 
-        String lower = input.toLowerCase(); 
-        if (input.contains("```") || lower.contains("function") || lower.contains("class ") || lower.contains("error:")) 
-            return TaskFeatures.InputStructure.CODE; 
-        return TaskFeatures.InputStructure.FREE_TEXT; 
-    } 
+    private static TaskFeatures.InputStructure detectInputStructure(String input) {
+        if (input == null) return TaskFeatures.InputStructure.FREE_TEXT;
+        String lower = input.toLowerCase();
+        if (input.contains("```") || lower.contains("function") || lower.contains("class ") || lower.contains("error:"))
+            return TaskFeatures.InputStructure.CODE;
+        return TaskFeatures.InputStructure.FREE_TEXT;
+    }
 
-    private static TaskFeatures.Domain detectDomain(String input) { 
-        if (input == null) return TaskFeatures.Domain.GENERAL; 
-        String lower = input.toLowerCase(); 
-        if (lower.contains("代码") || lower.contains("写") || lower.contains("编程") || lower.contains("debug") || lower.contains("api") || lower.contains("sql")) 
-            return TaskFeatures.Domain.CODING; 
-        if (lower.contains("文章") || lower.contains("写") || lower.contains("文案") || lower.contains("翻译")) 
-            return TaskFeatures.Domain.WRITING; 
-        if (lower.contains("分析") || lower.contains("对比") || lower.contains("总结") || lower.contains("数据")) 
-            return TaskFeatures.Domain.ANALYSIS; 
-        if (lower.contains("调研") || lower.contains("研究") || lower.contains("搜索")) 
-            return TaskFeatures.Domain.RESEARCH; 
-        return TaskFeatures.Domain.GENERAL; 
-    } 
+    private static TaskFeatures.Domain detectDomain(String input) {
+        if (input == null) return TaskFeatures.Domain.GENERAL;
+        String lower = input.toLowerCase();
+        if (lower.contains("代码") || lower.contains("写") || lower.contains("编程") || lower.contains("debug") || lower.contains("api") || lower.contains("sql"))
+            return TaskFeatures.Domain.CODING;
+        if (lower.contains("文章") || lower.contains("写") || lower.contains("文案") || lower.contains("翻译"))
+            return TaskFeatures.Domain.WRITING;
+        if (lower.contains("分析") || lower.contains("对比") || lower.contains("总结") || lower.contains("数据"))
+            return TaskFeatures.Domain.ANALYSIS;
+        if (lower.contains("调研") || lower.contains("研究") || lower.contains("搜索"))
+            return TaskFeatures.Domain.RESEARCH;
+        return TaskFeatures.Domain.GENERAL;
+    }
 
-    private static TaskFeatures.OutputType detectOutputType(String input) { 
-        if (input == null) return TaskFeatures.OutputType.SHORT_TEXT; 
-        String lower = input.toLowerCase(); 
-        if (lower.contains("代码") || lower.contains("脚本") || lower.contains("编程")) 
-            return TaskFeatures.OutputType.CODE; 
-        if (lower.contains("json") || lower.contains("结构化")) 
-            return TaskFeatures.OutputType.JSON; 
-        if (lower.contains("文章") || lower.contains("报告") || lower.contains("长文")) 
-            return TaskFeatures.OutputType.LONG_TEXT; 
-        return TaskFeatures.OutputType.SHORT_TEXT; 
-    } 
+    private static TaskFeatures.OutputType detectOutputType(String input) {
+        if (input == null) return TaskFeatures.OutputType.SHORT_TEXT;
+        String lower = input.toLowerCase();
+        if (lower.contains("代码") || lower.contains("脚本") || lower.contains("编程"))
+            return TaskFeatures.OutputType.CODE;
+        if (lower.contains("json") || lower.contains("结构化"))
+            return TaskFeatures.OutputType.JSON;
+        if (lower.contains("文章") || lower.contains("报告") || lower.contains("长文"))
+            return TaskFeatures.OutputType.LONG_TEXT;
+        return TaskFeatures.OutputType.SHORT_TEXT;
+    }
 
-    /** 将 InstinctPattern 的 topologyJson 解析为 ExecutableNode 树。复⽤ LlmTreeMatcher 的解析逻辑。 */ 
-    private ExecutableNode parseTopologyJson(String topologyJson, String originalInput) { 
-        if (topologyJson == null || topologyJson.isBlank()) return null; 
-        try { 
-            if (treeMatcher instanceof com.icusu.sivan.agent.forest.matcher.LlmTreeMatcher llm) { 
-                return llm.parseTree(topologyJson, originalInput); 
-            } 
-        } catch (Exception e) { 
-            log.warn("解析 topologyJson 失败: {}", e.getMessage()); 
-        } 
-        return null; 
-    }    private static String escapeJson(String s) {
+    /**
+     * 将 InstinctPattern 的 topologyJson 解析为 ExecutableNode 树。复⽤ LlmTreeMatcher 的解析逻辑。
+     */
+    private ExecutableNode parseTopologyJson(String topologyJson, String originalInput) {
+        if (topologyJson == null || topologyJson.isBlank()) return null;
+        try {
+            if (treeMatcher instanceof com.icusu.sivan.agent.forest.matcher.LlmTreeMatcher llm) {
+                return llm.parseTree(topologyJson, originalInput);
+            }
+        } catch (Exception e) {
+            log.warn("解析 topologyJson 失败: {}", e.getMessage());
+        }
+        return null;
+    }
+
+    private static String escapeJson(String s) {
         return JsonUtil.escapeJson(s);
     }
 
-    private Forest persistForestTree(ExecutableNode root, String content, UUID accountId, UUID projectId, UUID conversationId) {
-        Forest forest = new Forest(UUID.randomUUID(), accountId, projectId, conversationId,
-                content.length() > 50 ? content.substring(0, 47) + "..." : content,
-                root.nodeId());
+    /** 持久化已组装好 metadata 的 Forest + 树。 */
+    private void persistForest(Forest forest, ExecutableNode root, UUID accountId) {
         try {
             transactionTemplate.executeWithoutResult(status -> {
                 forestRepository.saveForest(forest, accountId);
                 forestRepository.saveTree(root, forest.forestId(), accountId);
             });
         } catch (Exception e) {
-            log.warn("持久化执行树失败（不影响执行）: forestId={} projectId={} error={}",
-                    root.nodeId(), projectId, e.getMessage());
+            log.warn("持久化执行树失败（不影响执行）: forestId={} error={}", forest.forestId(), e.getMessage());
         }
-        return forest;
     }
 
     private void addRuntimeMetadata(ExecutableNode node, List<Msg> msgs, List<ToolSpec> tools,
-                                     UUID forestId, String fileRootPath, UUID accountId, String agentName) {
+                                    UUID forestId, String fileRootPath, UUID accountId,
+                                    String agentName, List<String> convKbIds, UUID conversationId) {
         if (node instanceof TaskNode tn) {
             tn.metadata().put("prebuiltMessages", msgs);
             tn.metadata().put("_forestId", forestId != null ? forestId.toString() : "");
             tn.metadata().put("_accountId", accountId.toString());
             if (tools != null) tn.metadata().put("preferredToolSpecs", tools);
             if (fileRootPath != null) tn.metadata().put("_fileRootPath", fileRootPath);
-            if (agentName != null && !agentName.isBlank()) tn.metadata().put("agentName", agentName);
+            if (convKbIds != null && !convKbIds.isEmpty()) {
+                tn.metadata().put("_kbNames", String.join(",", convKbIds));
+            }
+
+            // PgRouteEngine 优化 Agent 分配，并记录路由决策
+            String currentAgent = agentName;
+            String taskContent = tn.content();
+            if (taskContent != null && !taskContent.isBlank()) {
+                String featureHash = PgRouteEngine.md5(taskContent);
+                try {
+                    RouteResult rr = Mono.fromCallable(() ->
+                                pgRouteEngine.resolve(accountId, taskContent, featureHash).block())
+                            .subscribeOn(Schedulers.boundedElastic()).block();
+                    if (rr != null) {
+                        if ("chat".equals(rr.intent())) {
+                            // Chat 路径：切换节点类型为 "message"，不走 ReAct/工具
+                            tn.setNodeType("message");
+                            log.debug("[路由] chat 意图，切换 nodeType=message: content={}", truncateStr(taskContent, 40));
+                        } else {
+                            // Task 路径：正常分配 Agent + 路由决策
+                            currentAgent = rr.agentName();
+                            tn.metadata().put("_routeTier", rr.tier());
+                            tn.metadata().put("_routeConfidence", rr.confidence());
+                            log.debug("[路由] {} → {} (Tier {}, conf={})",
+                                    agentName != null ? agentName : "未分配",
+                                    currentAgent, rr.tier(), String.format("%.2f", rr.confidence()));
+
+                            // 记录路由决策到数据库（路由日志展示用）
+                            routingDecisionRecorder.record(new RoutingDecisionRecorder.RecordRequest(
+                                    accountId, null, conversationId, taskContent,
+                                    routeTierToStrategy(rr.tier()), rr.agentName(), true,
+                                    "Tier " + rr.tier() + " · " + (rr.confidence() > 0
+                                            ? "置信度 " + String.format("%.0f", rr.confidence() * 100) + "%"
+                                            : "新建 Agent"),
+                                    rr.confidence(), null, null));
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("[路由] PgRouteEngine 异常(使用默认 Agent): {}", e.getMessage());
+                }
+            }
+            if (currentAgent != null && !currentAgent.isBlank()) tn.metadata().put("agentName", currentAgent);
         }
         for (var child : node.children()) {
             if (child instanceof ExecutableNode en) {
-                addRuntimeMetadata(en, msgs, tools, forestId, fileRootPath, accountId, agentName);
+                addRuntimeMetadata(en, msgs, tools, forestId, fileRootPath, accountId, agentName, convKbIds, conversationId);
             }
         }
+    }
+
+    /** 将路由层级转为策略名称，用于路由日志展示。 */
+    private static String routeTierToStrategy(int tier) {
+        return switch (tier) {
+            case 0 -> "exact";
+            case 1 -> "semantic";
+            case 2 -> "explore";
+            case 3 -> "auto_create";
+            default -> "auto";
+        };
+    }
+
+    private static String truncateStr(String s, int maxLen) {
+        if (s == null) return "";
+        return s.length() <= maxLen ? s : s.substring(0, maxLen) + "...";
     }
 }

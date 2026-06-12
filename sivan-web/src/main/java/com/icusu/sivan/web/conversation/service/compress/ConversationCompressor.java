@@ -1,5 +1,6 @@
 package com.icusu.sivan.web.conversation.service.compress;
 
+import com.icusu.sivan.domain.compression.MessageImportanceScorer;
 import com.icusu.sivan.domain.conversation.CompressResult;
 import com.icusu.sivan.domain.conversation.IMessageRepository;
 import com.icusu.sivan.domain.conversation.Message;
@@ -32,6 +33,7 @@ import java.util.stream.Collectors;
 public class ConversationCompressor {
 
     private final IMessageRepository messageRepository;
+    private final MessageImportanceScorer importanceScorer;
 
     // ====== 公开入口 ======
 
@@ -313,6 +315,13 @@ public class ConversationCompressor {
                 }
                 score += matches * 1.5;
             }
+        }
+
+        // 时间衰减：越近的消息越重要（30 天衰减到 10%）
+        if (msg.getCreatedAt() != null) {
+            var hoursAge = java.time.Duration.between(msg.getCreatedAt(), java.time.LocalDateTime.now()).toHours();
+            double timeFactor = Math.max(0.1, 1.0 - hoursAge / 720.0);
+            score *= timeFactor;
         }
 
         return score;

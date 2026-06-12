@@ -126,6 +126,16 @@ public class PromptContextService {
         List<Message> messages = new ArrayList<>(
                 messageRepository.findLatestByConversationId(conversationId, MAX_MESSAGES_LOAD));
 
+        // 排除与 excludeMessageId 同 generationGroup 的消息（重新生成时不携带旧版回复）
+        if (excludeMessageId != null) {
+            messageRepository.findById(excludeMessageId).ifPresent(excluded -> {
+                UUID genGroup = excluded.getGenerationGroup();
+                if (genGroup != null) {
+                    messages.removeIf(m -> genGroup.equals(m.getGenerationGroup()));
+                }
+            });
+        }
+
         Collections.reverse(messages);
         int maxPromptTokens = (int) (contextLength * resolveBudgetRatio(providerId, accountId));
         List<Message> truncated = truncateWithProtection(messages, ChatPrompts.CHAT_SYSTEM.content(),
@@ -692,7 +702,7 @@ public class PromptContextService {
         String sandboxPath = groupService.getProjectRootPath(accountId, projectId);
         if (sandboxPath == null) return List.of();
 
-        Path uploadDir = Paths.get(sandboxPath, "uploads");
+        Path uploadDir = Paths.get(sandboxPath);
         List<String> failedFiles = new ArrayList<>();
 
         for (Map<String, Object> att : attachments) {

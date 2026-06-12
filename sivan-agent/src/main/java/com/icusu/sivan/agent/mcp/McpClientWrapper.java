@@ -2,6 +2,8 @@ package com.icusu.sivan.agent.mcp;
 
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.spec.McpSchema;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 
@@ -10,8 +12,11 @@ import java.util.List;
  */
 public class McpClientWrapper implements AutoCloseable {
 
+    private static final Logger log = LoggerFactory.getLogger(McpClientWrapper.class);
+
     private final String name;
     private final McpSyncClient client;
+    private volatile boolean connected = true;
 
     public McpClientWrapper(String name, McpSyncClient client) {
         this.name = name;
@@ -26,6 +31,26 @@ public class McpClientWrapper implements AutoCloseable {
         return client;
     }
 
+    /** 是否连接正常。 */
+    public boolean isConnected() {
+        return connected;
+    }
+
+    /** 健康检查：尝试获取工具列表。成功返回 true，失败标记为断连并返回 false。 */
+    public boolean ping() {
+        try {
+            client.listTools();
+            connected = true;
+            return true;
+        } catch (Exception e) {
+            if (connected) {
+                log.warn("MCP 客户端心跳失败: name={} error={}", name, e.getMessage());
+            }
+            connected = false;
+            return false;
+        }
+    }
+
     /** 获取工具列表（同步）。 */
     public List<McpSchema.Tool> listTools() {
         return client.listTools().tools();
@@ -38,6 +63,7 @@ public class McpClientWrapper implements AutoCloseable {
 
     @Override
     public void close() {
+        connected = false;
         try {
             client.closeGracefully();
         } catch (Exception ignored) {

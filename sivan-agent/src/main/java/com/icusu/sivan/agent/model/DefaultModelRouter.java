@@ -39,11 +39,11 @@ public class DefaultModelRouter implements ModelRouter, ModelAccessor {
         if (entry != null && !entry.createdAt.plus(TTL).isBefore(Instant.now())) {
             return entry.model;
         }
-        defaultModelCache.remove(accountId);
-        return defaultModelCache.computeIfAbsent(accountId, id -> {
-            LlmProvider provider = getDefaultProvider(id);
-            return new CacheEntry(resolveModel(provider), Instant.now());
-        }).model;
+        LlmProvider provider = getDefaultProvider(accountId);
+        Model model = resolveModel(provider);
+        model = new MetricsModel(new RateLimitModel(new RetryableModel(model, 2), 30));
+        defaultModelCache.put(accountId, new CacheEntry(model, Instant.now()));
+        return model;
     }
 
     @Override

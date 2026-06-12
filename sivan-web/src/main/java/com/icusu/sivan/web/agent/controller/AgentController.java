@@ -43,11 +43,11 @@ public class AgentController {
     }
 
     /**
-     * 获取智能体列表，可按项目 ID 过滤。
+     * 获取智能体列表。
      */
     @GetMapping
-    public BaseResponse<List<AgentResponse>> list(@RequestParam(required = false) UUID projectId, @CurrentAccountId UUID accountId) {
-        return BaseResponse.success(agentService.list(accountId, projectId));
+    public BaseResponse<List<AgentResponse>> list(@CurrentAccountId UUID accountId) {
+        return BaseResponse.success(agentService.list(accountId));
     }
 
     /**

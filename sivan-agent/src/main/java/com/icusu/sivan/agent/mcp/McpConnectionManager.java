@@ -8,6 +8,7 @@ import com.icusu.sivan.domain.tool.IMcpServerConfigRepository;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import reactor.core.Disposable;
 import reactor.core.publisher.Mono;
@@ -20,23 +21,30 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 /**
  * MCP 客户端连接管理器（全异步，零阻塞）。
  * <p>
  * 连接失败后 30s 冷却期，避免 MCP SDK 内部重连刷屏。
+ * 每 60 秒心跳检测（07-工具动态感知 §5.3），连续 3 次失败自动断开。
  */
 @Slf4j
 @Component
 public class McpConnectionManager {
 
     private static final Duration COOLDOWN = Duration.ofSeconds(30);
+    private static final int MAX_HEARTBEAT_FAILURES = 3;
 
     private final IMcpServerConfigRepository mcpServerConfigRepository;
     private final ToolIndex toolIndex;
     private final ToolRegistryImpl toolRegistry;
 
+    /** serverId → McpClientWrapper 连接池 */
     private final Map<UUID, McpClientWrapper> connectedClients = new ConcurrentHashMap<>();
+    /** serverId → 连接元数据 */
+    private final Map<UUID, McpConnection> connectionMeta = new ConcurrentHashMap<>();
+    /** serverId → 冷却到期时间 */
     private final Map<UUID, Instant> cooldowns = new ConcurrentHashMap<>();
     private final Set<UUID> connecting = ConcurrentHashMap.newKeySet();
     private final Set<Disposable> pendingConnects = ConcurrentHashMap.newKeySet();
@@ -57,9 +65,11 @@ public class McpConnectionManager {
                 try {
                     McpClientWrapper client = doConnect(config);
                     connectedClients.put(config.getServerId(), client);
+                    connectionMeta.put(config.getServerId(), new McpConnection(config, ConnectionStatus.CONNECTED));
                     log.info("MCP 服务器已启动时连接: {} ({})", config.getName(), config.getServerUrl());
                 } catch (Exception e) {
                     cooldowns.put(config.getServerId(), Instant.now());
+                    connectionMeta.put(config.getServerId(), new McpConnection(config, ConnectionStatus.ERROR, e.getMessage()));
                     log.warn("MCP 启动连接失败 ({}s 冷却): {} — {}",
                             COOLDOWN.toSeconds(), config.getName(), e.getMessage());
                 }
@@ -72,8 +82,62 @@ public class McpConnectionManager {
         disconnectAll();
     }
 
+    /**
+     * 心跳检测 — 每 60 秒检查所有活跃连接的健康状态（07-工具动态感知 §5.3）。
+     * 连续 3 次失败自动断开并通知。
+     */
+    @Scheduled(fixedRate = 60000)
+    public void heartbeat() {
+        if (connectedClients.isEmpty()) return;
+
+        List<UUID> deadServers = connectedClients.entrySet().stream()
+                .filter(entry -> {
+                    McpClientWrapper client = entry.getValue();
+                    boolean alive = client.ping();
+                    if (!alive) {
+                        McpConnection meta = connectionMeta.get(entry.getKey());
+                        if (meta != null) {
+                            int failures = meta.heartbeatFailures + 1;
+                            connectionMeta.put(entry.getKey(), meta.withHeartbeatFailures(failures));
+                            if (failures >= MAX_HEARTBEAT_FAILURES) {
+                                log.warn("MCP 心跳: 连续 {} 次失败，自动断开 serverId={} name={}",
+                                        failures, entry.getKey(), client.getName());
+                                return true; // 需要断开
+                            }
+                            log.warn("MCP 心跳: 第 {} 次失败 serverId={} name={}",
+                                    failures, entry.getKey(), client.getName());
+                        }
+                    } else {
+                        // 恢复正常，重置失败计数
+                        McpConnection meta = connectionMeta.get(entry.getKey());
+                        if (meta != null && meta.heartbeatFailures > 0) {
+                            connectionMeta.put(entry.getKey(), meta.withHeartbeatFailures(0));
+                        }
+                    }
+                    return false;
+                })
+                .map(Map.Entry::getKey)
+                .toList();
+
+        // 断开死服务器
+        deadServers.forEach(serverId -> {
+            notifyUser(serverId.toString(), "MCP 服务器连接断开（心跳检测失败）");
+            disconnect(serverId);
+        });
+
+        if (!deadServers.isEmpty()) {
+            log.info("MCP 心跳: 已断开 {} 个失效服务器", deadServers.size());
+        }
+    }
+
     public boolean isConnected(UUID serverId) {
         return connectedClients.containsKey(serverId);
+    }
+
+    /** 获取连接状态。 */
+    public ConnectionStatus getStatus(UUID serverId) {
+        McpConnection meta = connectionMeta.get(serverId);
+        return meta != null ? meta.status : ConnectionStatus.DISCONNECTED;
     }
 
     /** 异步连接（冷却期内跳过）。 */
@@ -114,10 +178,12 @@ public class McpConnectionManager {
             try {
                 McpClientWrapper client = doConnect(config);
                 connectedClients.put(config.getServerId(), client);
+                connectionMeta.put(config.getServerId(), new McpConnection(config, ConnectionStatus.CONNECTED));
                 cooldowns.remove(config.getServerId());
                 log.info("MCP 服务器已同步连接: {} ({})", config.getName(), config.getServerUrl());
             } catch (Exception e) {
                 cooldowns.put(config.getServerId(), Instant.now());
+                connectionMeta.put(config.getServerId(), new McpConnection(config, ConnectionStatus.ERROR, e.getMessage()));
                 log.warn("MCP 同步连接失败 ({}s 冷却): {} — {}",
                         COOLDOWN.toSeconds(), config.getName(), e.getMessage());
             }
@@ -127,6 +193,7 @@ public class McpConnectionManager {
     public void disconnect(UUID serverId) {
         McpClientWrapper client = connectedClients.remove(serverId);
         cooldowns.remove(serverId);
+        connectionMeta.remove(serverId);
         if (client != null) {
             toolRegistry.unregisterServerTools(serverId.toString());
             toolIndex.removeServer(serverId.toString());
@@ -149,6 +216,19 @@ public class McpConnectionManager {
         return java.util.Optional.ofNullable(connectedClients.get(serverId));
     }
 
+    /** 获取所有已连接服务器的摘要信息。 */
+    public List<ConnectionSummary> getConnectionSummaries() {
+        return connectionMeta.entrySet().stream()
+                .map(entry -> new ConnectionSummary(
+                        entry.getKey().toString(),
+                        entry.getValue().config.getName(),
+                        entry.getValue().status.name(),
+                        entry.getValue().lastError,
+                        entry.getValue().config.getServerUrl()
+                ))
+                .toList();
+    }
+
     // ====== 内部 ======
 
     private boolean isInCooldown(UUID serverId) {
@@ -160,17 +240,21 @@ public class McpConnectionManager {
         if (config.getServerId() == null) return;
         if (!connecting.add(config.getServerId())) return; // 已在连接中
 
+        connectionMeta.put(config.getServerId(), new McpConnection(config, ConnectionStatus.CONNECTING));
+
         Disposable disposable = Mono.fromCallable(() -> doConnect(config))
                 .subscribeOn(Schedulers.boundedElastic())
                 .subscribe(
                         client -> {
                             connectedClients.put(config.getServerId(), client);
+                            connectionMeta.put(config.getServerId(), new McpConnection(config, ConnectionStatus.CONNECTED));
                             cooldowns.remove(config.getServerId());
                             connecting.remove(config.getServerId());
                             pendingConnects.removeIf(d -> d.isDisposed());
                             log.info("MCP 服务器已连接: {} ({})", config.getName(), config.getServerUrl());
                         },
                         error -> {
+                            connectionMeta.put(config.getServerId(), new McpConnection(config, ConnectionStatus.ERROR, error.getMessage()));
                             cooldowns.put(config.getServerId(), Instant.now());
                             connecting.remove(config.getServerId());
                             pendingConnects.removeIf(d -> d.isDisposed());
@@ -233,4 +317,46 @@ public class McpConnectionManager {
         toolRegistry.registerServerTools(config.getServerId().toString());
         return client;
     }
+
+    private void notifyUser(String serverId, String message) {
+        log.warn("[MCP 通知] serverId={} {}", serverId, message);
+    }
+
+    // ====== 内部类型 ======
+
+    /** MCP 连接元数据（07-工具动态感知 §5.3）。 */
+    public record McpConnection(
+            McpServerConfig config,
+            ConnectionStatus status,
+            String lastError,
+            Instant lastConnectedAt,
+            int heartbeatFailures
+    ) {
+        public McpConnection(McpServerConfig config, ConnectionStatus status) {
+            this(config, status, null, Instant.now(), 0);
+        }
+        public McpConnection(McpServerConfig config, ConnectionStatus status, String lastError) {
+            this(config, status, lastError, Instant.now(), 0);
+        }
+        public McpConnection withHeartbeatFailures(int failures) {
+            return new McpConnection(config, status, lastError, lastConnectedAt, failures);
+        }
+    }
+
+    /** 连接状态枚举（07-工具动态感知 §5.1）。 */
+    public enum ConnectionStatus {
+        DISCONNECTED,
+        CONNECTING,
+        CONNECTED,
+        ERROR
+    }
+
+    /** 连接摘要（供 API 返回）。 */
+    public record ConnectionSummary(
+            String serverId,
+            String name,
+            String status,
+            String lastError,
+            String serverUrl
+    ) {}
 }

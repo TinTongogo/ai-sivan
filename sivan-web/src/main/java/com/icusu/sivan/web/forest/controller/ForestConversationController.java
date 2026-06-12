@@ -1,11 +1,13 @@
 package com.icusu.sivan.web.forest.controller;
 
 import com.icusu.sivan.common.dto.BaseResponse;
+import com.icusu.sivan.infra.shared.sse.StreamManager;
 import com.icusu.sivan.web.conversation.dto.*;
+import com.icusu.sivan.web.forest.dto.ForestTreeResponse;
 import com.icusu.sivan.web.forest.service.ForestConversationService;
 import com.icusu.sivan.web.shared.security.CurrentAccountId;
-import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
@@ -27,6 +29,7 @@ import java.util.UUID;
 public class ForestConversationController {
 
     private final ForestConversationService forestConversationService;
+    private final StreamManager streamManager;
 
     // ============ 对话 CRUD ============
 
@@ -192,5 +195,25 @@ public class ForestConversationController {
                                                       @RequestParam String rating,
                                                       @CurrentAccountId UUID accountId) {
         return BaseResponse.success(forestConversationService.rateMessage(accountId, messageId, rating));
+    }
+
+    /**
+     * Flashback 推送 SSE — 订阅历史记忆闪现。
+     */
+    @GetMapping(value = "/flashback/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Flux<String> flashbackStream(@CurrentAccountId UUID accountId) {
+        return streamManager.subscribeFlashback()
+                .filter(json -> json.contains(accountId.toString()) || json.contains("flashback"))
+                .map(json -> "event: flashback\ndata: " + json + "\n\n");
+    }
+
+    /**
+     * 获取消息的 Forest 执行树（供 PipelineDialog 展示）。
+     */
+    @GetMapping("/{conversationId}/messages/{messageId}/forest")
+    public BaseResponse<ForestTreeResponse> getMessageForest(@PathVariable UUID conversationId,
+                                                              @PathVariable UUID messageId,
+                                                              @CurrentAccountId UUID accountId) {
+        return BaseResponse.success(forestConversationService.getMessageForest(accountId, conversationId, messageId));
     }
 }

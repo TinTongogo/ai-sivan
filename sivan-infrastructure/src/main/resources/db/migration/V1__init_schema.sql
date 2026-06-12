@@ -408,7 +408,7 @@ CREATE TABLE IF NOT EXISTS "user_profiles" (
   "ai_language" varchar(10) COLLATE "pg_catalog"."default" NOT NULL DEFAULT 'auto'::character varying,
   "expertise" jsonb NOT NULL DEFAULT '[]'::jsonb,
   "active" bool NOT NULL DEFAULT true,
-  "vector" "vector",
+  "vector" vector(1024),
   "auto_learn" bool NOT NULL DEFAULT true,
   "created_at" timestamptz(6) NOT NULL DEFAULT now(),
   "updated_at" timestamptz(6) NOT NULL DEFAULT now(),
@@ -533,7 +533,7 @@ CREATE TABLE IF NOT EXISTS "memory_entries" (
   "summary" text COLLATE "pg_catalog"."default",
   "created_at" timestamptz(6) NOT NULL DEFAULT now(),
   "last_accessed_at" timestamptz(6) NOT NULL DEFAULT now(),
-  "vector" "vector",
+  "vector" vector(1024),
   CONSTRAINT "memory_entries_account_id_fkey" FOREIGN KEY ("account_id") REFERENCES "accounts" ("account_id") ON DELETE CASCADE ON UPDATE NO ACTION,
   CONSTRAINT "memory_entries_project_id_fkey" FOREIGN KEY ("project_id") REFERENCES "projects" ("project_id") ON DELETE SET NULL ON UPDATE NO ACTION
 )
@@ -893,7 +893,7 @@ CREATE TABLE IF NOT EXISTS "kb_vectors" (
   "text_content" text COLLATE "pg_catalog"."default" NOT NULL,
   "content_type" varchar(20) COLLATE "pg_catalog"."default" NOT NULL DEFAULT 'text'::character varying,
   "image_path" varchar(512) COLLATE "pg_catalog"."default",
-  "vector" "vector" NOT NULL,
+  "vector" vector(1024) NOT NULL,
   "metadata" jsonb DEFAULT '{}'::jsonb,
   "is_deleted" bool NOT NULL DEFAULT false,
   "created_at" timestamptz(6) NOT NULL DEFAULT now(),

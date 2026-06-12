@@ -53,6 +53,7 @@ public class ForestGoalController {
                                           @CurrentAccountId UUID accountId,
                                           @RequestHeader("Last-Event-ID") Optional<String> lastEventId) {
         String title = (String) body.getOrDefault("title", "任务");
+        @SuppressWarnings("unchecked")
         List<String> steps = (List<String>) body.getOrDefault("steps", List.of(title));
         UUID goalId = UUID.randomUUID();
 
@@ -115,6 +116,58 @@ public class ForestGoalController {
                 "activated", p.activated(),
                 "total", p.total(),
                 "depth", p.depth()
+        ));
+    }
+
+    // =====================================================================
+    // Goal 列表与详情（08-API契约 §3.3）
+    // =====================================================================
+
+    /** Goal 列表（按创建时间倒序）。 */
+    @GetMapping
+    public ResponseEntity<Map<String, Object>> listGoals(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @CurrentAccountId UUID accountId) {
+        List<Forest> forests = forestRepository.listByAccountId(accountId);
+        // 简单分页
+        int from = page * size;
+        int to = Math.min(from + size, forests.size());
+        List<Map<String, Object>> items = forests.subList(from, to).stream()
+                .map(f -> Map.<String, Object>of(
+                        "goalId", f.forestId().toString(),
+                        "title", f.title() != null ? f.title() : "",
+                        "status", "EXECUTED",
+                        "conversationId", f.conversationId() != null ? f.conversationId().toString() : "",
+                        "createdAt", f.createdAt() != null ? f.createdAt().toString() : "",
+                        "updatedAt", f.updatedAt() != null ? f.updatedAt().toString() : ""
+                ))
+                .toList();
+        return ResponseEntity.ok(Map.of(
+                "items", items,
+                "total", forests.size(),
+                "page", page,
+                "size", size
+        ));
+    }
+
+    /** Goal 详情。 */
+    @GetMapping("/{goalId}")
+    public ResponseEntity<Map<String, Object>> getGoal(@PathVariable UUID goalId,
+                                                        @CurrentAccountId UUID accountId) {
+        Forest forest = forestRepository.findForestById(goalId, accountId);
+        if (forest == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("goalId", goalId.toString(), "error", "goal not found"));
+        }
+        return ResponseEntity.ok(Map.of(
+                "goalId", forest.forestId().toString(),
+                "title", forest.title() != null ? forest.title() : "",
+                "conversationId", forest.conversationId() != null ? forest.conversationId().toString() : "",
+                "projectId", forest.projectId() != null ? forest.projectId().toString() : "",
+                "rootNodeId", forest.rootNodeId(),
+                "createdAt", forest.createdAt() != null ? forest.createdAt().toString() : "",
+                "updatedAt", forest.updatedAt() != null ? forest.updatedAt().toString() : ""
         ));
     }
 

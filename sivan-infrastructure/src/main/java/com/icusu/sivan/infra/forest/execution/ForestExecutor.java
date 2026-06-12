@@ -22,6 +22,7 @@ import com.icusu.sivan.domain.forest.tree.ExecutableNode;
 import com.icusu.sivan.infra.forest.repository.ForestExecutionLogJpaRepository;
 import com.icusu.sivan.infra.forest.sink.ForestMetricsCollector;
 import com.icusu.sivan.infra.forest.sink.SinkFactory;
+import com.icusu.sivan.infra.routing.RouteFeedbackHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
@@ -95,6 +96,7 @@ public class ForestExecutor {
     private final ForestExecutionLogJpaRepository executionLogRepository;
     private final ForestMetricsCollector metricsCollector;
     private final SpanExporter spanExporter;
+    private final RouteFeedbackHandler routeFeedback;
 
     /** 每次执行的 SpanContext 根（用于链式追踪）。 */
     private static final ThreadLocal<SpanContext> traceSpanContext = new ThreadLocal<>();
@@ -114,6 +116,7 @@ public class ForestExecutor {
                           ForestExecutionLogJpaRepository executionLogRepository,
                           ForestMetricsCollector metricsCollector,
                           SpanExporter spanExporter,
+                          RouteFeedbackHandler routeFeedback,
                           @Value("${sivan.goal.execution-timeout-ms:7200000}") long goalTimeoutMs) {
         this.modeDispatcher = modeDispatcher;
         this.leafExecutors = leafExecutors;
@@ -125,6 +128,7 @@ public class ForestExecutor {
         this.executionLogRepository = executionLogRepository;
         this.metricsCollector = metricsCollector;
         this.spanExporter = spanExporter;
+        this.routeFeedback = routeFeedback;
         this.goalTimeoutMs = goalTimeoutMs;
     }
 
@@ -204,8 +208,9 @@ public class ForestExecutor {
         if (ctx.isCancelled()) {
             node.setStatus(NodeStatus.CANCELLED);
             emitStatusChange(node, oldStatus, ctx);
-            ForestEvent cancelled = ForestEvent.lifecycle(node.nodeId(), null, ctx.accountId().toString(),
-                    ForestEvent.EventType.LIFECYCLE);
+            ForestEvent cancelled = ForestEvent.lifecycleWithStatus(
+                    node.nodeId(), forestId(), ctx.accountId().toString(),
+                    ForestEvent.EventType.LIFECYCLE, oldStatus, NodeStatus.CANCELLED);
             activeSink().emit(cancelled);
             return Flux.just(cancelled);
         }
@@ -215,13 +220,11 @@ public class ForestExecutor {
         if (!depthCheck.allowed()) {
             node.setStatus(NodeStatus.FAILED);
             emitStatusChange(node, oldStatus, ctx);
-            ForestEvent err = ForestEvent.error(node.nodeId(), null, ctx.accountId().toString(),
-                    depthCheck.reason());
+            ForestEvent err = ForestEvent.errorWithStatus(node.nodeId(), forestId(), ctx.accountId().toString(),
+                    depthCheck.reason(), oldStatus, NodeStatus.FAILED);
             activeSink().emit(err);
             return Flux.just(err);
         }
-
-        // 预算检查：执行时间
         Long startMs = executionStartMs.get();
         if (startMs != null) {
             long elapsed = System.currentTimeMillis() - startMs;
@@ -229,8 +232,8 @@ public class ForestExecutor {
             if (!timeCheck.allowed()) {
                 node.setStatus(NodeStatus.FAILED);
                 emitStatusChange(node, oldStatus, ctx);
-                ForestEvent err = ForestEvent.error(node.nodeId(), null, ctx.accountId().toString(),
-                        timeCheck.reason());
+                ForestEvent err = ForestEvent.errorWithStatus(node.nodeId(), forestId(), ctx.accountId().toString(),
+                        timeCheck.reason(), oldStatus, NodeStatus.FAILED);
                 activeSink().emit(err);
                 return Flux.just(err);
             }
@@ -245,8 +248,8 @@ public class ForestExecutor {
                 if (!tokenCheck.allowed()) {
                     node.setStatus(NodeStatus.FAILED);
                     emitStatusChange(node, oldStatus, ctx);
-                    ForestEvent err = ForestEvent.error(node.nodeId(), null, ctx.accountId().toString(),
-                            tokenCheck.reason());
+                    ForestEvent err = ForestEvent.errorWithStatus(node.nodeId(), forestId(), ctx.accountId().toString(),
+                            tokenCheck.reason(), oldStatus, NodeStatus.FAILED);
                     activeSink().emit(err);
                     return Flux.just(err);
                 }
@@ -264,8 +267,9 @@ public class ForestExecutor {
     private Flux<ForestEvent> doExecute(ExecutableNode node, ExecutionContext ctx, int depth, NodeStatus oldStatus) {
         node.setStatus(NodeStatus.RUNNING);
         emitStatusChange(node, oldStatus, ctx);
-        ForestEvent running = ForestEvent.lifecycle(node.nodeId(), null, ctx.accountId().toString(),
-                ForestEvent.EventType.LIFECYCLE);
+        ForestEvent running = ForestEvent.lifecycleWithStatus(
+                node.nodeId(), forestId(), ctx.accountId().toString(),
+                ForestEvent.EventType.LIFECYCLE, oldStatus, NodeStatus.RUNNING);
         activeSink().emit(running);
 
         // Trace: 记录节点开始时间
@@ -287,10 +291,14 @@ public class ForestExecutor {
                     if (finalStatus != NodeStatus.CANCELLED && finalStatus != NodeStatus.FAILED) {
                         finalStatus = NodeStatus.COMPLETED;
                         node.setStatus(NodeStatus.COMPLETED);
-                        emitStatusChange(node, NodeStatus.RUNNING, ctx);
+                        int dur = (int) Duration.between(nodeStart, Instant.now()).toMillis();
+                        int tok = node instanceof CompressibleNode cn
+                                ? (int) Math.max(0, cn.estimateSubtreeTokens()) : 0;
+                        emitStatusChange(node, NodeStatus.RUNNING, ctx, dur, tok > 0 ? tok : null);
                     }
-                    ForestEvent completed = ForestEvent.lifecycle(node.nodeId(), null, ctx.accountId().toString(),
-                            ForestEvent.EventType.LIFECYCLE);
+                    ForestEvent completed = ForestEvent.lifecycleWithStatus(
+                            node.nodeId(), forestId(), ctx.accountId().toString(),
+                            ForestEvent.EventType.LIFECYCLE, NodeStatus.RUNNING, node.status());
                     activeSink().emit(completed);
 
                     // Trace: 导出节点 Span
@@ -302,16 +310,30 @@ public class ForestExecutor {
                             nodeStart, nodeEnd, finalStatus.name().toLowerCase());
                     spanExporter.export(nodeSpan);
 
+                    // 路由反馈：更新 Beta 参数 + 写入 embedding（异步，不阻塞）
+                    try {
+                        String agentName = node instanceof com.icusu.sivan.domain.forest.tree.ContentNode cn
+                                ? (String) cn.metadata().get("agentName") : null;
+                        String taskContent = node instanceof com.icusu.sivan.domain.forest.tree.ContentNode cn2
+                                ? cn2.content() : null;
+                        if (agentName != null && taskContent != null && ctx.accountId() != null) {
+                            routeFeedback.onNodeCompleted(ctx.accountId(), agentName, taskContent, true);
+                        }
+                    } catch (Exception ignored) {}
+
                     return Mono.just(completed);
                 })
         ).onErrorResume(e -> {
             node.setStatus(NodeStatus.FAILED);
-            emitStatusChange(node, NodeStatus.RUNNING, ctx);
+            int dur2 = (int) Duration.between(nodeStart, Instant.now()).toMillis();
+            int tok2 = node instanceof CompressibleNode cn2
+                    ? (int) Math.max(0, cn2.estimateSubtreeTokens()) : 0;
+            emitStatusChange(node, NodeStatus.RUNNING, ctx, dur2, tok2 > 0 ? tok2 : null);
             eventPublisher.publishEvent(new NodeExecutionFailed(
                     node.nodeId(), null, e.getMessage(), ctx.accountId().toString(), Instant.now()));
             log.error("[执行] 节点失败: nodeId={} type={}", node.nodeId(), node.nodeType(), e);
-            ForestEvent err = ForestEvent.error(node.nodeId(), null, ctx.accountId().toString(),
-                    "节点执行失败: " + e.getMessage());
+            ForestEvent err = ForestEvent.errorWithStatus(node.nodeId(), forestId(), ctx.accountId().toString(),
+                    "节点执行失败: " + e.getMessage(), NodeStatus.RUNNING, NodeStatus.FAILED);
             activeSink().emit(err);
 
             // Trace: 导出失败的 Span
@@ -322,6 +344,17 @@ public class ForestExecutor {
                     node.nodeId(), node.nodeType(),
                     nodeStart, nodeEnd, "failed");
             spanExporter.export(nodeSpan);
+
+            // 路由反馈（失败）
+            try {
+                String agentName = node instanceof com.icusu.sivan.domain.forest.tree.ContentNode cn
+                        ? (String) cn.metadata().get("agentName") : null;
+                String taskContent = node instanceof com.icusu.sivan.domain.forest.tree.ContentNode cn2
+                        ? cn2.content() : null;
+                if (agentName != null && taskContent != null && ctx.accountId() != null) {
+                    routeFeedback.onNodeCompleted(ctx.accountId(), agentName, taskContent, false);
+                }
+            } catch (Exception ignored) {}
 
             return Flux.just(err);
         });
@@ -355,18 +388,24 @@ public class ForestExecutor {
     }
 
     private void emitStatusChange(ExecutableNode node, NodeStatus oldStatus, ExecutionContext ctx) {
+        emitStatusChange(node, oldStatus, ctx, null, null);
+    }
+
+    private void emitStatusChange(ExecutableNode node, NodeStatus oldStatus, ExecutionContext ctx,
+                                   Integer durationMs, Integer totalTokens) {
         try {
             eventPublisher.publishEvent(new NodeStatusChanged(
                     node.nodeId(), oldStatus, node.status(), null,
-                    ctx.accountId().toString(), Instant.now()));
+                    ctx.accountId().toString(), Instant.now(), durationMs, totalTokens));
         } catch (Exception e) {
             log.warn("事件发布失败: {}", e.getMessage());
         }
         // 兜底持久化：确保状态入库，不依赖 @EventListener
-        try {
+        if (durationMs != null || totalTokens != null) {
+            forestRepository.updateNodeDetails(node.nodeId(), node.status(), ctx.accountId(),
+                    durationMs, totalTokens);
+        } else {
             forestRepository.updateNodeStatus(node.nodeId(), node.status(), ctx.accountId());
-        } catch (Exception e) {
-            log.warn("状态持久化失败: nodeId={} error={}", node.nodeId(), e.getMessage());
         }
     }
 

@@ -59,6 +59,9 @@ public class ForestScheduler {
     /** 排队等待数 */
     private final AtomicInteger queuedCount = new AtomicInteger(0);
 
+    /** 排队命令的发布器映射 — 出队时通过它触发执行 */
+    private final ConcurrentHashMap<String, reactor.core.publisher.FluxSink<ForestEvent>> pendingSinks = new ConcurrentHashMap<>();
+
     public ForestScheduler(
             ForestExecutor forestExecutor,
             @Value("${sivan.orchestration.scheduler.max-concurrent:3}") int maxConcurrent,
@@ -77,10 +80,9 @@ public class ForestScheduler {
      * 提交执行命令。有空闲槽位则立即执行，否则入队等待。
      *
      * @param cmd 执行命令
-     * @return 完成信号（仅在排队时有效：出队后开始真正执行）
+     * @return 执行事件流（入队后会在出队时开始推送）
      */
     public Flux<ForestEvent> submit(ExecutionCommand cmd) {
-        ExecutionContext ctx = cmd.ctx();
         String key = cmd.commandId().toString().substring(0, 8);
 
         if (slot.tryAcquire()) {
@@ -91,10 +93,15 @@ public class ForestScheduler {
         queue.offer(cmd);
         queuedCount.incrementAndGet();
         log.info("[Scheduler] 入队等待: cmdId={} 队列长度={}", key, queue.size());
-        return Flux.defer(() -> {
-            // 等待出队后执行（通过 runNext 触发）
-            return waitAndRun(cmd)
-                    .doFinally(s -> queuedCount.decrementAndGet());
+
+        // 返回一个 Flux：当 runNext 取出该命令时，将执行事件推送给调用方
+        return Flux.<ForestEvent>create(sink -> {
+            pendingSinks.put(cmd.commandId().toString(), sink);
+            sink.onCancel(() -> {
+                queue.remove(cmd);
+                pendingSinks.remove(cmd.commandId().toString());
+                queuedCount.decrementAndGet();
+            });
         });
     }
 
@@ -111,9 +118,19 @@ public class ForestScheduler {
             log.info("[Scheduler] 已取消: cmdId={}", commandId.substring(0, 8));
             return true;
         }
-        // 尝试从队列移除
-        boolean removed = queue.removeIf(cmd -> cmd.commandId().toString().startsWith(commandId));
-        if (removed) log.info("[Scheduler] 已从队列移除: cmdId={}", commandId.substring(0, 8));
+        // 从队列移除 + 清理 pending sink
+        boolean removed = queue.removeIf(cmd -> {
+            boolean match = cmd.commandId().toString().startsWith(commandId);
+            if (match) {
+                reactor.core.publisher.FluxSink<ForestEvent> s = pendingSinks.remove(cmd.commandId().toString());
+                if (s != null) s.complete();
+            }
+            return match;
+        });
+        if (removed) {
+            queuedCount.decrementAndGet();
+            log.info("[Scheduler] 已从队列移除: cmdId={}", commandId.substring(0, 8));
+        }
         return removed;
     }
 
@@ -150,20 +167,26 @@ public class ForestScheduler {
     private void runNext() {
         ExecutionCommand next = queue.poll();
         if (next != null && slot.tryAcquire()) {
-            log.info("[Scheduler] 出队执行: cmdId={}", next.commandId().toString().substring(0, 8));
-            run(next).subscribe(
-                    null,
-                    error -> log.error("[Scheduler] 队列执行异常: {}", error.getMessage())
-            );
-        }
-    }
+            String key = next.commandId().toString().substring(0, 8);
+            queuedCount.decrementAndGet();
+            log.info("[Scheduler] 出队执行: cmdId={}", key);
 
-    private Flux<ForestEvent> waitAndRun(ExecutionCommand cmd) {
-        return Flux.<ForestEvent>create(sink -> {
-            // 轮询等待出队（由 runNext 触发 slot 释放）
-            // 实际执行由 runNext 驱动，此处仅返回一个空 Flux
-            sink.complete();
-        }).thenMany(run(cmd));
+            // 找到等待的 sink，将执行事件转发给它
+            reactor.core.publisher.FluxSink<ForestEvent> pendingSink = pendingSinks.remove(next.commandId().toString());
+            if (pendingSink != null) {
+                run(next).subscribe(
+                        pendingSink::next,
+                        e -> { log.error("[Scheduler] 队列执行异常: {}", e.getMessage()); pendingSink.error(e); },
+                        pendingSink::complete
+                );
+            } else {
+                // 无等待 sink（请求已取消），但仍需执行
+                run(next).subscribe(
+                        null,
+                        error -> log.error("[Scheduler] 执行异常: {}", error.getMessage())
+                );
+            }
+        }
     }
 
     private static Queue<ExecutionCommand> createQueue(String strategy) {

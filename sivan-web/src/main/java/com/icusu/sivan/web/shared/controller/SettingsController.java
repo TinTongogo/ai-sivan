@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.icusu.sivan.common.dto.BaseResponse;
 import com.icusu.sivan.domain.model.LlmProvider;
+import com.icusu.sivan.web.knowledge.service.KnowledgeBaseService;
 import com.icusu.sivan.web.model.dto.ConnectionTestResult;
 import com.icusu.sivan.web.model.dto.EmbeddingConfigDTO;
 import com.icusu.sivan.web.model.dto.ModelServiceTestResult;
@@ -37,6 +38,7 @@ public class SettingsController {
     private static final int CONNECT_TIMEOUT = 5000;
     private static final int READ_TIMEOUT = 15000;
     private final RestTemplate restTemplate;
+    private final KnowledgeBaseService knowledgeBaseService;
 
     @Value("${sivan.embedding.default-url:}")
     private String defaultEmbeddingUrl;
@@ -47,8 +49,9 @@ public class SettingsController {
     @Value("${sivan.reranker.default-model:}")
     private String defaultRerankerModel;
 
-    public SettingsController(LlmProviderService llmProviderService) {
+    public SettingsController(LlmProviderService llmProviderService, KnowledgeBaseService knowledgeBaseService) {
         this.llmProviderService = llmProviderService;
+        this.knowledgeBaseService = knowledgeBaseService;
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(CONNECT_TIMEOUT);
         factory.setReadTimeout(READ_TIMEOUT);
@@ -98,9 +101,20 @@ public class SettingsController {
         }
         llmProviderService.upsertSystemProvider("embedding", config.getEmbeddingUrl(), config.getEmbeddingModel());
         llmProviderService.upsertSystemProvider("reranker", config.getRerankerUrl(), config.getRerankerModel());
-        log.info("模型配置已更新: embeddingUrl={}, rerankerUrl={}",
-                config.getEmbeddingUrl(), config.getRerankerUrl());
+        log.info("Embedding/Reranker 配置已更新，请手动重建索引以使变更生效");
         return BaseResponse.success(config);
+    }
+
+    /**
+     * 重建全部向量索引（Embedding/Reranker 配置变更后必须调用）。
+     * 注意：此操作耗时较长，会重新向量化所有知识库文档、记忆条目和用户画像。
+     */
+    @PostMapping("/embedding-config/rebuild-index")
+    public BaseResponse<Void> rebuildAllIndexes(@CurrentAccountId UUID accountId) {
+        log.warn("开始全局重建向量索引");
+        knowledgeBaseService.rebuildAllIndexes(accountId);
+        log.info("全局重建向量索引完成");
+        return BaseResponse.success();
     }
 
     /**
