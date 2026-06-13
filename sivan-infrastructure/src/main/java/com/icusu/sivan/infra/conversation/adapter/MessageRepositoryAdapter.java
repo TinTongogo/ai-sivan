@@ -35,95 +35,89 @@ public class MessageRepositoryAdapter implements IMessageRepository {
     @Override
     public List<Message> findByIds(Collection<UUID> messageIds) {
         return jpaRepository.findAllById(messageIds).stream()
-                .map(this::toDomain)
-                .toList();
-    }
-
-    /** 根据对话 ID 查询所有消息。 */
-    @Override
-    public List<Message> findByConversationId(UUID conversationId) {
-        return jpaRepository.findByConversationIdOrderBySortOrderAsc(conversationId).stream()
                 .map(this::toDomain).toList();
     }
 
-    /** 保存消息，自动分配 sortOrder，回写 ID 和时间戳。 */
+    /** 根据对话 ID 查询消息列表。 */
+    @Override
+    public List<Message> findByConversationId(UUID conversationId) {
+        return jpaRepository.findByConversationIdOrderBySortOrderAsc(conversationId)
+                .stream().map(this::toDomain).toList();
+    }
+
+    /** 保存消息。 */
     @Override
     public Message save(Message message) {
         MessageEntity entity = toEntity(message);
-        // 新消息：原子计算 sortOrder 避免并发冲突
+        // 新消息：自动分配 sortOrder 避免并发冲突
         if (message.getMessageId() == null) {
             Integer maxSort = jpaRepository.findMaxSortOrderByConversationId(entity.getConversationId()).orElse(0);
             entity.setSortOrder(maxSort + 1);
         }
-        jpaRepository.saveAndFlush(entity);
+        jpaRepository.save(entity);
         if (message.getMessageId() == null) {
             message.setMessageId(entity.getMessageId());
         }
         message.setCreatedAt(entity.getCreatedAt() != null ? entity.getCreatedAt().toLocalDateTime() : null);
-        // 回写仓库自动生成的 sortOrder
+        // 回写仓储自动生成的 sortOrder
         message.setSortOrder(entity.getSortOrder());
         return message;
     }
 
-    /** 根据 ID 删除消息。 */
+    /** 删除消息。 */
     @Override
     public void delete(UUID messageId) {
         jpaRepository.deleteById(messageId);
     }
 
-    /** 根据对话 ID 删除所有消息。 */
+    /** 删除指定对话的所有消息。 */
     @Override
     public void deleteByConversationId(UUID conversationId) {
         jpaRepository.deleteByConversationId(conversationId);
     }
 
-    /** 查询对话中最新的 N 条消息。 */
+    /** 分页查询：获取最新的消息（按 sortOrder 倒序）。 */
     @Override
     public List<Message> findLatestByConversationId(UUID conversationId, int limit) {
-        List<MessageEntity> entities = new ArrayList<>(jpaRepository
-                .findByConversationIdOrderBySortOrderDesc(conversationId, PageRequest.of(0, limit))
-                .getContent());
-        Collections.reverse(entities);
-        return entities.stream().map(this::toDomain).toList();
+        return jpaRepository.findByConversationIdOrderBySortOrderDesc(
+                        conversationId, PageRequest.of(0, limit))
+                .stream().map(this::toDomain).toList();
     }
 
-    /** 查询指定 sortOrder 之前的消息（用于虚拟列表滚动加载）。 */
+    /** 分页查询：获取比 beforeSortOrder 更旧的消息。 */
     @Override
     public List<Message> findBeforeSortOrder(UUID conversationId, int beforeSortOrder, int limit) {
-        List<MessageEntity> entities = jpaRepository
-                .findBeforeSortOrder(conversationId, beforeSortOrder, PageRequest.of(0, limit));
-        Collections.reverse(entities);
-        return entities.stream().map(this::toDomain).toList();
+        return jpaRepository.findBeforeSortOrder(conversationId, beforeSortOrder, PageRequest.of(0, limit))
+                .stream().map(this::toDomain).toList();
     }
 
-    /** 统计对话中的消息总数。 */
+    /** 查询会话消息总数 */
     @Override
     public int countByConversationId(UUID conversationId) {
         return jpaRepository.countByConversationId(conversationId);
     }
 
-    /** 统计比指定 sortOrder 更旧的消息数。 */
+    /** 统计比指定 sortOrder 更旧的消息数 */
     @Override
     public int countBeforeSortOrder(UUID conversationId, int beforeSortOrder) {
         return jpaRepository.countBeforeSortOrder(conversationId, beforeSortOrder);
     }
 
-    /** 查询对话中最近一条用户消息。 */
+    /** 获取会话中最新的一条用户消息 */
     @Override
     public Optional<Message> findLatestUserMessage(UUID conversationId) {
         return jpaRepository.findFirstByConversationIdAndRoleOrderBySortOrderDesc(conversationId, "user")
                 .map(this::toDomain);
     }
 
-
-    /** 根据生成组 ID 查询消息列表。 */
+    /** 根据生成组 ID 查找消息列表 */
     @Override
     public List<Message> findByGenerationGroup(UUID generationGroup) {
-        return jpaRepository.findByGenerationGroupOrderByGenerationIndexAsc(generationGroup).stream()
-                .map(this::toDomain).toList();
+        return jpaRepository.findByGenerationGroupOrderByGenerationIndexAsc(generationGroup)
+                .stream().map(this::toDomain).toList();
     }
 
-    /** 统计生成组中的消息数量。 */
+    /** 统计指定生成组中的消息数量 */
     @Override
     public int countByGenerationGroup(UUID generationGroup) {
         return jpaRepository.countByGenerationGroup(generationGroup);
@@ -165,6 +159,11 @@ public class MessageRepositoryAdapter implements IMessageRepository {
                 .attachments(entity.getAttachments())
                 .generationIndex(entity.getGenerationIndex())
                 .generationGroup(entity.getGenerationGroup())
+                .sections(entity.getSections())
+                .audios(entity.getAudios())
+                .msgType(entity.getMsgType())
+                .importance(entity.getImportance())
+                .progress(entity.getProgress())
                 .createdAt(entity.getCreatedAt() != null ? entity.getCreatedAt().toLocalDateTime() : null)
                 .build();
     }
@@ -194,7 +193,12 @@ public class MessageRepositoryAdapter implements IMessageRepository {
         entity.setImages(message.getImages());
         entity.setAttachments(message.getAttachments());
         entity.setGenerationIndex(message.getGenerationIndex() != null ? message.getGenerationIndex() : 1);
-		entity.setGenerationGroup(message.getGenerationGroup());
+        entity.setGenerationGroup(message.getGenerationGroup());
+        entity.setSections(message.getSections());
+        entity.setAudios(message.getAudios());
+        entity.setMsgType(message.getMsgType());
+        entity.setImportance(message.getImportance());
+        entity.setProgress(message.getProgress());
         return entity;
     }
 }

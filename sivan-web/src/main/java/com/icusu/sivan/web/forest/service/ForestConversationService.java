@@ -344,6 +344,7 @@ public class ForestConversationService {
                                 final int[] activeCount = {0};
                                 final int[] completedCount = {0};
                                 final int totalLeaves = countLeaves(tree);
+                                final java.util.Map<String, String> agentNameByNodeId = buildNodeAgentMap(tree);
                                 final long startProgressMs = System.currentTimeMillis();
 
                                 goalExecutionService.executeOnly(forest, tree, execCtx, Delivery.SUMMARY)
@@ -386,6 +387,13 @@ public class ForestConversationService {
                                                         if (++activeCount[0] == 1) {
                                                             prep.sink.tryEmitNext(SseFormatter.buildPhaseStartEvent(
                                                                     "执行", null, null, 0, totalLeaves));
+                                                        }
+                                                        // 注入 Agent 分隔头
+                                                        String agentName = agentNameByNodeId.get(nid);
+                                                        if (agentName != null) {
+                                                            String header = "\n--- " + agentName + " ---\n";
+                                                            contentAcc.append(header);
+                                                            prep.sink.tryEmitNext(SseFormatter.toJsonEvent("response", header));
                                                         }
                                                     } else {
                                                         activePhases.remove(nid);
@@ -432,17 +440,6 @@ public class ForestConversationService {
                                                     signal == reactor.core.publisher.SignalType.ON_COMPLETE
                                                             ? MessageStatus.COMPLETED : MessageStatus.FAILED);
                                             prep.assistantMsg.setModel(prep.modelName);
-                                            // 20-编排产出展示方案: 从执行树构建 sections
-                                            if (forest != null && forest.rootNodeId() != null) {
-                                                try {
-                                                    String sectionsJson = buildSectionsFromTree(forest, accountId);
-                                                    if (sectionsJson != null) {
-                                                        prep.assistantMsg.setSections(sectionsJson);
-                                                    }
-                                                } catch (Exception e) {
-                                                    log.debug("[Sections] 构建编排阶段详情失败: {}", e.getMessage());
-                                                }
-                                            }
                                             if (totalTokens[0] > 0)
                                                 prep.assistantMsg.setTotalTokens(totalTokens[0]);
                                             prep.assistantMsg.setDurationMs(durationMs);
@@ -607,6 +604,7 @@ public class ForestConversationService {
                         final int[] regActiveCount = {0};
                         final int[] regCompletedCount = {0};
                         final int regTotalLeaves = countLeaves(tree);
+                        final java.util.Map<String, String> regAgentNameByNodeId = buildNodeAgentMap(tree);
                         final long regStartMs = System.currentTimeMillis();
                         String modelName = resolveModelName(providerId, accountId);
 
@@ -650,6 +648,12 @@ public class ForestConversationService {
                                                 if (++regActiveCount[0] == 1) {
                                                     sink.tryEmitNext(SseFormatter.buildPhaseStartEvent(
                                                             "执行", null, null, 0, regTotalLeaves));
+                                                }
+                                                String regAgentName = regAgentNameByNodeId.get(nid);
+                                                if (regAgentName != null) {
+                                                    String header = "\n--- " + regAgentName + " ---\n";
+                                                    contentAcc.append(header);
+                                                    sink.tryEmitNext(SseFormatter.toJsonEvent("response", header));
                                                 }
                                             } else {
                                                 regActivePhases.remove(nid);
@@ -978,68 +982,7 @@ public class ForestConversationService {
      * 从用户输入中提取任务特征（启发式规则，用于本能模板匹配）。
      */
     private static TaskFeatures extractTaskFeatures(String input) {
-        return new TaskFeatures(
-                detectComplexity(input),
-                detectDependency(input),
-                detectInputStructure(input),
-                detectDomain(input),
-                detectOutputType(input)
-        );
-    }
-
-    private static TaskFeatures.Complexity detectComplexity(String input) {
-        int len = input != null ? input.length() : 0;
-        if (len < 30) return TaskFeatures.Complexity.LEVEL_1;
-        if (len < 200) return TaskFeatures.Complexity.LEVEL_2;
-        if (len < 800) return TaskFeatures.Complexity.LEVEL_3;
-        if (len < 3000) return TaskFeatures.Complexity.LEVEL_4;
-        return TaskFeatures.Complexity.LEVEL_5;
-    }
-
-    private static TaskFeatures.Dependency detectDependency(String input) {
-        if (input == null) return TaskFeatures.Dependency.INDEPENDENT;
-        String lower = input.toLowerCase();
-        if (lower.contains("同时") || lower.contains("并行") || lower.contains("parallel"))
-            return TaskFeatures.Dependency.PARALLEL;
-        if (lower.contains("如果") || lower.contains("判断") || lower.contains("条件") || lower.contains("否则"))
-            return TaskFeatures.Dependency.CONDITIONAL;
-        if (lower.contains("然后") || lower.contains("之后再") || lower.contains("接着") || lower.contains("步骤"))
-            return TaskFeatures.Dependency.SEQUENTIAL;
-        return TaskFeatures.Dependency.INDEPENDENT;
-    }
-
-    private static TaskFeatures.InputStructure detectInputStructure(String input) {
-        if (input == null) return TaskFeatures.InputStructure.FREE_TEXT;
-        String lower = input.toLowerCase();
-        if (input.contains("```") || lower.contains("function") || lower.contains("class ") || lower.contains("error:"))
-            return TaskFeatures.InputStructure.CODE;
-        return TaskFeatures.InputStructure.FREE_TEXT;
-    }
-
-    private static TaskFeatures.Domain detectDomain(String input) {
-        if (input == null) return TaskFeatures.Domain.GENERAL;
-        String lower = input.toLowerCase();
-        if (lower.contains("代码") || lower.contains("写") || lower.contains("编程") || lower.contains("debug") || lower.contains("api") || lower.contains("sql"))
-            return TaskFeatures.Domain.CODING;
-        if (lower.contains("文章") || lower.contains("写") || lower.contains("文案") || lower.contains("翻译"))
-            return TaskFeatures.Domain.WRITING;
-        if (lower.contains("分析") || lower.contains("对比") || lower.contains("总结") || lower.contains("数据"))
-            return TaskFeatures.Domain.ANALYSIS;
-        if (lower.contains("调研") || lower.contains("研究") || lower.contains("搜索"))
-            return TaskFeatures.Domain.RESEARCH;
-        return TaskFeatures.Domain.GENERAL;
-    }
-
-    private static TaskFeatures.OutputType detectOutputType(String input) {
-        if (input == null) return TaskFeatures.OutputType.SHORT_TEXT;
-        String lower = input.toLowerCase();
-        if (lower.contains("代码") || lower.contains("脚本") || lower.contains("编程"))
-            return TaskFeatures.OutputType.CODE;
-        if (lower.contains("json") || lower.contains("结构化"))
-            return TaskFeatures.OutputType.JSON;
-        if (lower.contains("文章") || lower.contains("报告") || lower.contains("长文"))
-            return TaskFeatures.OutputType.LONG_TEXT;
-        return TaskFeatures.OutputType.SHORT_TEXT;
+        return TaskFeatures.fromContent(input);
     }
 
     /**
@@ -1090,7 +1033,7 @@ public class ForestConversationService {
             String currentAgent = agentName;
             String taskContent = tn.content();
             if (taskContent != null && !taskContent.isBlank()) {
-                String featureHash = PgRouteEngine.md5(taskContent);
+                String featureHash = PgRouteEngine.md5(TaskFeatures.fromContent(taskContent).toString());
                 try {
                     RouteResult rr = Mono.fromCallable(() ->
                                 pgRouteEngine.resolve(accountId, taskContent, featureHash).block())
@@ -1123,6 +1066,10 @@ public class ForestConversationService {
                     log.warn("[路由] PgRouteEngine 异常(使用默认 Agent): {}", e.getMessage());
                 }
             }
+            // 兜底：确保 agentName 有值，让反馈回路（RouteFeedbackHandler）能触发
+            if (currentAgent == null || currentAgent.isBlank()) {
+                currentAgent = "通用助手";
+            }
             if (currentAgent != null && !currentAgent.isBlank()) tn.metadata().put("agentName", currentAgent);
         }
         for (var child : node.children()) {
@@ -1148,63 +1095,27 @@ public class ForestConversationService {
         return s.length() <= maxLen ? s : s.substring(0, maxLen) + "...";
     }
 
-    // =====================================================================
-    // 20-编排产出展示方案: 从执行树构建 sections
-    // =====================================================================
 
-    /**
-     * 从 Forest 的执行树中提取各阶段的产出，构建 sections JSON 字符串。
-     * 遍历所有 TaskNode，提取 agentName、content、status 等字段。
-     */
-    private String buildSectionsFromTree(Forest forest, UUID accountId) {
-        try {
-            com.icusu.sivan.domain.forest.tree.TreeNode root = forestRepository.findSubtree(forest.rootNodeId(), accountId);
-            if (root == null) return null;
-
-            List<Map<String, Object>> sections = new java.util.ArrayList<>();
-            collectTaskSections(root, sections);
-
-            return sections.isEmpty() ? null : objectMapper.writeValueAsString(sections);
-        } catch (Exception e) {
-            log.debug("[Sections] 构建失败: {}", e.getMessage());
-            return null;
-        }
+    /** 遍历树，构建 nodeId → agentName 映射。 */
+    private static java.util.Map<String, String> buildNodeAgentMap(
+            com.icusu.sivan.domain.forest.tree.TreeNode root) {
+        java.util.Map<String, String> map = new java.util.HashMap<>();
+        collectAgentNames(root, map);
+        return map;
     }
 
-    /** 递归收集 TaskNode 的阶段信息。 */
     @SuppressWarnings("unchecked")
-    private void collectTaskSections(com.icusu.sivan.domain.forest.tree.TreeNode node, List<Map<String, Object>> sections) {
+    private static void collectAgentNames(
+            com.icusu.sivan.domain.forest.tree.TreeNode node,
+            java.util.Map<String, String> map) {
         if (node instanceof com.icusu.sivan.domain.forest.tree.ContentNode cn) {
-            String agentName = null;
             Object raw = cn.metadata().get("agentName");
-            if (raw instanceof String s) agentName = s;
-
-            // TaskNode 且有 agentName → 作为独立阶段
-            if (agentName != null && !agentName.isBlank()
-                    && node instanceof com.icusu.sivan.domain.forest.tree.ExecutableNode en) {
-                Map<String, Object> section = new java.util.LinkedHashMap<>();
-                section.put("agent", agentName);
-                // 以 content 的前 40 字作为阶段名
-                String content = cn.content();
-                String phase = content != null && content.length() > 40
-                        ? content.substring(0, 40) + "..." : content;
-                section.put("phase", phase != null ? phase : agentName);
-                section.put("status", en.status().name());
-                section.put("content", content);
-                // 推理过程
-                if (cn.metadata().containsKey("thinking")) {
-                    section.put("thinking", cn.metadata().get("thinking"));
-                }
-                // 耗时（从 metadata 获取）
-                Object dur = cn.metadata().get("_durationMs");
-                if (dur instanceof Number n) section.put("durationMs", n.longValue());
-                sections.add(section);
+            if (raw instanceof String s && !s.isBlank()) {
+                map.put(node.nodeId(), s);
             }
         }
-
-        // 递归子节点
         for (com.icusu.sivan.domain.forest.tree.TreeNode child : node.children()) {
-            collectTaskSections(child, sections);
+            collectAgentNames(child, map);
         }
     }
 }

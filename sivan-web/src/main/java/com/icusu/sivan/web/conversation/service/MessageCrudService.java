@@ -18,11 +18,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
 /**
  * 消息 CRUD 服务 — 消息的增删改查、分页、响应映射。
@@ -109,8 +105,10 @@ public class MessageCrudService {
 
         boolean hasMore = false;
         if (!msgs.isEmpty()) {
-            int oldestInPage = msgs.get(0).getSortOrder();
-            hasMore = messageRepository.countBeforeSortOrder(conversationId, oldestInPage) > 0;
+            Integer oldestSortOrder = msgs.getFirst().getSortOrder();
+            if (oldestSortOrder != null) {
+                hasMore = messageRepository.countBeforeSortOrder(conversationId, oldestSortOrder) > 0;
+            }
         }
 
         List<Message> deduped = deduplicateGenerations(msgs);
@@ -223,7 +221,8 @@ public class MessageCrudService {
             }
         }
         result.addAll(latestPerGroup.values());
-        result.sort(java.util.Comparator.comparingInt(Message::getSortOrder));
+        result.sort(Comparator.comparingInt(
+                m -> m.getSortOrder() != null ? m.getSortOrder() : 0));
         return result;
     }
 

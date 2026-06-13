@@ -287,12 +287,16 @@ public class PromptContextService {
             float[] queryVec = embeddingService.embed(queryContext);
             if (queryVec == null) return buildUserProfileSection(accountId);
 
+            // 批量 embedding 所有标签，避免逐调引发 N 次 HTTP 请求
+            List<String> allTags = profile.getExpertise();
+            List<float[]> tagVecs = embeddingService.embedBatch(allTags);
+
             var scored = new ArrayList<ScoredTag>();
-            for (String tag : profile.getExpertise()) {
-                float[] tagVec = embeddingService.embed(tag);
+            for (int i = 0; i < allTags.size() && i < tagVecs.size(); i++) {
+                float[] tagVec = tagVecs.get(i);
                 if (tagVec != null) {
                     double sim = CosineSimilarity.compute(queryVec, tagVec);
-                    scored.add(new ScoredTag(tag, sim));
+                    scored.add(new ScoredTag(allTags.get(i), sim));
                 }
             }
             scored.sort((a, b) -> Double.compare(b.score, a.score));

@@ -4,7 +4,6 @@ import com.icusu.sivan.common.exception.DomainException;
 import com.icusu.sivan.domain.account.Account;
 import com.icusu.sivan.domain.account.IAccountRepository;
 import com.icusu.sivan.domain.conversation.IConversationRepository;
-import com.icusu.sivan.domain.conversation.IMessageRepository;
 import com.icusu.sivan.infra.agent.entity.ProjectEntity;
 import com.icusu.sivan.infra.agent.repository.ProjectJpaRepository;
 import com.icusu.sivan.infra.agent.service.ShortIdGenerator;
@@ -12,6 +11,7 @@ import com.icusu.sivan.web.file.dto.FileEntryResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -34,17 +34,15 @@ public class GroupService {
     private final ProjectJpaRepository projectJpaRepository;
     private final IAccountRepository accountRepository;
     private final IConversationRepository conversationRepository;
-    private final IMessageRepository messageRepository;
 
     @Value("${sivan.file.root-path}")
     private String fileRootPath;
 
     public GroupService(ProjectJpaRepository projectJpaRepository, IAccountRepository accountRepository,
-                        IConversationRepository conversationRepository, IMessageRepository messageRepository) {
+                        IConversationRepository conversationRepository) {
         this.projectJpaRepository = projectJpaRepository;
         this.accountRepository = accountRepository;
         this.conversationRepository = conversationRepository;
-        this.messageRepository = messageRepository;
     }
 
     /**
@@ -118,17 +116,15 @@ public class GroupService {
      * 删除分组，可选同步清理本地文件目录（不可恢复）。
      * 同时级联删除项目下的对话和消息。
      */
+    @Transactional
     public void delete(UUID accountId, UUID groupId, boolean removeFiles) {
         ProjectEntity entity = findOwned(accountId, groupId);
         log.info("项目删除: name={} shortId={} localPath={} removeFiles={}", entity.getName(), entity.getShortId(), entity.getLocalPath(), removeFiles);
         if (removeFiles && entity.getLocalPath() != null) {
             deleteDirectory(resolveLocalPath(entity.getLocalPath()));
         }
-        // 级联清理：先删消息，再删对话
+        // 先删对话，再删项目（不级联删除消息）
         var conversations = conversationRepository.findAllByAccountAndProject(accountId, groupId);
-        for (var conv : conversations) {
-            messageRepository.deleteByConversationId(conv.getConversationId());
-        }
         for (var conv : conversations) {
             conversationRepository.delete(conv.getConversationId());
         }

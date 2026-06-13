@@ -81,8 +81,7 @@ public class ConversationCompressionService {
     /**
      * 使用预加载消息或从 repository 加载执行同步压缩。
      */
-    public Mono<CompressResult> syncCompress(UUID conversationId, int historyBudget, String currentQuery,
-                                              List<Message> allMessages) {
+    public Mono<CompressResult> syncCompress(UUID conversationId, int historyBudget, String currentQuery, List<Message> allMessages) {
         if (allMessages != null) {
             return conversationCompressor.compress(allMessages, historyBudget, currentQuery);
         }

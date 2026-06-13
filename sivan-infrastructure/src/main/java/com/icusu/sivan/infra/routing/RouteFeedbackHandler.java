@@ -2,6 +2,7 @@ package com.icusu.sivan.infra.routing;
 
 import com.icusu.sivan.domain.routing.IBetaParamRepository;
 import com.icusu.sivan.domain.shared.port.IEmbeddingService;
+import com.icusu.sivan.domain.task.TaskFeatures;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -71,8 +72,8 @@ public class RouteFeedbackHandler {
                         accountId, truncate(taskContent, 500), agentName, success);
             }
 
-            // 3. 更新 Beta 参数
-            String hash = md5(taskContent);
+            // 3. 更新 Beta 参数（使用结构化特征哈希，提升泛化能力）
+            String hash = md5(TaskFeatures.fromContent(taskContent).toString());
             betaRepo.upsert(accountId, hash, agentName, success);
 
             log.debug("[反馈] agent={} success={}", agentName, success);

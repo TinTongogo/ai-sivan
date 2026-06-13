@@ -22,15 +22,15 @@ public interface ForestNodeJpaRepository extends JpaRepository<ForestNodeEntity,
     /** 查询指定森林中某一父节点的所有子节点。 */
     List<ForestNodeEntity> findByForestIdAndParentNodeIdOrderBySortOrderAsc(UUID forestId, String parentNodeId);
 
-    /** 递归加载子树 — 从 rootNodeId 开始往下查所有层级。 */
+    /** 递归加载子树 — 从 rootNodeId 开始往下查所有层级（深度保护 1000 层）。 */
     @Query(value = """
             WITH RECURSIVE subtree AS (
-                SELECT * FROM forest_nodes
+                SELECT *, 0 AS depth FROM forest_nodes
                 WHERE node_id = :rootNodeId AND forest_id = :forestId
                 UNION ALL
-                SELECT fn.* FROM forest_nodes fn
+                SELECT fn.*, st.depth + 1 FROM forest_nodes fn
                 INNER JOIN subtree st ON fn.parent_node_id = st.node_id
-                WHERE fn.forest_id = :forestId
+                WHERE fn.forest_id = :forestId AND st.depth < 1000
             )
             SELECT * FROM subtree ORDER BY sort_order
             """, nativeQuery = true)

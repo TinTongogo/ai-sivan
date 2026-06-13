@@ -13,8 +13,10 @@ spring:
     password: sivan_dev
     driver-class-name: org.postgresql.Driver
     hikari:
-      maximum-pool-size: 20
-      minimum-idle: 5
+      maximum-pool-size: 50
+      minimum-idle: 10
+      connection-timeout: 5000
+      max-lifetime: 600000
 
   jpa:
     hibernate:

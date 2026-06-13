@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onUnmounted } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { fetchMessageForest, approveHitl, rejectHitl, type ForestTreeResponseNode, type ForestTreeResponse } from '../../api/goals'
 import { useMessage } from '../../utils/message'
 import { useI18n } from '../../utils/i18n'
@@ -96,44 +96,13 @@ async function loadForest() {
   }
 }
 
-let refreshTimer: ReturnType<typeof setInterval> | null = null
-
-function isActive(): boolean {
-  if (!forestData.value?.progress) return false
-  const p = forestData.value.progress
-  return p.completed < p.total
-}
-
-function startAutoRefresh() {
-  stopAutoRefresh()
-  if (!isActive()) return
-  refreshTimer = setInterval(async () => {
-    if (!isActive()) { stopAutoRefresh(); return }
-    await loadForest()
-  }, 3000)
-}
-
-function stopAutoRefresh() {
-  if (refreshTimer !== null) { clearInterval(refreshTimer); refreshTimer = null }
-}
-
-onUnmounted(stopAutoRefresh)
-
-watch(() => props.messageId, async () => {
-  stopAutoRefresh()
-  await loadForest()
-  if (isActive()) startAutoRefresh()
-}, { immediate: true })
+watch(() => props.messageId, loadForest, { immediate: true })
 </script>
 
 <template>
   <Teleport to="body">
     <div class="pipeline-overlay" @click.self="emit('close')">
       <div class="pipeline-dialog" @click.stop>
-        <div class="pipeline-header">
-          <span>{{ t('pipelineTitle') }}</span>
-          <button class="pipeline-close" @click="emit('close')">&times;</button>
-        </div>
         <div class="pipeline-body">
           <div v-if="forestData" class="pipeline-summary">
             <span class="pipeline-summary__text">
@@ -173,9 +142,6 @@ watch(() => props.messageId, async () => {
 <style scoped>
 .pipeline-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.2); z-index: var(--z-drawer); animation: fade-in 0.15s ease; }
 .pipeline-dialog { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 580px; max-width: 92vw; max-height: 80vh; background: var(--clr-bg); border-radius: var(--rad-lg); box-shadow: var(--shd-modal); display: flex; flex-direction: column; z-index: var(--z-drawer); }
-.pipeline-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-bottom: 1px solid var(--clr-hairline); font-size: var(--fs-headline); font-weight: var(--fw-semibold); }
-.pipeline-close { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--clr-tertiary); cursor: pointer; border-radius: var(--rad-md); font-size: 18px; }
-.pipeline-close:hover { background: var(--clr-fill); color: var(--clr-label); }
 .pipeline-body { padding: 12px 20px 16px; overflow-y: auto; flex: 1; min-height: 200px; overflow-anchor: none; }
 .pipeline-summary { display: flex; align-items: center; gap: 8px; padding: 8px 10px; margin-bottom: 8px; background: var(--clr-bg-secondary); border-radius: var(--rad-md); font-size: var(--fs-callout); }
 .pipeline-summary__text { color: var(--clr-label); }

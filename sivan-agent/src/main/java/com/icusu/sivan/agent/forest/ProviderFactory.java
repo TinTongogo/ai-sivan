@@ -8,6 +8,8 @@ import com.icusu.sivan.domain.forest.service.ImageGenCapability;
 import com.icusu.sivan.domain.forest.service.ModelCapabilities;
 import com.icusu.sivan.domain.forest.service.ModelCapabilities.Capability;
 import com.icusu.sivan.domain.forest.service.SpeechSynthCapability;
+import com.icusu.sivan.domain.forest.service.SpeechRecogCapability;
+import com.icusu.sivan.domain.forest.service.VideoGenCapability;
 import com.icusu.sivan.domain.model.LlmProvider;
 import com.icusu.sivan.infra.forest.model.EchoAdapter;
 import com.icusu.sivan.infra.forest.model.ModelRegistry;
@@ -36,11 +38,16 @@ public class ProviderFactory {
     /** 多模态能力注册表（静态，供 LeafExecutor 查询） */
     private static volatile ImageGenCapability imageGen;
     private static volatile SpeechSynthCapability speechSynth;
+    private static volatile SpeechRecogCapability speechRecog;
+    private static volatile VideoGenCapability videoGen;
 
     /** 获取图像生成能力（可能为 null，表示不可用）。 */
     public static ImageGenCapability getImageGen() { return imageGen; }
     /** 获取语音合成能力（可能为 null，表示不可用）。 */
     public static SpeechSynthCapability getSpeechSynth() { return speechSynth; }
+    public static SpeechRecogCapability getSpeechRecog() { return speechRecog; }
+
+    public static VideoGenCapability getVideoGen() { return videoGen; }
 
     public ProviderFactory(ModelRegistry registry, DefaultModelRouter router) {
         this.registry = registry;
@@ -96,7 +103,9 @@ public class ProviderFactory {
             try {
                 imageGen = new DalleImageGenAdapter("dall-e-3", baseUrl, apiKey);
                 speechSynth = new OpenAiTtsAdapter("tts-1", baseUrl, apiKey);
-                log.info("[ProviderFactory] 多模态适配器已就绪: DALL-E + TTS");
+                speechRecog = new EchoSttAdapter();
+                videoGen = new EchoVideoGenAdapter();
+                log.info("[ProviderFactory] 多模态适配器已就绪: DALL-E + TTS + STT + VideoGen");
             } catch (Exception ex) {
                 log.warn("[ProviderFactory] 多模态适配器注册失败: {}", ex.getMessage());
             }

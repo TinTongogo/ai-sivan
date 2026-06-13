@@ -4,7 +4,6 @@ import com.icusu.sivan.common.exception.DomainException;
 import com.icusu.sivan.domain.account.Account;
 import com.icusu.sivan.domain.account.IAccountRepository;
 import com.icusu.sivan.domain.conversation.IConversationRepository;
-import com.icusu.sivan.domain.conversation.IMessageRepository;
 import com.icusu.sivan.infra.agent.entity.ProjectEntity;
 import com.icusu.sivan.infra.agent.repository.ProjectJpaRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,9 +35,6 @@ class GroupServiceTest {
     @Mock
     private IConversationRepository conversationRepository;
 
-    @Mock
-    private IMessageRepository messageRepository;
-
     private GroupService groupService;
 
     private final UUID accountId = UUID.randomUUID();
@@ -53,7 +49,7 @@ class GroupServiceTest {
 
     @BeforeEach
     void setUp() {
-        groupService = new GroupService(projectJpaRepository, accountRepository, conversationRepository, messageRepository);
+        groupService = new GroupService(projectJpaRepository, accountRepository, conversationRepository);
         ReflectionTestUtils.setField(groupService, "fileRootPath", tempDir.resolve("sivan_data").toString());
 
         mockAccount = Account.builder()

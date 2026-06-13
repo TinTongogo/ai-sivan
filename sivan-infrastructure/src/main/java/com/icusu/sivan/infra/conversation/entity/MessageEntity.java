@@ -5,6 +5,9 @@ import com.icusu.sivan.infra.shared.entity.BaseCreateOnlyEntity;
 import jakarta.persistence.*;
 import lombok.*;
 
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 import java.util.UUID;
 
 /**
@@ -95,4 +98,24 @@ public class MessageEntity extends BaseCreateOnlyEntity {
 
     @Column(name = "generation_group")
     private UUID generationGroup;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "JSONB")
+    private String sections;
+
+    /** msg_type: 'normal' / 'goal_start' / 'goal_end' / 'summary' */
+    @Column(name = "msg_type", length = 16)
+    @Builder.Default
+    private String msgType = "normal";
+
+    @Column(name = "importance")
+    @Builder.Default
+    private Double importance = 0.0;
+
+    @Column(columnDefinition = "TEXT")
+    private String audios;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "JSONB")
+    private String progress;
 }

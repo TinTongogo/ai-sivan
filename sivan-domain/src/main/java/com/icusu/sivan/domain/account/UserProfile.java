@@ -38,6 +38,13 @@ public class UserProfile {
     /** 自动学习开关 */
     @Builder.Default
     private boolean autoLearn = true;
+    /** 常见任务类型 */
+    @Builder.Default
+    private List<String> commonTasks = new java.util.ArrayList<>();
+    /** 任务平均复杂度 */
+    private Double avgComplexity;
+    /** 活跃时段（小时，0-23） */
+    private String activeHours;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 

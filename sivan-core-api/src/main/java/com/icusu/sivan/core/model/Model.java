@@ -5,6 +5,7 @@ import com.icusu.sivan.core.message.Msg;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -58,7 +59,7 @@ public interface Model {
 
         /** 启用 Prompt 前缀缓存（DeepSeek 等支持的服务端缓存固定前缀，降低首 Token 延迟）。 */
         public ModelParams withPrefixCaching(boolean enabled) {
-            var m = new java.util.HashMap<>(extra);
+            var m = new HashMap<>(extra);
             m.put("prefix_caching", enabled);
             return new ModelParams(temperature, maxTokens, contextLength, m);
         }

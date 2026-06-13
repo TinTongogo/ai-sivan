@@ -3,6 +3,9 @@ package com.icusu.sivan.domain.task;
 /**
  * 任务固有特征五维值对象。
  * 用于特征驱动的本能模板匹配和执行路径判定。
+ * <p>
+ * {@link #toString()} 输出结构化特征摘要，用于路由系统的 feature_hash 计算，
+ * 使语义相似的任务映射到相同哈希，提升路由泛化能力。
  *
  * @param complexity     复杂度等级（LEVEL_1~5）
  * @param dependency     依赖关系类型
@@ -57,5 +60,81 @@ public record TaskFeatures(
         JSON,            // 结构化JSON
         MULTI_MODAL,     // 多模态输出
         DECISION         // 决策/判断结果
+    }
+
+    /** 从输入文本中提取结构化特征。 */
+    public static TaskFeatures fromContent(String input) {
+        return new TaskFeatures(
+                detectComplexity(input),
+                detectDependency(input),
+                detectInputStructure(input),
+                detectDomain(input),
+                detectOutputType(input)
+        );
+    }
+
+    // ===== 启发式检测方法 =====
+
+    private static Complexity detectComplexity(String input) {
+        int len = input != null ? input.length() : 0;
+        if (len < 30) return Complexity.LEVEL_1;
+        if (len < 200) return Complexity.LEVEL_2;
+        if (len < 800) return Complexity.LEVEL_3;
+        if (len < 3000) return Complexity.LEVEL_4;
+        return Complexity.LEVEL_5;
+    }
+
+    private static Dependency detectDependency(String input) {
+        if (input == null) return Dependency.INDEPENDENT;
+        String lower = input.toLowerCase();
+        if (lower.contains("同时") || lower.contains("并行") || lower.contains("parallel"))
+            return Dependency.PARALLEL;
+        if (lower.contains("如果") || lower.contains("判断") || lower.contains("条件") || lower.contains("否则"))
+            return Dependency.CONDITIONAL;
+        if (lower.contains("然后") || lower.contains("之后再") || lower.contains("接着") || lower.contains("步骤"))
+            return Dependency.SEQUENTIAL;
+        return Dependency.INDEPENDENT;
+    }
+
+    private static InputStructure detectInputStructure(String input) {
+        if (input == null) return InputStructure.FREE_TEXT;
+        String lower = input.toLowerCase();
+        if (input.contains("```") || lower.contains("function") || lower.contains("class ") || lower.contains("error:"))
+            return InputStructure.CODE;
+        if (input.contains("\n") && input.contains("?")) return InputStructure.Q_A;
+        if (input.contains("\"") && input.contains("{") && input.contains("}")) return InputStructure.STRUCTURED_DATA;
+        return InputStructure.FREE_TEXT;
+    }
+
+    private static Domain detectDomain(String input) {
+        if (input == null) return Domain.GENERAL;
+        String lower = input.toLowerCase();
+        if (lower.contains("代码") || lower.contains("写") || lower.contains("编程") || lower.contains("debug") || lower.contains("api") || lower.contains("sql"))
+            return Domain.CODING;
+        if (lower.contains("文章") || lower.contains("写") || lower.contains("文案") || lower.contains("翻译"))
+            return Domain.WRITING;
+        if (lower.contains("分析") || lower.contains("对比") || lower.contains("总结") || lower.contains("数据"))
+            return Domain.ANALYSIS;
+        if (lower.contains("创意") || lower.contains("设计") || lower.contains("头脑风暴"))
+            return Domain.CREATIVE;
+        if (lower.contains("调研") || lower.contains("研究") || lower.contains("搜索"))
+            return Domain.RESEARCH;
+        return Domain.GENERAL;
+    }
+
+    private static OutputType detectOutputType(String input) {
+        if (input == null) return OutputType.SHORT_TEXT;
+        String lower = input.toLowerCase();
+        if (lower.contains("代码") || lower.contains("脚本") || lower.contains("编程"))
+            return OutputType.CODE;
+        if (lower.contains("json") || lower.contains("结构化"))
+            return OutputType.JSON;
+        if (lower.contains("文章") || lower.contains("报告") || lower.contains("长文"))
+            return OutputType.LONG_TEXT;
+        if (lower.contains("图片") || lower.contains("图像") || lower.contains("图表"))
+            return OutputType.MULTI_MODAL;
+        if (lower.contains("决定") || lower.contains("选择") || lower.contains("推荐"))
+            return OutputType.DECISION;
+        return OutputType.SHORT_TEXT;
     }
 }

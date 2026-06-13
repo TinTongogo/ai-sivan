@@ -69,7 +69,6 @@ public class ReActExecutionStrategy implements ExecutionStrategy {
     private int effectiveCompressKeepRounds() { return compressKeepRounds > 0 ? compressKeepRounds : 5; }
 
     /** 单条工具结果最大字符数，超出尾部截断。LLM 已消费的推理不依赖原文，截断不影响后续轮次。 */
-    /** 单条工具结果最大字符数，超出尾部截断。LLM 已消费的推理不依赖原文，截断不影响后续轮次。 */
     private static final int MAX_TOOL_OUTPUT_CHARS = 3000;
 
     /** 当 model 未设置 contextLength 时的默认预算（16K token）。 */
@@ -124,9 +123,12 @@ public class ReActExecutionStrategy implements ExecutionStrategy {
                     AgentResult.success(agent.agentId(), state.messages(), state.usage())));
         }
 
+        // 防御：发送前移除孤立 tool_calls，防止 API 400 拒绝
+        ReActState cleanState = state.withMessages(stripOrphanedToolCalls(state.messages()));
+
         // 全流程流式：实时输出文本，流结束后检查工具调用
         if (isStreaming) {
-            return executeStreamRound(agent, state, tools, params)
+            return executeStreamRound(agent, cleanState, tools, params)
                     .concatMap(event -> {
                         if (event instanceof AgentEvent.Completed completed) {
                             List<Msg> streamMsgs = completed.result().msgs();
@@ -141,21 +143,21 @@ public class ReActExecutionStrategy implements ExecutionStrategy {
                         }
                         return Flux.just(event);
                     })
-                    .onErrorResume(e -> fallbackOrFail(agent, state, tools, params,
+                    .onErrorResume(e -> fallbackOrFail(agent, cleanState, tools, params,
                             isStreaming, e, fileRootPath, archived));
         }
 
         // 非流式回退（isStreaming=false 时）
-        return agent.model().chat(state.messages(), tools, params)
+        return agent.model().chat(cleanState.messages(), tools, params)
                 .flatMapMany(response -> {
                     Msg reply = response.msg();
-                    TokenUsage merged = safeMerge(state.usage(), response.usage());
-                    ReActState newState = state.addReply(reply).withUsage(merged);
+                    TokenUsage merged = safeMerge(cleanState.usage(), response.usage());
+                    ReActState newState = cleanState.addReply(reply).withUsage(merged);
                     Flux<AgentEvent> prefix = buildReplyPrefix(reply);
                     return prefix.concatWith(processReply(agent, newState, tools, params,
                             isStreaming, fileRootPath, archived));
                 })
-                .onErrorResume(e -> fallbackOrFail(agent, state, tools, params,
+                .onErrorResume(e -> fallbackOrFail(agent, cleanState, tools, params,
                         isStreaming, e, fileRootPath, archived));
     }
 
@@ -276,6 +278,44 @@ public class ReActExecutionStrategy implements ExecutionStrategy {
             log.debug("hasToolCalls={} msg.role={} contents={}", found, last.role(), last.contents().size());
         }
         return found;
+    }
+
+    /**
+     * 移除消息列表中孤立的 tool_calls — Assistant(tc) 之后缺少对应 Tool 响应的条目。
+     * 从末尾向前扫描，发现单边 tool_calls 则整体移除该 Assistant 消息，防止 API 400 拒绝。
+     */
+    static List<Msg> stripOrphanedToolCalls(List<Msg> messages) {
+        List<Msg> result = new ArrayList<>(messages);
+        boolean changed;
+        do {
+            changed = false;
+            for (int i = result.size() - 1; i >= 0; i--) {
+                Msg msg = result.get(i);
+                if (msg.role() != Role.ASSISTANT) continue;
+                List<Content.ToolCall> calls = msg.contents().stream()
+                        .filter(c -> c instanceof Content.ToolCall)
+                        .map(c -> (Content.ToolCall) c)
+                        .toList();
+                if (calls.isEmpty()) continue;
+
+                int toolCount = 0;
+                for (int j = i + 1; j < result.size(); j++) {
+                    Msg next = result.get(j);
+                    if (next.role() == Role.TOOL) {
+                        toolCount++;
+                    } else {
+                        break;
+                    }
+                }
+                if (toolCount < calls.size()) {
+                    log.warn("[ReAct] 移除孤立 tool_calls: idx={} calls={} tools={}", i, calls.size(), toolCount);
+                    result.remove(i);
+                    changed = true;
+                    break;
+                }
+            }
+        } while (changed);
+        return result;
     }
 
     private static class ToolCallAcc {
