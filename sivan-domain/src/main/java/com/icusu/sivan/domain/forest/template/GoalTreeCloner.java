@@ -1,7 +1,7 @@
 package com.icusu.sivan.domain.forest.template;
 
 import com.icusu.sivan.common.NodeStatus;
-import com.icusu.sivan.domain.forest.service.ForestVisitor;
+import com.icusu.sivan.domain.forest.port.ForestVisitor;
 import com.icusu.sivan.domain.forest.tree.*;
 
 import java.util.ArrayList;

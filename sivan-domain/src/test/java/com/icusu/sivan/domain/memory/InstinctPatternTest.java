@@ -1,7 +1,7 @@
 package com.icusu.sivan.domain.memory;
 
-import com.icusu.sivan.domain.task.PatternFeatureVector;
-import com.icusu.sivan.domain.task.TaskFeatures;
+import com.icusu.sivan.domain.memory.PatternFeatureVector;
+import com.icusu.sivan.domain.memory.TaskFeatures;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;

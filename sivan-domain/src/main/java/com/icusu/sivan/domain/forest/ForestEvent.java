@@ -1,5 +1,7 @@
 package com.icusu.sivan.domain.forest;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.icusu.sivan.common.NodeStatus;
 
 import java.time.Instant;
@@ -28,10 +30,15 @@ public final class ForestEvent {
         this(nodeId, forestId, accountId, type, message, null, null, null);
     }
 
-    public ForestEvent(String nodeId, String forestId, String accountId,
-                       EventType type, String message,
-                       NodeStatus statusBefore, NodeStatus statusAfter,
-                       Map<String, Object> metadata) {
+    @JsonCreator
+    public ForestEvent(@JsonProperty("nodeId") String nodeId,
+                       @JsonProperty("forestId") String forestId,
+                       @JsonProperty("accountId") String accountId,
+                       @JsonProperty("type") EventType type,
+                       @JsonProperty("message") String message,
+                       @JsonProperty("statusBefore") NodeStatus statusBefore,
+                       @JsonProperty("statusAfter") NodeStatus statusAfter,
+                       @JsonProperty("metadata") Map<String, Object> metadata) {
         this.nodeId = nodeId;
         this.forestId = forestId;
         this.accountId = accountId;

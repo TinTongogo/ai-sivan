@@ -9,7 +9,7 @@ import com.icusu.sivan.agent.model.ModelRouter;
 import com.icusu.sivan.core.model.Model;
 import com.icusu.sivan.web.shared.security.CurrentAccountId;
 import java.util.UUID;
-import com.icusu.sivan.web.conversation.dto.PolishRequest;
+import com.icusu.sivan.application.conversation.dto.PolishRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

@@ -1,6 +1,6 @@
 package com.icusu.sivan.domain.memory;
 
-import com.icusu.sivan.domain.task.PatternFeatureVector;
+import com.icusu.sivan.domain.memory.PatternFeatureVector;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;

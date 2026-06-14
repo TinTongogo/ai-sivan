@@ -1,13 +1,13 @@
 package com.icusu.sivan.web.tool.controller;
 
 import com.icusu.sivan.common.dto.BaseResponse;
-import com.icusu.sivan.web.tool.dto.CreateMcpServerRequest;
-import com.icusu.sivan.web.tool.dto.McpConnectionRequest;
-import com.icusu.sivan.web.tool.dto.UpdateMcpServerRequest;
-import com.icusu.sivan.web.tool.dto.McpServerResponse;
+import com.icusu.sivan.application.tool.dto.CreateMcpServerRequest;
+import com.icusu.sivan.application.tool.dto.McpConnectionRequest;
+import com.icusu.sivan.application.tool.dto.UpdateMcpServerRequest;
+import com.icusu.sivan.application.tool.dto.McpServerResponse;
 import com.icusu.sivan.domain.tool.PreflightResult;
-import com.icusu.sivan.web.tool.dto.McpTestResult;
-import com.icusu.sivan.web.tool.service.McpServerConfigService;
+import com.icusu.sivan.application.tool.dto.McpTestResult;
+import com.icusu.sivan.application.tool.McpServerConfigService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;

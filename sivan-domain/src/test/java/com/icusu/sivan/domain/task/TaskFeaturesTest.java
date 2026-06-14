@@ -1,5 +1,6 @@
 package com.icusu.sivan.domain.task;
 
+import com.icusu.sivan.domain.memory.TaskFeatures;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;

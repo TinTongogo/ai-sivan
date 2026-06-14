@@ -1,9 +1,9 @@
 package com.icusu.sivan.agent.forest;
 
-import com.icusu.sivan.domain.forest.service.ImageGenCapability;
-import com.icusu.sivan.domain.forest.service.ImageGenEvent;
-import com.icusu.sivan.domain.forest.service.ImagePrompt;
-import com.icusu.sivan.domain.forest.service.ModelParams;
+import com.icusu.sivan.domain.shared.port.ImageGenCapability;
+import com.icusu.sivan.domain.forest.event.ImageGenEvent;
+import com.icusu.sivan.domain.forest.vo.ImagePrompt;
+import com.icusu.sivan.domain.forest.vo.ModelParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.reactive.function.client.WebClient;

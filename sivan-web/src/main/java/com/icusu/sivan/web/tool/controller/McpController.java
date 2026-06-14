@@ -2,7 +2,7 @@ package com.icusu.sivan.web.tool.controller;
 
 import com.icusu.sivan.agent.mcp.McpServer;
 import com.icusu.sivan.common.dto.BaseResponse;
-import com.icusu.sivan.web.tool.dto.ToolCallRequest;
+import com.icusu.sivan.application.tool.dto.ToolCallRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

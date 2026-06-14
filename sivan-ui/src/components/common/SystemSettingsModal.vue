@@ -569,6 +569,7 @@ async function addMcpServer() {
     apiKey: '',
     transport: 'sse',
     active: true,
+    connectionStatus: 'DISCONNECTED',
     createdAt: '',
     updatedAt: '',
   })

@@ -1,9 +1,9 @@
 package com.icusu.sivan.agent.forest;
 
-import com.icusu.sivan.domain.forest.service.ModelParams;
-import com.icusu.sivan.domain.forest.service.SpeechSynthCapability;
-import com.icusu.sivan.domain.forest.service.SpeechSynthEvent;
-import com.icusu.sivan.domain.forest.service.SpeechSynthRequest;
+import com.icusu.sivan.domain.forest.vo.ModelParams;
+import com.icusu.sivan.domain.shared.port.SpeechSynthCapability;
+import com.icusu.sivan.domain.forest.event.SpeechSynthEvent;
+import com.icusu.sivan.domain.forest.vo.SpeechSynthRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.reactive.function.client.WebClient;

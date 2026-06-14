@@ -1,11 +1,11 @@
 package com.icusu.sivan.web.agent.controller;
 
 import com.icusu.sivan.common.dto.BaseResponse;
-import com.icusu.sivan.infra.agent.entity.ProjectEntity;
-import com.icusu.sivan.web.agent.dto.ProjectCreateRequest;
-import com.icusu.sivan.web.agent.dto.ProjectRenameRequest;
-import com.icusu.sivan.web.file.dto.FileEntryResponse;
-import com.icusu.sivan.web.service.GroupService;
+import com.icusu.sivan.domain.agent.Project;
+import com.icusu.sivan.application.agent.dto.ProjectCreateRequest;
+import com.icusu.sivan.application.agent.dto.ProjectRenameRequest;
+import com.icusu.sivan.application.file.dto.FileEntryResponse;
+import com.icusu.sivan.application.service.GroupService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -26,19 +26,19 @@ public class GroupController {
 
     /** 获取群组列表。 */
     @GetMapping
-    public BaseResponse<List<ProjectEntity>> list(@CurrentAccountId UUID accountId) {
+    public BaseResponse<List<Project>> list(@CurrentAccountId UUID accountId) {
         return BaseResponse.success(groupService.list(accountId));
     }
 
     /** 创建群组。 */
     @PostMapping
-    public BaseResponse<ProjectEntity> create(@Valid @RequestBody ProjectCreateRequest request, @CurrentAccountId UUID accountId) {
+    public BaseResponse<Project> create(@Valid @RequestBody ProjectCreateRequest request, @CurrentAccountId UUID accountId) {
         return BaseResponse.success(groupService.create(accountId, request.getName()));
     }
 
     /** 重命名群组。 */
     @PutMapping("/{id}")
-    public BaseResponse<ProjectEntity> rename(@PathVariable UUID id, @Valid @RequestBody ProjectRenameRequest request, @CurrentAccountId UUID accountId) {
+    public BaseResponse<Project> rename(@PathVariable UUID id, @Valid @RequestBody ProjectRenameRequest request, @CurrentAccountId UUID accountId) {
         return BaseResponse.success(groupService.rename(accountId, id, request.getName()));
     }
 
@@ -51,13 +51,13 @@ public class GroupController {
 
     /** 归档群组。 */
     @PostMapping("/{id}/archive")
-    public BaseResponse<ProjectEntity> archive(@PathVariable UUID id, @CurrentAccountId UUID accountId) {
+    public BaseResponse<Project> archive(@PathVariable UUID id, @CurrentAccountId UUID accountId) {
         return BaseResponse.success(groupService.archive(accountId, id));
     }
 
     /** 取消归档群组。 */
     @PostMapping("/{id}/unarchive")
-    public BaseResponse<ProjectEntity> unarchive(@PathVariable UUID id, @CurrentAccountId UUID accountId) {
+    public BaseResponse<Project> unarchive(@PathVariable UUID id, @CurrentAccountId UUID accountId) {
         return BaseResponse.success(groupService.unarchive(accountId, id));
     }
 

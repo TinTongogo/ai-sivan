@@ -2,12 +2,12 @@ package com.icusu.sivan.agent.forest;
 
 import com.icusu.sivan.domain.forest.ForestEvent;
 import com.icusu.sivan.domain.forest.context.ExecutionContext;
-import com.icusu.sivan.domain.forest.service.EventSink;
-import com.icusu.sivan.domain.forest.service.LeafExecutor;
-import com.icusu.sivan.domain.forest.service.ModelParams;
-import com.icusu.sivan.domain.forest.service.SpeechSynthCapability;
-import com.icusu.sivan.domain.forest.service.SpeechSynthEvent;
-import com.icusu.sivan.domain.forest.service.SpeechSynthRequest;
+import com.icusu.sivan.domain.shared.port.EventSink;
+import com.icusu.sivan.domain.forest.port.LeafExecutor;
+import com.icusu.sivan.domain.forest.vo.ModelParams;
+import com.icusu.sivan.domain.shared.port.SpeechSynthCapability;
+import com.icusu.sivan.domain.forest.event.SpeechSynthEvent;
+import com.icusu.sivan.domain.forest.vo.SpeechSynthRequest;
 import com.icusu.sivan.domain.forest.tree.ContentNode;
 import com.icusu.sivan.domain.forest.tree.TreeNode;
 import org.slf4j.Logger;

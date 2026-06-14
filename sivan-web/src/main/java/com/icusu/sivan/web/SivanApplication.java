@@ -10,7 +10,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  */
 @SpringBootApplication
 @EnableScheduling
-@ComponentScan(basePackages = {"com.icusu.sivan.web", "com.icusu.sivan.infra", "com.icusu.sivan.agent"})
+@ComponentScan(basePackages = {"com.icusu.sivan.web", "com.icusu.sivan.application", "com.icusu.sivan.infra", "com.icusu.sivan.agent"})
 public class SivanApplication {
 
     /** 启动 Spring Boot 应用。 */

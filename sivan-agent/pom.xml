@@ -20,7 +20,7 @@
         </dependency>
         <dependency>
             <groupId>com.icusu.sivan</groupId>
-            <artifactId>sivan-infrastructure</artifactId>
+            <artifactId>sivan-infra</artifactId>
         </dependency>
         <dependency>
             <groupId>io.modelcontextprotocol.sdk</groupId>

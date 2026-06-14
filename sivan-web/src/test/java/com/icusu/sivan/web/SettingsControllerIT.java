@@ -1,6 +1,6 @@
 package com.icusu.sivan.web;
 
-import com.icusu.sivan.web.model.dto.EmbeddingConfigDTO;
+import com.icusu.sivan.application.model.dto.EmbeddingConfigDTO;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.web.reactive.server.WebTestClient;

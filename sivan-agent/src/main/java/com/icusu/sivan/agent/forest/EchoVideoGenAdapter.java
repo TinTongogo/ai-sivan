@@ -1,9 +1,9 @@
 package com.icusu.sivan.agent.forest;
 
-import com.icusu.sivan.domain.forest.service.ModelParams;
-import com.icusu.sivan.domain.forest.service.VideoGenCapability;
-import com.icusu.sivan.domain.forest.service.VideoGenEvent;
-import com.icusu.sivan.domain.forest.service.VideoPrompt;
+import com.icusu.sivan.domain.forest.vo.ModelParams;
+import com.icusu.sivan.domain.shared.port.VideoGenCapability;
+import com.icusu.sivan.domain.forest.event.VideoGenEvent;
+import com.icusu.sivan.domain.forest.vo.VideoPrompt;
 import reactor.core.publisher.Flux;
 
 /**

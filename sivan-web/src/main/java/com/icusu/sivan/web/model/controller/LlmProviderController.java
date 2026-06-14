@@ -1,8 +1,8 @@
 package com.icusu.sivan.web.model.controller;
 
 import com.icusu.sivan.common.dto.BaseResponse;
-import com.icusu.sivan.web.model.dto.*;
-import com.icusu.sivan.web.service.LlmProviderService;
+import com.icusu.sivan.application.model.dto.*;
+import com.icusu.sivan.application.service.LlmProviderService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;

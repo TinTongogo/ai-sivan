@@ -2,7 +2,12 @@ package com.icusu.sivan.agent.forest;
 
 import com.icusu.sivan.core.model.Model;
 import com.icusu.sivan.core.model.ModelChunk;
-import com.icusu.sivan.domain.forest.service.*;
+import com.icusu.sivan.domain.forest.event.ChatEvent;
+import com.icusu.sivan.domain.shared.port.LanguageModel;
+import com.icusu.sivan.domain.forest.vo.ChatResult;
+import com.icusu.sivan.domain.forest.vo.ModelCapabilities;
+import com.icusu.sivan.domain.forest.vo.ModelParams;
+import com.icusu.sivan.domain.forest.vo.TokenUsage;
 import com.icusu.sivan.domain.model.LlmProvider;
 import com.icusu.sivan.domain.model.ModelCapability;
 import org.slf4j.Logger;
@@ -16,7 +21,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static com.icusu.sivan.domain.forest.service.ModelCapabilities.Capability.*;
+import static com.icusu.sivan.domain.forest.vo.ModelCapabilities.Capability.*;
 
 /**
  * 适配器 — 将 V1 {@link Model} 包装为 V2 {@link LanguageModel}。

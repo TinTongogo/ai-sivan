@@ -2,9 +2,9 @@ package com.icusu.sivan.web.routing.controller;
 
 import com.icusu.sivan.common.dto.BaseResponse;
 import com.icusu.sivan.common.dto.PageResponse;
-import com.icusu.sivan.web.routing.dto.CreateRoutingDecisionRequest;
-import com.icusu.sivan.web.routing.dto.RoutingDecisionResponse;
-import com.icusu.sivan.web.service.RoutingDecisionService;
+import com.icusu.sivan.application.routing.dto.CreateRoutingDecisionRequest;
+import com.icusu.sivan.application.routing.dto.RoutingDecisionResponse;
+import com.icusu.sivan.application.service.RoutingDecisionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;

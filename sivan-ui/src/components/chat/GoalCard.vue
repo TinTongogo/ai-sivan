@@ -7,7 +7,7 @@
       <span class="goal-card__expand">{{ expanded ? '收起' : '展开' }}</span>
     </div>
     <div v-if="expanded && goal.tree" class="goal-card__detail">
-      <ForestTree :node="goal.tree" :depth="0" />
+      <ForestTree :root="goal.tree" :depth="0" />
     </div>
   </div>
 </template>

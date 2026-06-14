@@ -29,6 +29,7 @@ const statusIconMap: Record<NodeStatus, string> = {
   COMPLETED: '\u2713',
   FAILED: '\u2717',
   CANCELLED: '\u2014',
+  SKIPPED: '\u25B6',
 }
 
 function shortId(id: string) {

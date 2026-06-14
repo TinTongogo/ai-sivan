@@ -2,12 +2,12 @@ package com.icusu.sivan.agent.forest;
 
 import com.icusu.sivan.domain.forest.ForestEvent;
 import com.icusu.sivan.domain.forest.context.ExecutionContext;
-import com.icusu.sivan.domain.forest.service.EventSink;
-import com.icusu.sivan.domain.forest.service.LeafExecutor;
-import com.icusu.sivan.domain.forest.service.ModelParams;
-import com.icusu.sivan.domain.forest.service.VideoGenCapability;
-import com.icusu.sivan.domain.forest.service.VideoGenEvent;
-import com.icusu.sivan.domain.forest.service.VideoPrompt;
+import com.icusu.sivan.domain.shared.port.EventSink;
+import com.icusu.sivan.domain.forest.port.LeafExecutor;
+import com.icusu.sivan.domain.forest.vo.ModelParams;
+import com.icusu.sivan.domain.shared.port.VideoGenCapability;
+import com.icusu.sivan.domain.forest.event.VideoGenEvent;
+import com.icusu.sivan.domain.forest.vo.VideoPrompt;
 import com.icusu.sivan.domain.forest.tree.ContentNode;
 import com.icusu.sivan.domain.forest.tree.TreeNode;
 import org.slf4j.Logger;
@@ -30,7 +30,7 @@ public class VideoGenLeafExecutor implements LeafExecutor {
     public String supportedType() { return "video_gen"; }
 
     @Override
-    public Flux<ForestEvent> execute(com.icusu.sivan.domain.forest.tree.TreeNode node, com.icusu.sivan.domain.forest.context.ExecutionContext ctx, com.icusu.sivan.domain.forest.service.EventSink sink) {
+    public Flux<ForestEvent> execute(com.icusu.sivan.domain.forest.tree.TreeNode node, com.icusu.sivan.domain.forest.context.ExecutionContext ctx, com.icusu.sivan.domain.shared.port.EventSink sink) {
         String prompt = node instanceof ContentNode cn ? cn.content() : "";
         if (prompt.isBlank()) {
             log.warn("[VideoGen] 空提示词: nodeId={}", node.nodeId());

@@ -1,10 +1,10 @@
 package com.icusu.sivan.web.account.controller;
 
 import com.icusu.sivan.common.dto.BaseResponse;
-import com.icusu.sivan.web.account.dto.LoginRequest;
-import com.icusu.sivan.web.account.dto.RegisterRequest;
-import com.icusu.sivan.web.account.dto.AuthResponse;
-import com.icusu.sivan.web.service.AuthService;
+import com.icusu.sivan.application.account.dto.LoginRequest;
+import com.icusu.sivan.application.account.dto.RegisterRequest;
+import com.icusu.sivan.application.account.dto.AuthResponse;
+import com.icusu.sivan.application.service.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;

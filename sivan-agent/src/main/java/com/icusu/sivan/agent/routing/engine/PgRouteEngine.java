@@ -194,7 +194,7 @@ public class PgRouteEngine {
             Model.ModelResponse resp = model.chat(
                     List.of(Msg.of(Role.USER, List.of(new Content.Text(prompt)))),
                     List.of(), Model.ModelParams.defaults()
-            ).block();
+            ).subscribeOn(Schedulers.boundedElastic()).block();
 
             String agentName;
             String category;

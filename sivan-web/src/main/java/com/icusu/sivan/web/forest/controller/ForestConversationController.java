@@ -2,9 +2,9 @@ package com.icusu.sivan.web.forest.controller;
 
 import com.icusu.sivan.common.dto.BaseResponse;
 import com.icusu.sivan.infra.shared.sse.StreamManager;
-import com.icusu.sivan.web.conversation.dto.*;
-import com.icusu.sivan.web.forest.dto.ForestTreeResponse;
-import com.icusu.sivan.web.forest.service.ForestConversationService;
+import com.icusu.sivan.application.conversation.dto.*;
+import com.icusu.sivan.application.forest.dto.ForestTreeResponse;
+import com.icusu.sivan.application.forest.ForestConversationService;
 import com.icusu.sivan.web.shared.security.CurrentAccountId;
 import lombok.RequiredArgsConstructor;
 import jakarta.validation.Valid;
@@ -30,7 +30,7 @@ public class ForestConversationController {
 
     private final ForestConversationService forestConversationService;
     private final StreamManager streamManager;
-    private final com.icusu.sivan.web.conversation.service.MessageCrudService messageCrudService;
+    private final com.icusu.sivan.application.conversation.MessageCrudService messageCrudService;
 
     // ============ 对话 CRUD ============
 

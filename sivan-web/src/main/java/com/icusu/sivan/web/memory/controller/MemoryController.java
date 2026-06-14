@@ -2,10 +2,10 @@ package com.icusu.sivan.web.memory.controller;
 
 import com.icusu.sivan.common.dto.BaseResponse;
 import com.icusu.sivan.common.dto.PageResponse;
-import com.icusu.sivan.web.memory.dto.CreateMemoryRequest;
-import com.icusu.sivan.web.memory.dto.UpdateMemoryRequest;
-import com.icusu.sivan.web.memory.dto.MemoryResponse;
-import com.icusu.sivan.web.service.MemoryService;
+import com.icusu.sivan.application.memory.dto.CreateMemoryRequest;
+import com.icusu.sivan.application.memory.dto.UpdateMemoryRequest;
+import com.icusu.sivan.application.memory.dto.MemoryResponse;
+import com.icusu.sivan.application.service.MemoryService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;

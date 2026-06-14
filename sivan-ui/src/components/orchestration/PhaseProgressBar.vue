@@ -16,7 +16,7 @@ const phases = computed(() => store.progress?.phases || [])
       <div class="phase-progress-track">
         <div class="phase-progress-fill" :style="{ width: store.percentComplete + '%' }"></div>
       </div>
-      <span class="phase-progress-text">{{ t('phaseProgress', { pct: store.percentComplete, done: store.progress.completedPhases, total: store.progress.totalPhases }) }}</span>
+      <span class="phase-progress-text">{{ t('phaseProgress', { pct: store.percentComplete, done: store.progress?.completedPhases ?? 0, total: store.progress?.totalPhases ?? 0 }) }}</span>
     </div>
     <div class="phase-step-bar">
       <span

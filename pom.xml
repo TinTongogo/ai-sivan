@@ -23,8 +23,9 @@
         <module>sivan-core-api</module>
         <module>sivan-common</module>
         <module>sivan-domain</module>
-        <module>sivan-infrastructure</module>
+        <module>sivan-infra</module>
         <module>sivan-agent</module>
+        <module>sivan-application</module>
         <module>sivan-web</module>
     </modules>
 
@@ -90,7 +91,7 @@
             </dependency>
             <dependency>
                 <groupId>com.icusu.sivan</groupId>
-                <artifactId>sivan-infrastructure</artifactId>
+                <artifactId>sivan-infra</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -101,6 +102,11 @@
             <dependency>
                 <groupId>com.icusu.sivan</groupId>
                 <artifactId>sivan-web</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.icusu.sivan</groupId>
+                <artifactId>sivan-application</artifactId>
                 <version>${project.version}</version>
             </dependency>
 
@@ -118,6 +124,13 @@
                 <version>${testcontainers.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+
+            <!-- Apache Commons Compress — Tika 3.1.0 需要 >=1.27.1，覆盖 testcontainers 传递的 1.24.0 -->
+            <dependency>
+                <groupId>org.apache.commons</groupId>
+                <artifactId>commons-compress</artifactId>
+                <version>1.27.1</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
@@ -156,7 +169,7 @@
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-surefire-plugin</artifactId>
                     <configuration>
-                        <argLine>-XX:+EnableDynamicAgentLoading
+                        <argLine>-Dnet.bytebuddy.experimental=true -XX:+EnableDynamicAgentLoading
                             -javaagent:${settings.localRepository}/net/bytebuddy/byte-buddy-agent/${byte-buddy.version}/byte-buddy-agent-${byte-buddy.version}.jar
                             @{argLine}
                         </argLine>

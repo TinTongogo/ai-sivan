@@ -7,8 +7,8 @@ import com.icusu.sivan.core.message.Role;
 import com.icusu.sivan.core.model.Model;
 import com.icusu.sivan.domain.forest.ForestEvent;
 import com.icusu.sivan.domain.forest.context.ExecutionContext;
-import com.icusu.sivan.domain.forest.service.EventSink;
-import com.icusu.sivan.domain.forest.service.LeafExecutor;
+import com.icusu.sivan.domain.shared.port.EventSink;
+import com.icusu.sivan.domain.forest.port.LeafExecutor;
 import com.icusu.sivan.domain.forest.tree.ContentNode;
 import com.icusu.sivan.domain.forest.tree.TreeNode;
 import org.slf4j.Logger;
@@ -43,7 +43,7 @@ public class ImageAnalysisLeafExecutor implements LeafExecutor {
     }
 
     @Override
-    public Flux<ForestEvent> execute(com.icusu.sivan.domain.forest.tree.TreeNode node, com.icusu.sivan.domain.forest.context.ExecutionContext ctx, com.icusu.sivan.domain.forest.service.EventSink sink) {
+    public Flux<ForestEvent> execute(com.icusu.sivan.domain.forest.tree.TreeNode node, com.icusu.sivan.domain.forest.context.ExecutionContext ctx, com.icusu.sivan.domain.shared.port.EventSink sink) {
         String prompt = node instanceof ContentNode cn ? cn.content() : "";
         Object rawUrl = node instanceof ContentNode cn ? cn.metadata().get("imageUrl") : null;
         String imageUrl = rawUrl instanceof String s ? s : null;

@@ -52,11 +52,12 @@ management:
       exposure:
         include: health,metrics,prometheus
   metrics:
-    export:
-      prometheus:
-        enabled: true
     tags:
       application: ai-sivan
+  prometheus:
+    metrics:
+      export:
+        enabled: true
 
 # JWT 配置
 jwt:

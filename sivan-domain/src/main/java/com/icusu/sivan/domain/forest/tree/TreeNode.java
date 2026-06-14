@@ -2,7 +2,7 @@ package com.icusu.sivan.domain.forest.tree;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
-import com.icusu.sivan.domain.forest.service.ForestVisitor;
+import com.icusu.sivan.domain.forest.port.ForestVisitor;
 
 import java.util.List;
 

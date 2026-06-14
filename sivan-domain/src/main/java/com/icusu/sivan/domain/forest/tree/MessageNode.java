@@ -1,6 +1,6 @@
 package com.icusu.sivan.domain.forest.tree;
 
-import com.icusu.sivan.domain.forest.service.ForestVisitor;
+import com.icusu.sivan.domain.forest.port.ForestVisitor;
 
 import java.util.Collections;
 import java.util.HashMap;

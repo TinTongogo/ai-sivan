@@ -1,6 +1,8 @@
 package com.icusu.sivan.domain.feedback;
 
-import com.icusu.sivan.domain.task.TaskFeatures;
+import com.icusu.sivan.domain.memory.FeatureDeviation;
+import com.icusu.sivan.domain.memory.PatternFeedbackRecord;
+import com.icusu.sivan.domain.memory.TaskFeatures;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

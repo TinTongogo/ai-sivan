@@ -1,9 +1,9 @@
 package com.icusu.sivan.agent.forest;
 
-import com.icusu.sivan.domain.forest.service.ModelParams;
-import com.icusu.sivan.domain.forest.service.SpeechRecogCapability;
-import com.icusu.sivan.domain.forest.service.SpeechRecogEvent;
-import com.icusu.sivan.domain.forest.service.SpeechRecogRequest;
+import com.icusu.sivan.domain.forest.vo.ModelParams;
+import com.icusu.sivan.domain.shared.port.SpeechRecogCapability;
+import com.icusu.sivan.domain.forest.event.SpeechRecogEvent;
+import com.icusu.sivan.domain.forest.vo.SpeechRecogRequest;
 import reactor.core.publisher.Flux;
 
 /**

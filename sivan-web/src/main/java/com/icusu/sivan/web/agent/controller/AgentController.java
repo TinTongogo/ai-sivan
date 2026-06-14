@@ -1,10 +1,10 @@
 package com.icusu.sivan.web.agent.controller;
 
 import com.icusu.sivan.common.dto.BaseResponse;
-import com.icusu.sivan.web.agent.dto.AgentResponse;
-import com.icusu.sivan.web.agent.dto.CreateAgentRequest;
-import com.icusu.sivan.web.agent.dto.UpdateAgentRequest;
-import com.icusu.sivan.web.service.AgentService;
+import com.icusu.sivan.application.agent.dto.AgentResponse;
+import com.icusu.sivan.application.agent.dto.CreateAgentRequest;
+import com.icusu.sivan.application.agent.dto.UpdateAgentRequest;
+import com.icusu.sivan.application.service.AgentService;
 import com.icusu.sivan.web.shared.security.CurrentAccountId;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;

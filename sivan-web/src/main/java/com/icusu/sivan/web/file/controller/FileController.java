@@ -2,7 +2,7 @@ package com.icusu.sivan.web.file.controller;
 
 import com.icusu.sivan.common.dto.BaseResponse;
 import com.icusu.sivan.domain.file.FileStoragePort;
-import com.icusu.sivan.web.file.dto.FileUploadResponse;
+import com.icusu.sivan.application.file.dto.FileUploadResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.ByteArrayResource;

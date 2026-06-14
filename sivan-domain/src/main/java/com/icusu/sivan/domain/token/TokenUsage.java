@@ -28,4 +28,23 @@ public class TokenUsage {
     private UUID conversationId;
     private TokenSource source;
     private LocalDateTime createdAt;
+
+    /**
+     * 从森林 VO 转换创建持久化实体。
+     * <p>
+     * 确保 thinkingTokens 不丢失：VO 有该字段但 Entity 暂未收录，
+     * 已在 outputTokens 中合并（含思考 token）。
+     */
+    public static TokenUsage fromForestVo(
+            com.icusu.sivan.domain.forest.vo.TokenUsage vo,
+            UUID accountId, UUID conversationId, String modelName, TokenSource source) {
+        return TokenUsage.builder()
+                .accountId(accountId)
+                .conversationId(conversationId)
+                .modelName(modelName)
+                .source(source)
+                .inputTokens(vo.inputTokens())
+                .outputTokens(vo.outputTokens() + vo.thinkingTokens())
+                .build();
+    }
 }

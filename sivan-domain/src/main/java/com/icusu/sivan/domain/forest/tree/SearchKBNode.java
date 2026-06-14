@@ -2,7 +2,7 @@ package com.icusu.sivan.domain.forest.tree;
 
 import com.icusu.sivan.common.Mode;
 import com.icusu.sivan.common.NodeStatus;
-import com.icusu.sivan.domain.forest.service.ForestVisitor;
+import com.icusu.sivan.domain.forest.port.ForestVisitor;
 
 import java.util.List;
 import java.util.Map;

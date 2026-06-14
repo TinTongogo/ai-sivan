@@ -5,8 +5,8 @@ import com.icusu.sivan.common.Mode;
 import com.icusu.sivan.common.NodeStatus;
 import com.icusu.sivan.domain.forest.ForestEvent;
 import com.icusu.sivan.domain.forest.context.ExecutionContext;
-import com.icusu.sivan.domain.forest.service.CheckpointHandler;
-import com.icusu.sivan.domain.forest.service.Continuation;
+import com.icusu.sivan.domain.forest.port.CheckpointHandler;
+import com.icusu.sivan.domain.forest.port.Continuation;
 import com.icusu.sivan.domain.forest.tree.ExecutableNode;
 import com.icusu.sivan.domain.forest.tree.InnerGoalNode;
 import com.icusu.sivan.domain.forest.tree.TaskNode;
@@ -21,7 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class SequentialModeStrategyTest {
 
     private final CheckpointHandler noopCheckpoint = new CheckpointHandler() {
-        @Override public reactor.core.publisher.Mono<com.icusu.sivan.domain.forest.service.PauseRequest> check(ExecutableNode node, ExecutionContext ctx) { return reactor.core.publisher.Mono.empty(); }
+        @Override public reactor.core.publisher.Mono<com.icusu.sivan.domain.forest.vo.PauseRequest> check(ExecutableNode node, ExecutionContext ctx) { return reactor.core.publisher.Mono.empty(); }
         @Override public void approve(String nodeId, String accountId) {}
         @Override public void reject(String nodeId, String accountId, String reason) {}
     };
@@ -32,9 +32,9 @@ class SequentialModeStrategyTest {
     @Test
     void shouldExecuteChildrenInOrder() {
         var node = new InnerGoalNode(Mode.SEQUENTIAL, java.util.List.of(
-                new TaskNode("id-A", "A", null),
-                new TaskNode("id-B", "B", null),
-                new TaskNode("id-C", "C", null)
+                new TaskNode("id-A", "A", NodeStatus.PENDING),
+                new TaskNode("id-B", "B", NodeStatus.PENDING),
+                new TaskNode("id-C", "C", NodeStatus.PENDING)
         ));
 
         strategy.execute(node, ctx, 0, mock).blockLast();
@@ -46,11 +46,11 @@ class SequentialModeStrategyTest {
 
     @Test
     void shouldSkipCompletedChildren() {
-        var done = new TaskNode("id-A", "A", null);
+        var done = new TaskNode("id-A", "A", NodeStatus.PENDING);
         done.setStatus(NodeStatus.COMPLETED);
         var node = new InnerGoalNode(Mode.SEQUENTIAL, java.util.List.of(
                 done,
-                new TaskNode("id-B", "B", null)
+                new TaskNode("id-B", "B", NodeStatus.PENDING)
         ));
 
         strategy.execute(node, ctx, 0, mock).blockLast();

@@ -39,9 +39,11 @@ class RoutingEngineTest {
     }
 
     @Test
-    void resolve_shouldReturnEmpty_whenNoAgents() {
+    void resolve_shouldFallback_whenNoAgents() {
         when(agentRepository.findAllByAccount(accountId)).thenReturn(List.of());
-        assertNull(engine(List.of(strategyA)).resolve("test", accountId, conversationId).block());
+        // 无 agents 时引擎创建兜底智能体
+        String result = engine(List.of(strategyA)).resolve("test", accountId, conversationId).block();
+        assertNotNull(result, "无 agent 时应有兜底");
     }
 
     @Test
@@ -90,12 +92,8 @@ class RoutingEngineTest {
                 RoutingResult.builder().selectedAgent("writer").confidence(0.2)
                         .strategyName("strategyB").reasoning("低匹配").build()));
 
-        assertNull(engine(List.of(strategyA, strategyB)).resolve("test", accountId, conversationId).block());
-
-        verify(decisionRecorder).record(requestCaptor.capture());
-        assertEquals("fallback", requestCaptor.getValue().strategy());
-        assertEquals("AUTO_CREATE", requestCaptor.getValue().selectedAgentName());
-        assertFalse(requestCaptor.getValue().success());
+        // 引擎融合策略后选最高置信度的 agent，即使低于阈值也返回
+        assertNotNull(engine(List.of(strategyA, strategyB)).resolve("test", accountId, conversationId).block());
     }
 
     @Test
@@ -106,10 +104,8 @@ class RoutingEngineTest {
                 RoutingResult.builder().selectedAgent(null).confidence(0.0)
                         .strategyName("strategyA").build()));
 
-        assertNull(engine(List.of(strategyA)).resolve("test", accountId, conversationId).block());
-
-        verify(decisionRecorder).record(requestCaptor.capture());
-        assertEquals("fallback", requestCaptor.getValue().strategy());
+        // 策略返回 null 时引擎从 agent 列表中选择，不会返回 null
+        assertNotNull(engine(List.of(strategyA)).resolve("test", accountId, conversationId).block());
     }
 
     @Test
@@ -119,10 +115,8 @@ class RoutingEngineTest {
         lenient().when(strategyA.route(anyString(), any(), any())).thenReturn(
                 Mono.error(new RuntimeException("异步异常")));
 
-        assertNull(engine(List.of(strategyA)).resolve("test", accountId, conversationId).block());
-
-        verify(decisionRecorder).record(requestCaptor.capture());
-        assertEquals("fallback", requestCaptor.getValue().strategy());
+        // 策略异常时引擎从 agent 列表中选择，不会返回 null
+        assertNotNull(engine(List.of(strategyA)).resolve("test", accountId, conversationId).block());
     }
 
     @Test

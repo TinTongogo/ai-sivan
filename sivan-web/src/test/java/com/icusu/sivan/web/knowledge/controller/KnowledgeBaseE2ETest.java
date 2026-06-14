@@ -34,14 +34,14 @@ class KnowledgeBaseE2ETest extends AbstractWebIntegrationTest {
     void shouldCreateAndGetKnowledgeBase() {
         UUID pid = createProject("KB创建项目");
         webTestClient.post()
-                .uri("/api/knowledge-bases")
+                .uri("/api/v2/knowledge-bases")
                 .bodyValue(Map.of("kbName", "kb-create", "description", "描述", "projectId", pid))
                 .exchange()
                 .expectBody()
                 .jsonPath("$.code").isEqualTo(201);
 
         webTestClient.get()
-                .uri("/api/knowledge-bases/kb-create")
+                .uri("/api/v2/knowledge-bases/kb-create")
                 .exchange()
                 .expectBody()
                 .jsonPath("$.code").isEqualTo(200)
@@ -52,14 +52,14 @@ class KnowledgeBaseE2ETest extends AbstractWebIntegrationTest {
     void shouldListKnowledgeBases() {
         UUID pid = createProject("KB列项目");
         webTestClient.post()
-                .uri("/api/knowledge-bases")
+                .uri("/api/v2/knowledge-bases")
                 .bodyValue(Map.of("kbName", "kb-list-a", "projectId", pid))
                 .exchange()
                 .expectBody()
                 .jsonPath("$.code").isEqualTo(201);
 
         webTestClient.get()
-                .uri("/api/knowledge-bases")
+                .uri("/api/v2/knowledge-bases")
                 .exchange()
                 .expectBody()
                 .jsonPath("$.code").isEqualTo(200)
@@ -70,21 +70,21 @@ class KnowledgeBaseE2ETest extends AbstractWebIntegrationTest {
     void shouldUploadAndListDocuments() {
         UUID pid = createProject("KB文档项目");
         webTestClient.post()
-                .uri("/api/knowledge-bases")
+                .uri("/api/v2/knowledge-bases")
                 .bodyValue(Map.of("kbName", "kb-docs", "projectId", pid))
                 .exchange()
                 .expectBody()
                 .jsonPath("$.code").isEqualTo(201);
 
         webTestClient.post()
-                .uri("/api/knowledge-bases/kb-docs/documents")
+                .uri("/api/v2/knowledge-bases/kb-docs/documents")
                 .bodyValue(Map.of("filename", "test.md", "textContent", "# Test", "projectId", pid))
                 .exchange()
                 .expectBody()
                 .jsonPath("$.code").isEqualTo(201);
 
         webTestClient.get()
-                .uri("/api/knowledge-bases/kb-docs/documents")
+                .uri("/api/v2/knowledge-bases/kb-docs/documents")
                 .exchange()
                 .expectBody()
                 .jsonPath("$.code").isEqualTo(200)
@@ -95,14 +95,14 @@ class KnowledgeBaseE2ETest extends AbstractWebIntegrationTest {
     void shouldDeleteKnowledgeBase() {
         UUID pid = createProject("KB删除项目");
         webTestClient.post()
-                .uri("/api/knowledge-bases")
+                .uri("/api/v2/knowledge-bases")
                 .bodyValue(Map.of("kbName", "kb-to-delete", "projectId", pid))
                 .exchange()
                 .expectBody()
                 .jsonPath("$.code").isEqualTo(201);
 
         webTestClient.delete()
-                .uri("/api/knowledge-bases/kb-to-delete")
+                .uri("/api/v2/knowledge-bases/kb-to-delete")
                 .exchange()
                 .expectBody()
                 .jsonPath("$.code").isEqualTo(200);
