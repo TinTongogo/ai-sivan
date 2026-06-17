@@ -1,7 +1,7 @@
 package com.icusu.sivan.agent.forest.matcher;
 
 import com.icusu.sivan.domain.forest.tree.ContentNode;
-import com.icusu.sivan.domain.forest.tree.InnerGoalNode;
+import com.icusu.sivan.domain.forest.tree.node.InnerGoalNode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 

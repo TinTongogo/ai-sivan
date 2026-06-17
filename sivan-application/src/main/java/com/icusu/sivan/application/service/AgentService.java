@@ -23,6 +23,8 @@ import java.util.UUID;
 public class AgentService {
 
     private final IAgentRepository agentRepository;
+    private final com.icusu.sivan.domain.routing.IBetaParamRepository betaParamRepository;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbc;
 
     /** 创建智能体。 */
     public AgentResponse create(UUID accountId, CreateAgentRequest request) {
@@ -73,10 +75,15 @@ public class AgentService {
         return toResponse(config);
     }
 
-    /** 删除智能体。 */
+    /** 删除智能体（同时清理 Beta 参数和路由记录）。 */
     public void delete(UUID accountId, UUID agentId) {
         AgentDefinition config = findOwned(accountId, agentId);
+        String agentName = config.getAgentName();
         agentRepository.delete(config.getAgentId());
+        // 清理级联数据
+        betaParamRepository.deleteByAgent(accountId, agentName);
+        jdbc.update("DELETE FROM routing_decisions WHERE account_id = ? AND selected_agent = ?",
+                accountId, agentName);
     }
 
     /** 批量删除智能体（校验所有权后删除）。 */
@@ -85,7 +92,11 @@ public class AgentService {
         if (ids == null || ids.isEmpty()) return;
         for (UUID id : ids) {
             AgentDefinition config = findOwned(accountId, id);
+            String agentName = config.getAgentName();
             agentRepository.delete(config.getAgentId());
+            betaParamRepository.deleteByAgent(accountId, agentName);
+            jdbc.update("DELETE FROM routing_decisions WHERE account_id = ? AND selected_agent = ?",
+                    accountId, agentName);
         }
     }
 

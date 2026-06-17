@@ -5,6 +5,7 @@ import com.icusu.sivan.domain.compression.FoldStrategy;
 import com.icusu.sivan.domain.compression.TokenBudget;
 import com.icusu.sivan.domain.forest.tree.ContentNode;
 import com.icusu.sivan.domain.forest.tree.TreeNode;
+import com.icusu.sivan.domain.forest.tree.node.MemoryNode;
 import org.springframework.stereotype.Component;
 
 /**
@@ -36,7 +37,7 @@ public class MemoryFoldStrategy implements FoldStrategy {
         }
 
         double importance = 0.0;
-        if (node instanceof com.icusu.sivan.domain.forest.tree.MemoryNode mem) {
+        if (node instanceof MemoryNode mem) {
             importance = mem.importance();
         }
 

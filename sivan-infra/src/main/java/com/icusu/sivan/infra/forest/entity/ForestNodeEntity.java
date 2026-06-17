@@ -35,14 +35,25 @@ public class ForestNodeEntity implements Persistable<String> {
     private String parentNodeId;
 
     @Column(name = "sort_order", nullable = false)
-    @Builder.Default
-    private Integer sortOrder = 0;
+    private Integer sortOrder;
+
+    @Column(length = 16)
+    private String role;          // message: 'user' | 'assistant' | 'system'
 
     @Column(length = 16)
     private String mode;
 
     @Column(length = 16)
     private String status;
+
+    @Column(name = "account_id")
+    private UUID accountId;
+
+    @Column(name = "project_id")
+    private UUID projectId;
+
+    @Column(name = "created_at")
+    private OffsetDateTime createdAt;
 
     @Column(columnDefinition = "TEXT")
     private String content;
@@ -67,6 +78,35 @@ public class ForestNodeEntity implements Persistable<String> {
 
     @Column(name = "completed_at")
     private OffsetDateTime completedAt;
+
+    // ===== 记忆专用列（V30 新增，替代 metadata JSONB 过滤字段） =====
+
+    @Column(length = 16)
+    private String level;
+
+    @Column
+    private Boolean archived;
+
+    @Column
+    private Boolean important;
+
+    @Column(name = "scope_id")
+    private UUID scopeId;
+
+    @Column(columnDefinition = "TEXT")
+    private String summary;
+
+    @Column(name = "retention")
+    private java.math.BigDecimal retention;
+
+    @Column(name = "access_count")
+    private Integer accessCount;
+
+    @Column(name = "last_accessed_at")
+    private OffsetDateTime lastAccessedAt;
+
+    @Column(name = "vector")
+    private float[] vector;
 
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;

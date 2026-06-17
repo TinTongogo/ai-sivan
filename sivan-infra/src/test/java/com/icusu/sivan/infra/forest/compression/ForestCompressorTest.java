@@ -3,8 +3,8 @@ package com.icusu.sivan.infra.forest.compression;
 import com.icusu.sivan.common.NodeStatus;
 import com.icusu.sivan.domain.compression.TokenBudgetManager;
 import com.icusu.sivan.domain.forest.Forest;
-import com.icusu.sivan.domain.forest.tree.InnerGoalNode;
-import com.icusu.sivan.domain.forest.tree.TaskNode;
+import com.icusu.sivan.domain.forest.tree.node.InnerGoalNode;
+import com.icusu.sivan.domain.forest.tree.node.TaskNode;
 import com.icusu.sivan.domain.forest.tree.TreeNode;
 import com.icusu.sivan.common.Mode;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,7 +31,7 @@ class ForestCompressorTest {
                 new MessageFoldStrategy(),
                 new MemoryFoldStrategy()
         ), new TokenBudgetManager(null));
-        forest = new Forest(UUID.randomUUID(), UUID.randomUUID(), null, null, "测试", "root");
+        forest = new Forest(UUID.randomUUID(), UUID.randomUUID(), null, "测试", "root");
     }
 
     @Test

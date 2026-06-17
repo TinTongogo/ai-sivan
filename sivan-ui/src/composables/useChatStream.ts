@@ -426,6 +426,8 @@ export function useChatStream(deps: {
     clearTimeout(pendingCancelTimer)
     currentController.value = null
     streaming.value = false
+    // 切换对话时清除编排进度状态
+    useOrchestrationStore().reset()
   }
 
   return {

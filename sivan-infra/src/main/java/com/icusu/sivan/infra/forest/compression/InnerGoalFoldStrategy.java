@@ -4,7 +4,7 @@ import com.icusu.sivan.common.NodeStatus;
 import com.icusu.sivan.domain.compression.FoldDecision;
 import com.icusu.sivan.domain.compression.FoldStrategy;
 import com.icusu.sivan.domain.compression.TokenBudget;
-import com.icusu.sivan.domain.forest.tree.InnerGoalNode;
+import com.icusu.sivan.domain.forest.tree.node.InnerGoalNode;
 import com.icusu.sivan.domain.forest.tree.TreeNode;
 import org.springframework.stereotype.Component;
 

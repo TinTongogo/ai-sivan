@@ -1,5 +1,7 @@
 package com.icusu.sivan.domain.forest.tree;
 
+import com.icusu.sivan.domain.forest.tree.node.FileSnapshotNode;
+import com.icusu.sivan.domain.forest.tree.node.InnerGoalNode;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;

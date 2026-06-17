@@ -2,7 +2,10 @@ package com.icusu.sivan.web.shared.controller;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.icusu.sivan.agent.prompt.IntentClassifier;
 import com.icusu.sivan.common.dto.BaseResponse;
+import com.icusu.sivan.infra.forest.entity.IntentPrototypeEntity;
+import com.icusu.sivan.infra.forest.repository.IntentPrototypeJpaRepository;
 import com.icusu.sivan.domain.model.LlmProvider;
 import com.icusu.sivan.application.knowledge.KnowledgeBaseService;
 import com.icusu.sivan.application.model.dto.ConnectionTestResult;
@@ -23,6 +26,7 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import java.net.URI;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -39,6 +43,8 @@ public class SettingsController {
     private static final int READ_TIMEOUT = 15000;
     private final RestTemplate restTemplate;
     private final KnowledgeBaseService knowledgeBaseService;
+    private final IntentClassifier intentClassifier;
+    private final IntentPrototypeJpaRepository prototypeRepo;
 
     @Value("${sivan.embedding.default-url:}")
     private String defaultEmbeddingUrl;
@@ -49,9 +55,13 @@ public class SettingsController {
     @Value("${sivan.reranker.default-model:}")
     private String defaultRerankerModel;
 
-    public SettingsController(LlmProviderService llmProviderService, KnowledgeBaseService knowledgeBaseService) {
+    public SettingsController(LlmProviderService llmProviderService, KnowledgeBaseService knowledgeBaseService,
+                              IntentClassifier intentClassifier,
+                              IntentPrototypeJpaRepository prototypeRepo) {
         this.llmProviderService = llmProviderService;
         this.knowledgeBaseService = knowledgeBaseService;
+        this.intentClassifier = intentClassifier;
+        this.prototypeRepo = prototypeRepo;
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(CONNECT_TIMEOUT);
         factory.setReadTimeout(READ_TIMEOUT);
@@ -59,6 +69,70 @@ public class SettingsController {
     }
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    // ========== 意图原型配置 ==========
+
+    /**
+     * 获取当前闲聊/任务原型文本。
+     * 用户可自定义这些原型以优化意图分类准确性。
+     */
+    @GetMapping("/intent-prototypes")
+    public BaseResponse<Map<String, String>> getIntentPrototypes() {
+        var chatPrototype = intentClassifier.getChatPrototype();
+        // 从 DB 加载最新值（取 DB 中的，而非已缓存的）
+        return BaseResponse.success(Map.of(
+                "chat", intentClassifier.getChatPrototype(),
+                "task", intentClassifier.getTaskPrototype()
+        ));
+    }
+
+    /**
+     * 获取意图分类反馈日志（最近 50 条）。
+     */
+    @GetMapping("/intent-prototypes/feedback")
+    public BaseResponse<List<com.icusu.sivan.infra.forest.entity.IntentFeedbackLogEntity>> getIntentFeedback(
+            @CurrentAccountId UUID accountId) {
+        return BaseResponse.success(intentClassifier.getRecentLogs(accountId, 50));
+    }
+
+    /**
+     * 获取意图分类准确率统计。
+     */
+    @GetMapping("/intent-prototypes/accuracy")
+    public BaseResponse<Map<String, Object>> getIntentAccuracy(@CurrentAccountId UUID accountId) {
+        long total = intentClassifier.getTotalFeedbackCount(accountId);
+        long incorrect = intentClassifier.getIncorrectCount(accountId);
+        double accuracy = total > 0 ? (double) (total - incorrect) / total : 0;
+        return BaseResponse.success(Map.of(
+                "totalFeedback", total,
+                "incorrect", incorrect,
+                "accuracy", Math.round(accuracy * 10000) / 100.0
+        ));
+    }
+
+    /**
+     * 更新意图原型文本，更新后立即生效。
+     *
+     * @param prototypes 包含 chat 和 task 两个 key 的 Map
+     */
+    @PutMapping("/intent-prototypes")
+    public BaseResponse<Void> updateIntentPrototypes(@RequestBody Map<String, String> prototypes) {
+        String chat = prototypes.get("chat");
+        String task = prototypes.get("task");
+        if (chat == null || task == null || chat.isBlank() || task.isBlank()) {
+            throw new IllegalArgumentException("chat 和 task 原型文本不能为空");
+        }
+        var now = java.time.OffsetDateTime.now();
+        prototypeRepo.save(com.icusu.sivan.infra.forest.entity.IntentPrototypeEntity.builder()
+                .prototypeKey("chat").prototypeText(chat).updatedAt(now).build());
+        prototypeRepo.save(com.icusu.sivan.infra.forest.entity.IntentPrototypeEntity.builder()
+                .prototypeKey("task").prototypeText(task).updatedAt(now).build());
+        intentClassifier.reload();
+        log.info("意图原型已更新: chat={}chars task={}chars", chat.length(), task.length());
+        return BaseResponse.success();
+    }
+
+    // ========== Embedding/Reranker 配置 ==========
 
     /**
      * 获取模型运行时配置（从 llm_providers 表读取）。

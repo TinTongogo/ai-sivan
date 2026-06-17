@@ -39,7 +39,7 @@ public class SearchKBLeafExecutor implements LeafExecutor {
 
     @Override
     public Flux<ForestEvent> execute(TreeNode node, ExecutionContext ctx, EventSink sink) {
-        String query = node instanceof ContentNode cn ? cn.content() : "";
+        String query = node.content();
         if (query.isBlank()) {
             return Flux.just(ForestEvent.detail(node.nodeId(), null,
                     ctx.accountId().toString(), ""));
@@ -49,11 +49,11 @@ public class SearchKBLeafExecutor implements LeafExecutor {
         String kbName = null;
         int topK = 5;
         if (node instanceof ContentNode cn) {
-            Object rawKb = cn.metadata().get("kbName");
-            if (rawKb instanceof String s && !s.isBlank()) kbName = s;
-            Object rawTopK = cn.metadata().get("topK");
-            if (rawTopK instanceof String s) {
-                try { topK = Integer.parseInt(s); } catch (Exception ignored) {}
+            String kbNameFromMeta = cn.metadataString("kbName");
+            if (kbNameFromMeta != null && !kbNameFromMeta.isBlank()) kbName = kbNameFromMeta;
+            Number rawTopK = cn.metadataNumber("topK");
+            if (rawTopK != null) {
+                topK = rawTopK.intValue();
             }
         }
 

@@ -3,6 +3,8 @@ import { ref, computed, watch, onUnmounted } from 'vue'
 import { renderMarkdown } from '../../utils/markdown'
 import { useI18n } from '../../utils/i18n'
 import { fetchAuthBlob, downloadAuthFile } from '../../utils/auth-fetch'
+import { fetchMessageForest, type ForestTreeResponse, type ForestTreeResponseNode } from '../../api/goals'
+import TreeNodeRender from '../orchestration/TreeNodeRender.vue'
 const { t } = useI18n()
 
 const props = defineProps<{
@@ -74,6 +76,81 @@ async function handleFileClick(f: { fileId: string; fileName: string; url?: stri
     window.open(fileUrl, '_blank')
   }
 }
+interface LocalForestTreeNode {
+  name: string
+  status: string
+  mode?: string
+  agent?: string
+  reasoning?: string
+  output?: string
+  isLeaf?: boolean
+  routeTier?: number
+  routeConfidence?: number
+  toolCalls?: { name: string; count: number; status: string }[]
+  children?: LocalForestTreeNode[]
+}
+
+// 执行树展示（替代扁平内容）
+const forestTree = ref<LocalForestTreeNode | null>(null)
+const treeLoading = ref(false)
+
+watch(() => props.message.messageId, async (msgId) => {
+  forestTree.value = null
+  if (!msgId || props.message.role !== 'assistant') return
+  // 等待流式完成后才加载执行树
+  if (props.streaming) return
+  treeLoading.value = true
+  try {
+    const convId = props.message.chain
+    if (!convId) return
+    const resp: ForestTreeResponse | null = await fetchMessageForest(convId, msgId)
+    if (resp?.root) {
+      forestTree.value = toForestTreeNode(resp.root)
+    }
+  } catch {
+    // 无执行树是正常的（简单对话）
+  } finally {
+    treeLoading.value = false
+  }
+})
+
+watch(() => props.streaming, (val) => {
+  if (!val && props.message.messageId && props.message.role === 'assistant') {
+    // 流式完成后加载执行树
+    loadTreeDelayed()
+  }
+})
+
+function loadTreeDelayed() {
+  const msgId = props.message.messageId
+  const convId = props.message.chain
+  if (!msgId || !convId) return
+  treeLoading.value = true
+  fetchMessageForest(convId, msgId)
+    .then(resp => {
+      if (resp?.root) forestTree.value = toForestTreeNode(resp.root)
+    })
+    .catch(() => {})
+    .finally(() => { treeLoading.value = false })
+}
+
+function toForestTreeNode(node: ForestTreeResponseNode): LocalForestTreeNode {
+  return {
+    name: node.output || node.name,
+    status: node.status,
+    mode: node.mode,
+    agent: node.agent,
+    reasoning: node.reasoning,
+    output: node.output,
+    isLeaf: node.leaf,
+    routeTier: (node as any).routeTier,
+    routeConfidence: node.routeConfidence,
+    toolCalls: (node as any).toolCalls?.map((tc: any) => ({ name: tc.name, count: tc.count, status: tc.status })),
+    children: node.children?.map(toForestTreeNode),
+  }
+}
+
+
 // 首次内容到达时自动折叠思考区（仅一次），之后由用户控制
 let initialContentCollapseDone = false
 
@@ -315,6 +392,9 @@ function formatFileSize(bytes: number): string {
             <audio controls class="bubble__audio" :src="audioSrc" style="width:100%;max-width:300px;height:40px;">
               {{ t('audioNotSupported') }}
             </audio>
+          </template>
+          <template v-else-if="forestTree">
+            <TreeNodeRender :node="forestTree" :depth="0" />
           </template>
           <template v-else>
             <div v-html="renderedContent"></div>
@@ -854,6 +934,15 @@ function formatFileSize(bytes: number): string {
   transform: scale(0.9);
 }
 
+.action-separator {
+  width: 1px;
+  height: 14px;
+  margin: 0 2px;
+  background: var(--clr-hairline);
+  align-self: center;
+}
+
+
 /* ── 用户消息底部行 ── */
 .bubble__footer-row {
   display: flex;
@@ -881,6 +970,7 @@ function formatFileSize(bytes: number): string {
 .bubble__text :deep(p:last-child) {
   margin-bottom: 0;
 }
+
 .bubble__text :deep(ul),
 .bubble__text :deep(ol) {
   margin: 0 0 8px;

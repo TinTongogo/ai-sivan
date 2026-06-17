@@ -1,7 +1,6 @@
 package com.icusu.sivan.agent.forest;
 
 import com.icusu.sivan.agent.model.DefaultModelRouter;
-import com.icusu.sivan.core.message.Content;
 import com.icusu.sivan.core.message.Msg;
 import com.icusu.sivan.core.message.Role;
 import com.icusu.sivan.core.model.Model;
@@ -10,7 +9,7 @@ import com.icusu.sivan.domain.forest.context.ExecutionContext;
 import com.icusu.sivan.domain.shared.port.EventSink;
 import com.icusu.sivan.domain.forest.port.LeafExecutor;
 import com.icusu.sivan.domain.forest.tree.ContentNode;
-import com.icusu.sivan.domain.forest.tree.SynthesisNode;
+import com.icusu.sivan.domain.forest.tree.node.SynthesisNode;
 import com.icusu.sivan.domain.forest.tree.TreeNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,7 +47,7 @@ public class SynthesisLeafExecutor implements LeafExecutor {
     @Override
     public Flux<ForestEvent> execute(TreeNode node, ExecutionContext ctx, EventSink sink) {
         UUID accountId = ctx.accountId();
-        String input = node instanceof ContentNode c ? c.content() : "";
+        String input = node.content();
         String nodeId = node.nodeId();
 
         if (input.isBlank()) {

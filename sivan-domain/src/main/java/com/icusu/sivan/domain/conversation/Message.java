@@ -43,7 +43,6 @@ public class Message {
     private Integer durationMs;
     private Integer thinkingDurationMs;
     private Integer thinkingTokens;
-    private String chain;
     /** 图片列表，JSON 数组字符串（data URI 格式） */
     private String images;
 

@@ -14,18 +14,16 @@ public class Forest {
     private final UUID forestId;
     private final UUID accountId;
     private final UUID projectId;
-    private final UUID conversationId;
     private final String title;
     private final String rootNodeId;
     private final Instant createdAt;
     private Instant updatedAt;
 
-    public Forest(UUID forestId, UUID accountId, UUID projectId, UUID conversationId,
+    public Forest(UUID forestId, UUID accountId, UUID projectId,
                   String title, String rootNodeId) {
         this.forestId = forestId;
         this.accountId = accountId;
         this.projectId = projectId;
-        this.conversationId = conversationId;
         this.title = title;
         this.rootNodeId = rootNodeId;
         this.createdAt = Instant.now();
@@ -35,7 +33,6 @@ public class Forest {
     public UUID forestId() { return forestId; }
     public UUID accountId() { return accountId; }
     public UUID projectId() { return projectId; }
-    public UUID conversationId() { return conversationId; }
     public String title() { return title; }
     public String rootNodeId() { return rootNodeId; }
     public Instant createdAt() { return createdAt; }

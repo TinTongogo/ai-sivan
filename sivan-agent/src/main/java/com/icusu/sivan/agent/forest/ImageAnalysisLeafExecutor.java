@@ -44,8 +44,8 @@ public class ImageAnalysisLeafExecutor implements LeafExecutor {
 
     @Override
     public Flux<ForestEvent> execute(com.icusu.sivan.domain.forest.tree.TreeNode node, com.icusu.sivan.domain.forest.context.ExecutionContext ctx, com.icusu.sivan.domain.shared.port.EventSink sink) {
-        String prompt = node instanceof ContentNode cn ? cn.content() : "";
-        Object rawUrl = node instanceof ContentNode cn ? cn.metadata().get("imageUrl") : null;
+        String prompt = node.content();
+        String rawUrl = node.metadataString("imageUrl");
         String imageUrl = rawUrl instanceof String s ? s : null;
 
         if (prompt.isBlank() && imageUrl == null) {

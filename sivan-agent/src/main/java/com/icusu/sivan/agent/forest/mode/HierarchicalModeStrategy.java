@@ -73,8 +73,8 @@ public class HierarchicalModeStrategy implements ModeStrategy {
                 .collectList()
                 .flatMapMany(planEvents -> {
                     String planOutput = planAcc[0].toString();
-                    if (!planOutput.isEmpty() && !executors.isEmpty() && executors.get(0) instanceof ContentNode cn) {
-                        cn.metadata().put("accumulatedContext", planOutput);
+                    if (!planOutput.isEmpty() && !executors.isEmpty()) {
+                        executors.get(0).putMetadata("accumulatedContext", planOutput);
                     }
                     Flux<ForestEvent> execFlux = executeExecutors(executors, ctx, depth, next, planOutput);
                     if (checkpointHandler.isHitlRequired(node)) {
@@ -113,7 +113,7 @@ public class HierarchicalModeStrategy implements ModeStrategy {
 
                     String prevOutput = accumulatedOutput.get();
                     if (!prevOutput.isEmpty() && child instanceof com.icusu.sivan.domain.forest.tree.ContentNode cn) {
-                        cn.metadata().put("accumulatedContext", prevOutput);
+                        child.putMetadata("accumulatedContext", prevOutput);
                     }
                     return next.execute(child, ctx, depth + 1)
                             .doOnNext(event -> {

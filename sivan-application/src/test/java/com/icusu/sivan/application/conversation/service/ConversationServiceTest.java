@@ -68,7 +68,7 @@ class ConversationServiceTest {
             }
         };
 
-        var messageCrudService = new MessageCrudService(messageRepository, null, null) {
+        var messageCrudService = new MessageCrudService(messageRepository, null) {
             @Override
             public MessageResponse sendMessage(UUID a, UUID cid, SendMessageRequest r) {
                 return MessageResponse.builder().content(r.getContent()).build();
@@ -105,12 +105,12 @@ class ConversationServiceTest {
             }
         };
 
-        conversationService = new ForestConversationService(conversationRepository, messageRepository,
-                new StreamManager(),
-                null, null, null, null,
-                null, null, null,
-                conversationCrudService, messageCrudService, null, null, null,
-                null, null, null, null, null);
+        	        conversationService = new ForestConversationService(conversationRepository, messageRepository,
+	                new StreamManager(), null, null, null,
+                            null, null, null, null,
+                            null, null, null, null,
+                            conversationCrudService, messageCrudService, null, null,
+                            null, null, null, null, null, null);
     }
 
     // ============ 对话 CRUD 委托 ===========

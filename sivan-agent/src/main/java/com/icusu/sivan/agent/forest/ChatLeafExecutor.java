@@ -46,7 +46,7 @@ public class ChatLeafExecutor implements LeafExecutor {
 
     @Override
     public Flux<ForestEvent> execute(TreeNode node, ExecutionContext ctx, EventSink sink) {
-        String content = node instanceof ContentNode cn ? cn.content() : "";
+        String content = node.content();
         if (content.isBlank()) {
             log.warn("[ChatLeaf] 空消息节点: nodeId={}", node.nodeId());
             return Flux.just(ForestEvent.detail(node.nodeId(), null, ctx.accountId().toString(), ""));
@@ -67,7 +67,7 @@ public class ChatLeafExecutor implements LeafExecutor {
         // 优先使用 PromptAssembler 构建消息
         List<Msg> messages;
         if (node instanceof ContentNode cn) {
-            Object raw = cn.metadata().get("prebuiltMessages");
+            var raw = cn.metadataList("prebuiltMessages");
             if (raw instanceof List<?> list && !list.isEmpty()) {
                 messages = new java.util.ArrayList<>();
                 for (Object item : list) {
@@ -86,6 +86,12 @@ public class ChatLeafExecutor implements LeafExecutor {
         return Flux.from(model.chat(messages, List.of(), Model.ModelParams.defaults()))
                 .flatMap(response -> {
                     String text = response.msg().text();
+                    // 保存节点产出到 metadata
+                    if (node instanceof com.icusu.sivan.domain.forest.tree.ContentNode cn) {
+                        cn.metadata().put("output", text);
+                        String thinking = response.msg().thinking();
+                        if (thinking != null && !thinking.isBlank()) cn.metadata().put("thinking", thinking);
+                    }
                     sink.emit(ForestEvent.thinking(node.nodeId(), null, ctx.accountId().toString(),
                             response.msg().thinking() != null ? response.msg().thinking() : ""));
                     return Flux.just(ForestEvent.detail(node.nodeId(), null, ctx.accountId().toString(), text));

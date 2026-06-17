@@ -3,7 +3,7 @@ package com.icusu.sivan.infra.forest.compression;
 import com.icusu.sivan.common.NodeStatus;
 import com.icusu.sivan.domain.compression.FoldDecision;
 import com.icusu.sivan.domain.compression.TokenBudget;
-import com.icusu.sivan.domain.forest.tree.TaskNode;
+import com.icusu.sivan.domain.forest.tree.node.TaskNode;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;

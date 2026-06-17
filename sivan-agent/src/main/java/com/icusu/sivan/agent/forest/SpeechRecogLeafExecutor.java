@@ -33,13 +33,12 @@ public class SpeechRecogLeafExecutor implements LeafExecutor {
 
     @Override
     public Flux<ForestEvent> execute(com.icusu.sivan.domain.forest.tree.TreeNode node, com.icusu.sivan.domain.forest.context.ExecutionContext ctx, com.icusu.sivan.domain.shared.port.EventSink sink) {
-        String prompt = node instanceof ContentNode cn ? cn.content() : "";
+        String prompt = node.content();
         String audioB64 = null;
         String audioFormat = "wav";
-        if (node instanceof ContentNode cn) {
-            Object rawData = cn.metadata().get("audioData");
-            if (rawData instanceof String s) audioB64 = s;
-            Object rawFmt = cn.metadata().get("audioFormat");
+        {
+            audioB64 = node.metadataString("audioData");
+            String rawFmt = node.metadataString("audioFormat");
             if (rawFmt instanceof String s) audioFormat = s;
         }
 

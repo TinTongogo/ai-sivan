@@ -15,18 +15,16 @@ public class EbbinghausForgettingCurve {
 
     /** 各层级的半衰期（小时） */
     public static final Map<MemoryLevel, Double> HALF_LIFE_HOURS = Map.of(
-            MemoryLevel.SESSION, 1.0,     // 会话级：1 小时
-            MemoryLevel.USER,    24.0,    // 用户级：24 小时
-            MemoryLevel.TEAM,    168.0,   // 团队级：7 天
-            MemoryLevel.PROJECT, 720.0    // 项目级：30 天
+            MemoryLevel.SESSION, 5.0,     // 会话级：5 小时
+            MemoryLevel.PROJECT, 168.0,   // 项目级：7 天
+            MemoryLevel.USER,    2160.0   // 用户级：90 天
     );
 
     /** 各层级的默认稳定性因子（每次访问补偿） */
     public static final Map<MemoryLevel, Double> REINFORCEMENT_FACTOR = Map.of(
             MemoryLevel.SESSION, 0.5,     // 会话级：补偿 50%
-            MemoryLevel.USER,    0.3,     // 用户级：补偿 30%
-            MemoryLevel.TEAM,    0.2,     // 团队级：补偿 20%
-            MemoryLevel.PROJECT, 0.1      // 项目级：补偿 10%
+            MemoryLevel.PROJECT, 0.3,     // 项目级：补偿 30%
+            MemoryLevel.USER,    0.1      // 用户级：补偿 10%
     );
 
     /** 建议复习的保留率阈值 */

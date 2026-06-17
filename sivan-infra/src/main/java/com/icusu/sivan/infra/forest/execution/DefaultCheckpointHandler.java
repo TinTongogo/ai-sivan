@@ -47,7 +47,7 @@ public class DefaultCheckpointHandler implements CheckpointHandler {
     @Override
     public Mono<PauseRequest> check(ExecutableNode node, ExecutionContext ctx) {
         String nodeId = node.nodeId();
-        String hint = node instanceof ContentNode cn ? cn.content() : "";
+        String hint = node.content();
         String truncated = hint.length() > 100 ? hint.substring(0, 100) + "..." : hint;
 
         ForestEvent pauseEvent = ForestEvent.pause(nodeId, null, ctx.accountId().toString(),

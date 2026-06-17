@@ -205,9 +205,8 @@ public class ContextAssemblyService {
                 String line = content.length() > 150 ? content.substring(0, 147) + "..." : content;
                 String level = switch (c.getLevel()) {
                     case SESSION -> "会话";
-                    case USER -> "长期";
-                    case TEAM -> "团队";
                     case PROJECT -> "项目";
+                    case USER -> "长期";
                 };
                 sb.append("- [").append(level).append("] ").append(line).append("\n");
                 count++;

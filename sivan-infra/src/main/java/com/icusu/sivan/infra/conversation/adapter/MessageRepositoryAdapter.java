@@ -1,204 +1,312 @@
 package com.icusu.sivan.infra.conversation.adapter;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.icusu.sivan.common.enums.MessageStatus;
 import com.icusu.sivan.domain.conversation.Message;
 import com.icusu.sivan.domain.conversation.IMessageRepository;
-import com.icusu.sivan.infra.conversation.entity.MessageEntity;
-import com.icusu.sivan.infra.conversation.repository.MessageJpaRepository;
+import com.icusu.sivan.infra.forest.entity.ForestNodeEntity;
+import com.icusu.sivan.infra.forest.repository.ForestNodeJpaRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Component;
 
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
 /**
- * 消息仓储适配器，实现 IMessageRepository。
+ * 消息仓储适配器 — 基于 forest_nodes 表（type='message'）存储消息。
+ * <p>
+ * messages 表已废除，所有消息存储在 forest_nodes(type='message') 中。
+ * 核心字段映射到列（sortOrder、role、content、importance、estimateTokens），
+ * 其余字段存储在 metadata JSONB 中。
  */
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class MessageRepositoryAdapter implements IMessageRepository {
 
-    private final MessageJpaRepository jpaRepository;
+    private final ForestNodeJpaRepository forestNodeJpaRepository;
+    private static final ObjectMapper MAPPER = new ObjectMapper()
+            .findAndRegisterModules();
 
-    /** 根据 ID 查询消息。 */
     @Override
     public Optional<Message> findById(UUID messageId) {
-        return jpaRepository.findById(messageId).map(this::toDomain);
+        return forestNodeJpaRepository.findById(messageId.toString()).map(this::toDomain);
     }
 
-    /** 批量根据 ID 查询消息。 */
     @Override
     public List<Message> findByIds(Collection<UUID> messageIds) {
-        return jpaRepository.findAllById(messageIds).stream()
-                .map(this::toDomain).toList();
+        List<String> ids = messageIds.stream().map(UUID::toString).toList();
+        return forestNodeJpaRepository.findAllById(ids).stream()
+                .map(this::toDomain)
+                .filter(Objects::nonNull)
+                .toList();
     }
 
-    /** 根据对话 ID 查询消息列表。 */
     @Override
     public List<Message> findByConversationId(UUID conversationId) {
-        return jpaRepository.findByConversationIdOrderBySortOrderAsc(conversationId)
-                .stream().map(this::toDomain).toList();
+        return forestNodeJpaRepository.findByForestIdAndNodeTypeOrderBySortOrder(conversationId, "message")
+                .stream()
+                .map(this::toDomain)
+                .filter(Objects::nonNull)
+                .toList();
     }
 
-    /** 保存消息。 */
     @Override
     public Message save(Message message) {
-        MessageEntity entity = toEntity(message);
-        // 新消息：自动分配 sortOrder 避免并发冲突
-        if (message.getMessageId() == null) {
-            Integer maxSort = jpaRepository.findMaxSortOrderByConversationId(entity.getConversationId()).orElse(0);
+        String nodeId = message.getMessageId() != null ? message.getMessageId().toString() : UUID.randomUUID().toString();
+        ForestNodeEntity entity = toEntity(message, nodeId);
+
+        // 新消息自动分配 sortOrder
+        if (message.getMessageId() == null && entity.getSortOrder() == null) {
+            Integer maxSort = forestNodeJpaRepository.findMaxMessageSortOrder(entity.getForestId()).orElse(0);
             entity.setSortOrder(maxSort + 1);
         }
-        jpaRepository.save(entity);
-        if (message.getMessageId() == null) {
-            message.setMessageId(entity.getMessageId());
+        if (entity.getSortOrder() == null) {
+            entity.setSortOrder(0);
         }
-        message.setCreatedAt(entity.getCreatedAt() != null ? entity.getCreatedAt().toLocalDateTime() : null);
-        // 回写仓储自动生成的 sortOrder
+
+        entity.setUpdatedAt(OffsetDateTime.now());
+        forestNodeJpaRepository.save(entity);
+
+        if (message.getMessageId() == null) {
+            message.setMessageId(UUID.fromString(nodeId));
+        }
         message.setSortOrder(entity.getSortOrder());
+        // 从数据库读取 createdAt 时间戳
+        forestNodeJpaRepository.findById(nodeId).ifPresent(saved -> {
+            if (saved.getUpdatedAt() != null) {
+                message.setCreatedAt(saved.getUpdatedAt().toLocalDateTime());
+            }
+        });
         return message;
     }
 
-    /** 删除消息。 */
     @Override
     public void delete(UUID messageId) {
-        jpaRepository.deleteById(messageId);
+        forestNodeJpaRepository.deleteById(messageId.toString());
     }
 
-    /** 删除指定对话的所有消息。 */
     @Override
     public void deleteByConversationId(UUID conversationId) {
-        jpaRepository.deleteByConversationId(conversationId);
+        forestNodeJpaRepository.deleteByForestId(conversationId);
     }
 
-    /** 分页查询：获取最新的消息（按 sortOrder 倒序）。 */
     @Override
     public List<Message> findLatestByConversationId(UUID conversationId, int limit) {
-        return jpaRepository.findByConversationIdOrderBySortOrderDesc(
-                        conversationId, PageRequest.of(0, limit))
-                .stream().map(this::toDomain).toList();
+        return forestNodeJpaRepository.findLatestMessages(conversationId, PageRequest.of(0, limit))
+                .stream()
+                .map(this::toDomain)
+                .filter(Objects::nonNull)
+                .toList();
     }
 
-    /** 分页查询：获取比 beforeSortOrder 更旧的消息。 */
     @Override
     public List<Message> findBeforeSortOrder(UUID conversationId, int beforeSortOrder, int limit) {
-        return jpaRepository.findBeforeSortOrder(conversationId, beforeSortOrder, PageRequest.of(0, limit))
-                .stream().map(this::toDomain).toList();
+        return forestNodeJpaRepository.findMessagesBeforeSortOrder(conversationId, beforeSortOrder, PageRequest.of(0, limit))
+                .stream()
+                .map(this::toDomain)
+                .filter(Objects::nonNull)
+                .toList();
     }
 
-    /** 查询会话消息总数 */
     @Override
     public int countByConversationId(UUID conversationId) {
-        return jpaRepository.countByConversationId(conversationId);
+        return forestNodeJpaRepository.countMessagesByForestId(conversationId);
     }
 
-    /** 统计比指定 sortOrder 更旧的消息数 */
     @Override
     public int countBeforeSortOrder(UUID conversationId, int beforeSortOrder) {
-        return jpaRepository.countBeforeSortOrder(conversationId, beforeSortOrder);
+        return forestNodeJpaRepository.countMessagesBeforeSortOrder(conversationId, beforeSortOrder);
     }
 
-    /** 获取会话中最新的一条用户消息 */
     @Override
     public Optional<Message> findLatestUserMessage(UUID conversationId) {
-        return jpaRepository.findFirstByConversationIdAndRoleOrderBySortOrderDesc(conversationId, "user")
-                .map(this::toDomain);
+        List<ForestNodeEntity> results = forestNodeJpaRepository.findLatestUserMessage(conversationId, PageRequest.of(0, 1));
+        return results.isEmpty() ? Optional.empty() : Optional.ofNullable(toDomain(results.getFirst()));
     }
 
-    /** 根据生成组 ID 查找消息列表 */
     @Override
     public List<Message> findByGenerationGroup(UUID generationGroup) {
-        return jpaRepository.findByGenerationGroupOrderByGenerationIndexAsc(generationGroup)
-                .stream().map(this::toDomain).toList();
+        // generationGroup 存储在 metadata JSONB 中，in-memory 过滤（结果集通常 < 10）
+        String groupStr = generationGroup.toString();
+        return forestNodeJpaRepository.findByForestIdAndNodeTypeOrderBySortOrder(null, "message")
+                .stream()
+                .map(this::toDomain)
+                .filter(m -> {
+                    if (m == null) return false;
+                    try {
+                        String raw = forestNodeJpaRepository.findById(m.getMessageId().toString())
+                                .map(e -> extractFromMetadata(e.getMetadata(), "generationGroup"))
+                                .orElse(null);
+                        return groupStr.equals(raw);
+                    } catch (Exception e) {
+                        return false;
+                    }
+                })
+                .sorted(Comparator.comparingInt(
+                        m -> m.getGenerationIndex() != null ? m.getGenerationIndex() : 0))
+                .toList();
     }
 
-    /** 统计指定生成组中的消息数量 */
     @Override
     public int countByGenerationGroup(UUID generationGroup) {
-        return jpaRepository.countByGenerationGroup(generationGroup);
+        return findByGenerationGroup(generationGroup).size();
     }
 
     @Override
     public List<Message> search(UUID accountId, String keyword, int page, int size) {
         if (keyword == null || keyword.isBlank()) return List.of();
-        return jpaRepository.searchByContent(accountId, keyword.trim(), size, page * size)
+        return forestNodeJpaRepository.searchMessages(accountId, keyword.trim(), size, page * size)
                 .stream()
                 .map(this::toDomain)
+                .filter(Objects::nonNull)
                 .toList();
     }
+
     // ---- 转换方法 ----
 
-    /** 将实体转换为领域对象。 */
-    private Message toDomain(MessageEntity entity) {
-        return Message.builder()
-                .messageId(entity.getMessageId())
-                .conversationId(entity.getConversationId())
-                .accountId(entity.getAccountId())
-                .projectId(entity.getProjectId())
-                .role(entity.getRole())
-                .content(entity.getContent())
-                .thinking(entity.getThinking())
-                .contentType(entity.getContentType())
-                .targetAgent(entity.getTargetAgent())
-                .replyToId(entity.getReplyToId())
-                .sortOrder(entity.getSortOrder())
-                .status(entity.getStatus() != null ? MessageStatus.valueOf(entity.getStatus()) : null)
-                .rating(entity.getRating())
-                .model(entity.getModel())
-                .totalTokens(entity.getTotalTokens())
-                .durationMs(entity.getDurationMs())
-                .thinkingDurationMs(entity.getThinkingDurationMs())
-                .thinkingTokens(entity.getThinkingTokens())
-                .chain(entity.getChain())
-                .images(entity.getImages())
-                .attachments(entity.getAttachments())
-                .generationIndex(entity.getGenerationIndex())
-                .generationGroup(entity.getGenerationGroup())
-                .sections(entity.getSections())
-                .audios(entity.getAudios())
-                .msgType(entity.getMsgType())
-                .importance(entity.getImportance())
-                .progress(entity.getProgress())
-                .createdAt(entity.getCreatedAt() != null ? entity.getCreatedAt().toLocalDateTime() : null)
+    /** ForestNodeEntity → Message */
+    @SuppressWarnings("unchecked")
+    private Message toDomain(ForestNodeEntity entity) {
+        try {
+            Map<String, Object> meta = parseMetadata(entity.getMetadata());
+
+            MessageStatus status = null;
+            if (meta.containsKey("status")) {
+                try {
+                    status = MessageStatus.valueOf((String) meta.get("status"));
+                } catch (Exception ignored) {}
+            }
+
+            return Message.builder()
+                    .messageId(UUID.fromString(entity.getNodeId()))
+                    .conversationId(entity.getForestId())
+                    .accountId(meta.containsKey("accountId")
+                            ? UUID.fromString((String) meta.get("accountId")) : null)
+                    .projectId(meta.containsKey("projectId")
+                            ? UUID.fromString((String) meta.get("projectId")) : null)
+                    .role(entity.getRole())
+                    .content(entity.getContent())
+                    .contentType((String) meta.getOrDefault("contentType", "text"))
+                    .msgType((String) meta.getOrDefault("msgType", "normal"))
+                    .importance(entity.getImportance() != null ? entity.getImportance() : 0.0)
+                    .thinking((String) meta.get("thinking"))
+                    .targetAgent((String) meta.get("targetAgent"))
+                    .replyToId(meta.containsKey("replyToId")
+                            ? UUID.fromString((String) meta.get("replyToId")) : null)
+                    .sortOrder(entity.getSortOrder())
+                    .status(status)
+                    .rating((String) meta.get("rating"))
+                    .model((String) meta.get("model"))
+                    .totalTokens(entity.getEstimateTokens() != null
+                            ? entity.getEstimateTokens().intValue() : null)
+                    .durationMs(meta.containsKey("durationMs")
+                            ? ((Number) meta.get("durationMs")).intValue() : null)
+                    .thinkingDurationMs(meta.containsKey("thinkingDurationMs")
+                            ? ((Number) meta.get("thinkingDurationMs")).intValue() : null)
+                    .thinkingTokens(meta.containsKey("thinkingTokens")
+                            ? ((Number) meta.get("thinkingTokens")).intValue() : null)
+                    .images((String) meta.get("images"))
+                    .audios((String) meta.get("audios"))
+                    .attachments((String) meta.get("attachments"))
+                    .generationIndex(meta.containsKey("generationIndex")
+                            ? ((Number) meta.get("generationIndex")).intValue() : 1)
+                    .generationGroup(meta.containsKey("generationGroup")
+                            ? UUID.fromString((String) meta.get("generationGroup")) : null)
+                    .sections((String) meta.get("sections"))
+                    .progress((String) meta.get("progress"))
+                    .createdAt(entity.getUpdatedAt() != null
+                            ? entity.getUpdatedAt().toLocalDateTime() : null)
+                    .build();
+        } catch (Exception e) {
+            log.warn("转换消息节点失败: nodeId={}", entity.getNodeId());
+            return null;
+        }
+    }
+
+    /** Message → ForestNodeEntity */
+    private ForestNodeEntity toEntity(Message message, String nodeId) {
+        Map<String, Object> meta = new LinkedHashMap<>();
+        if (message.getAccountId() != null) meta.put("accountId", message.getAccountId().toString());
+        if (message.getProjectId() != null) meta.put("projectId", message.getProjectId().toString());
+        if (message.getContentType() != null) meta.put("contentType", message.getContentType());
+        if (message.getMsgType() != null) meta.put("msgType", message.getMsgType());
+        if (message.getThinking() != null) meta.put("thinking", message.getThinking());
+        if (message.getTargetAgent() != null) meta.put("targetAgent", message.getTargetAgent());
+        if (message.getReplyToId() != null) meta.put("replyToId", message.getReplyToId().toString());
+        if (message.getStatus() != null) meta.put("status", message.getStatus().name());
+        if (message.getRating() != null) meta.put("rating", message.getRating());
+        if (message.getModel() != null) meta.put("model", message.getModel());
+        if (message.getDurationMs() != null) meta.put("durationMs", message.getDurationMs());
+        if (message.getThinkingDurationMs() != null) meta.put("thinkingDurationMs", message.getThinkingDurationMs());
+        if (message.getThinkingTokens() != null) meta.put("thinkingTokens", message.getThinkingTokens());
+        if (message.getImages() != null) meta.put("images", message.getImages());
+        if (message.getAudios() != null) meta.put("audios", message.getAudios());
+        if (message.getAttachments() != null) meta.put("attachments", message.getAttachments());
+        if (message.getGenerationIndex() != null) meta.put("generationIndex", message.getGenerationIndex());
+        if (message.getGenerationGroup() != null) meta.put("generationGroup", message.getGenerationGroup().toString());
+        if (message.getSections() != null) meta.put("sections", message.getSections());
+        if (message.getProgress() != null) meta.put("progress", message.getProgress());
+
+        return ForestNodeEntity.builder()
+                .nodeId(nodeId)
+                .forestId(message.getConversationId())
+                .nodeType("message")
+                .sortOrder(message.getSortOrder())
+                .role(message.getRole())
+                .content(message.getContent() != null ? message.getContent() : "")
+                .importance(message.getImportance() != null ? message.getImportance() : 0.0)
+                .estimateTokens(message.getTotalTokens() != null
+                        ? message.getTotalTokens().longValue() : null)
+                .metadata(toJson(meta))
+                .updatedAt(OffsetDateTime.now())
                 .build();
     }
 
-    /** 将领域对象转换为实体。 */
-    private MessageEntity toEntity(Message message) {
-        MessageEntity entity = new MessageEntity();
-        entity.setMessageId(message.getMessageId());
-        entity.setConversationId(message.getConversationId());
-        entity.setAccountId(message.getAccountId());
-        entity.setProjectId(message.getProjectId());
-        entity.setRole(message.getRole());
-        entity.setContent(message.getContent());
-        entity.setThinking(message.getThinking());
-        entity.setContentType(message.getContentType() != null ? message.getContentType() : "text");
-        entity.setTargetAgent(message.getTargetAgent());
-        entity.setReplyToId(message.getReplyToId());
-        entity.setSortOrder(message.getSortOrder());
-        entity.setStatus(message.getStatus() != null ? message.getStatus().name() : "COMPLETED");
-        entity.setRating(message.getRating());
-        entity.setModel(message.getModel());
-        entity.setTotalTokens(message.getTotalTokens());
-        entity.setDurationMs(message.getDurationMs());
-        entity.setThinkingDurationMs(message.getThinkingDurationMs());
-        entity.setThinkingTokens(message.getThinkingTokens());
-        entity.setChain(message.getChain());
-        entity.setImages(message.getImages());
-        entity.setAttachments(message.getAttachments());
-        entity.setGenerationIndex(message.getGenerationIndex() != null ? message.getGenerationIndex() : 1);
-        entity.setGenerationGroup(message.getGenerationGroup());
-        entity.setSections(message.getSections());
-        entity.setAudios(message.getAudios());
-        entity.setMsgType(message.getMsgType());
-        entity.setImportance(message.getImportance());
-        entity.setProgress(message.getProgress());
-        return entity;
+    // ---- JSON 工具方法 ----
+
+    private Map<String, Object> parseMetadata(String json) {
+        if (json == null || json.isBlank() || "{}".equals(json)) return new LinkedHashMap<>();
+        try {
+            return MAPPER.readValue(json, new TypeReference<Map<String, Object>>() {});
+        } catch (Exception e) {
+            log.warn("解析 metadata JSON 失败: {}", e.getMessage());
+            return new LinkedHashMap<>();
+        }
+    }
+
+    private String toJson(Map<String, Object> map) {
+        if (map == null || map.isEmpty()) return "{}";
+        try {
+            return MAPPER.writeValueAsString(map);
+        } catch (Exception e) {
+            log.warn("序列化 metadata 失败: {}", e.getMessage());
+            return "{}";
+        }
+    }
+
+    /** 从 metadata JSON 中提取指定字段。 */
+    private String extractFromMetadata(String json, String key) {
+        if (json == null || json.isBlank()) return null;
+        try {
+            Map<String, Object> meta = MAPPER.readValue(json,
+                    new TypeReference<Map<String, Object>>() {});
+            Object val = meta.get(key);
+            return val != null ? val.toString() : null;
+        } catch (Exception e) {
+            return null;
+        }
     }
 }

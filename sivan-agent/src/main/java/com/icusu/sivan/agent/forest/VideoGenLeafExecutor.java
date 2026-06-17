@@ -31,7 +31,7 @@ public class VideoGenLeafExecutor implements LeafExecutor {
 
     @Override
     public Flux<ForestEvent> execute(com.icusu.sivan.domain.forest.tree.TreeNode node, com.icusu.sivan.domain.forest.context.ExecutionContext ctx, com.icusu.sivan.domain.shared.port.EventSink sink) {
-        String prompt = node instanceof ContentNode cn ? cn.content() : "";
+        String prompt = node.content();
         if (prompt.isBlank()) {
             log.warn("[VideoGen] 空提示词: nodeId={}", node.nodeId());
             return Flux.just(ForestEvent.detail(node.nodeId(), null,
@@ -49,8 +49,8 @@ public class VideoGenLeafExecutor implements LeafExecutor {
         if (node instanceof ContentNode cn) {
             Object rawSize = cn.metadata().get("size");
             if (rawSize instanceof String s) size = s;
-            Object rawDur = cn.metadata().get("durationSec");
-            if (rawDur instanceof Number n) durationSec = n.intValue();
+            Number durFromMeta = cn.metadataNumber("durationSec");
+            if (durFromMeta != null) durationSec = durFromMeta.intValue();
         }
 
         log.info("[VideoGen] 开始生成: prompt={} size={} duration={}s", prompt, size, durationSec);

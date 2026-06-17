@@ -69,11 +69,14 @@ export interface ForestTreeResponseNode {
   a2aMessages?: A2aMessage[]
   mode?: string
   agent?: string
+  reasoning?: string
+  output?: string
   leaf: boolean
   durationMs?: number
   tokens?: number
   routeTier?: number
   routeConfidence?: number
+  toolCalls?: { name: string; count: number; status: string }[]
   children?: ForestTreeResponseNode[]
 }
 

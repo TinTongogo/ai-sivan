@@ -1,5 +1,6 @@
 package com.icusu.sivan.web.forest.controller;
 
+import com.icusu.sivan.agent.prompt.IntentClassifier;
 import com.icusu.sivan.common.dto.BaseResponse;
 import com.icusu.sivan.infra.shared.sse.StreamManager;
 import com.icusu.sivan.application.conversation.dto.*;
@@ -27,10 +28,13 @@ import java.util.UUID;
 @RequestMapping("/api/v2/conversations")
 @RequiredArgsConstructor
 public class ForestConversationController {
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(ForestConversationController.class);
+
 
     private final ForestConversationService forestConversationService;
     private final StreamManager streamManager;
     private final com.icusu.sivan.application.conversation.MessageCrudService messageCrudService;
+    private final IntentClassifier intentClassifier;
 
     // ============ 对话 CRUD ============
 
@@ -217,13 +221,39 @@ public class ForestConversationController {
     }
 
     /**
-     * 评价消息（赞/踩）。
+     * 评价消息（赞/踩）— 树级反馈，用于意图分类学习。
      */
     @PatchMapping("/messages/{messageId}/rating")
     public BaseResponse<MessageResponse> rateMessage(@PathVariable UUID messageId,
                                                       @RequestParam String rating,
                                                       @CurrentAccountId UUID accountId) {
         return BaseResponse.success(forestConversationService.rateMessage(accountId, messageId, rating));
+    }
+
+    /**
+     * 评价执行树节点 — 节点级反馈，用于执行质量评估。
+     */
+    @PostMapping("/node-feedback")
+    public BaseResponse<Void> nodeFeedback(@RequestBody Map<String, String> body,
+                                            @CurrentAccountId UUID accountId) {
+        String nodeName = body.get("nodeName");
+        String rating = body.get("rating");
+        if (nodeName == null || rating == null) {
+            throw new IllegalArgumentException("nodeName 和 rating 不能为空");
+        }
+        if (!"like".equals(rating) && !"dislike".equals(rating)) {
+            throw new IllegalArgumentException("rating 必须为 like 或 dislike");
+        }
+        intentClassifier.logNodeFeedback(accountId, nodeName, rating);
+        // 踩 → 更新 Beta 参数，降低该节点对应的 Agent 下次被推荐的概率
+        if ("dislike".equals(rating)) {
+            try {
+                forestConversationService.recordNodeBetaFeedback(accountId, nodeName, false);
+            } catch (Exception e) {
+                log.debug("[反馈] 节点反馈更新 Beta 失败: {}", e.getMessage());
+            }
+        }
+        return BaseResponse.success();
     }
 
     /**

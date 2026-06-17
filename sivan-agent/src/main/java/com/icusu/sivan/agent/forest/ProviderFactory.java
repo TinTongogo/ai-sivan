@@ -88,10 +88,7 @@ public class ProviderFactory {
             // 构建装饰器链：最内层为实际模型，外层依次包裹
             // RetryableModel(2次) → RateLimitModel(30次/分钟) → MetricsModel
             var decorated = new MetricsModel(
-                    new RateLimitModel(
-                            new RetryableModel(model, 2),
-                            30
-                    )
+                    new RateLimitModel(new RetryableModel(model, 2), 60)
             );
 
             var adapter = new OpenAiModelAdapter(decorated, provider);

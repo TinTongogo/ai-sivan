@@ -30,7 +30,7 @@ public class ImageGenLeafExecutor implements LeafExecutor {
 
     @Override
     public Flux<ForestEvent> execute(TreeNode node, ExecutionContext ctx, EventSink sink) {
-        String prompt = node instanceof ContentNode cn ? cn.content() : "";
+        String prompt = node.content();
         if (prompt.isBlank()) {
             log.warn("[ImageGen] 空提示词: nodeId={}", node.nodeId());
             return Flux.just(ForestEvent.detail(node.nodeId(), null,

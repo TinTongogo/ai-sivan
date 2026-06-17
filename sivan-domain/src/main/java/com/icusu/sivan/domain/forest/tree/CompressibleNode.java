@@ -28,11 +28,14 @@ public interface CompressibleNode extends TreeNode {
     default void onStatusChanged() {
         invalidateTokenCache();
         TreeNode p = parent();
-        while (p != null) {
-            if (p instanceof CompressibleNode cn) {
-                cn.invalidateTokenCache();
-            }
-            p = p.parent();
-        }
+        if (p != null) p.invalidateAncestorTokenCache();
+    }
+
+    /** 向上传播 token 缓存失效 — 覆写 {@link TreeNode#invalidateAncestorTokenCache()}。 */
+    @Override
+    default void invalidateAncestorTokenCache() {
+        invalidateTokenCache();
+        TreeNode p = parent();
+        if (p != null) p.invalidateAncestorTokenCache();
     }
 }

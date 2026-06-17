@@ -40,6 +40,12 @@ public class BetaParamRepositoryAdapter implements IBetaParamRepository {
     }
 
     @Override
+    public void deleteByAgent(UUID accountId, String agentName) {
+        jdbc.update("DELETE FROM account_beta_params WHERE account_id = ? AND agent_name = ?",
+                accountId, agentName);
+    }
+
+    @Override
     public void upsert(UUID accountId, String featureHash, String agentName, boolean success) {
         jdbc.update(
                 "INSERT INTO account_beta_params (account_id, feature_hash, agent_name, alpha, beta) VALUES (?, ?, ?, ?, ?) " +

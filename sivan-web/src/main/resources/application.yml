@@ -20,7 +20,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: validate
+      ddl-auto: none
     show-sql: false
     open-in-view: false
     properties:
@@ -102,7 +102,7 @@ sivan:
   # ── Agent 执行策略 ──
   agent:
     max-rounds: 200                     # ReAct 安全阀（极少触发，实际由上下文预算控制）
-    max-consecutive-same-tool: 15       # 连续相同工具调用上限
+    max-consecutive-same-tool: 30       # 连续相同工具调用上限
     max-failed-rounds: 3                # 连续工具失败上限
     context-budget-ratio: 0.7           # 上下文预算占模型窗口比例 (0.0~1.0)
     context-compress-keep-rounds: 5     # 超预算压缩时保留最近 N 轮 ToolResult

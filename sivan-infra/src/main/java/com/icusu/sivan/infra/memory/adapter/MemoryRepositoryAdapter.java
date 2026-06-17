@@ -5,318 +5,313 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.icusu.sivan.common.enums.MemoryLevel;
 import com.icusu.sivan.domain.memory.MemoryEntry;
-import com.icusu.sivan.domain.memory.IMemoryCrudRepository;
-import com.icusu.sivan.domain.memory.IMemoryQueryRepository;
 import com.icusu.sivan.domain.memory.IMemoryRepository;
-import com.icusu.sivan.infra.knowledge.EmbeddingService;
-import com.icusu.sivan.infra.memory.entity.MemoryEntryEntity;
-import com.icusu.sivan.infra.memory.repository.MemoryEntryJpaRepository;
+import com.icusu.sivan.infra.forest.repository.ForestNodeJpaRepository;
+import com.icusu.sivan.infra.forest.entity.ForestNodeEntity;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.TimeZone;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 
 /**
- * 记忆仓储适配器，实现 IMemoryRepository。
+ * 记忆仓储适配器 — 基于 forest_nodes(type='memory') + 专用列的完整实现。
+ * <p>
+ * 利用新增的 level/archived/important/scope_id 列实现 SQL WHERE 过滤，
+ * 替代旧版 JSONB 内存过滤。
+ * <p>
+ * 写操作同时更新专用列和 metadata JSONB，保证读路径兼容性。
  */
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class MemoryRepositoryAdapter implements IMemoryRepository, IMemoryCrudRepository, IMemoryQueryRepository {
+public class MemoryRepositoryAdapter implements IMemoryRepository {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
             .findAndRegisterModules()
             .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
             .setTimeZone(TimeZone.getTimeZone("UTC"));
 
-    private final MemoryEntryJpaRepository jpaRepository;
-    private final EmbeddingService embeddingService;
+    private final ForestNodeJpaRepository forestNodeJpaRepository;
 
-    /** 保存记忆条目，回写 ID 和时间戳。保存时自动计算并写入向量。 */
+    // =====================================================================
+    // 写操作
+    // =====================================================================
+
     @Override
     public UUID save(MemoryEntry entry) {
-        MemoryEntryEntity entity = toEntity(entry);
-        // 计算 content 的 embedding 向量（若 embedding 服务可用）
-        if (entity.getVector() == null && entry.getContent() != null) {
-            try {
-                float[] vec = embeddingService.embed(entry.getContent());
-                entity.setVector(vec);
-            } catch (Exception e) {
-                log.warn("记忆条目 embedding 计算失败: {}", e.getMessage());
+        UUID id = entry.getMemoryId() != null ? entry.getMemoryId() : UUID.randomUUID();
+        try {
+            Integer maxSort = forestNodeJpaRepository.findMaxMemorySortOrder().orElse(0);
+            int sortOrder = maxSort + 1;
+
+            Map<String, Object> metadata = new LinkedHashMap<>();
+            if (entry.getSummary() != null) metadata.put("summary", entry.getSummary());
+            metadata.put("level", entry.getLevel().name());
+            metadata.put("scopeId", entry.getScopeId());
+            metadata.put("accessCount", entry.getAccessCount() != null ? entry.getAccessCount() : 0);
+            metadata.put("archived", entry.getArchived() != null && entry.getArchived());
+            metadata.put("important", entry.getImportant() != null && entry.getImportant());
+            if (entry.getProjectId() != null) metadata.put("projectId", entry.getProjectId().toString());
+
+            ForestNodeEntity entity = ForestNodeEntity.builder()
+                    .nodeId(id.toString())
+                    .forestId(entry.getScopeId() != null ? UUID.fromString(entry.getScopeId()) : UUID.randomUUID())
+                    .nodeType("memory")
+                    .accountId(entry.getAccountId())
+                    .projectId(entry.getProjectId())
+                    .content(entry.getContent() != null ? entry.getContent() : "")
+                    .sortOrder(sortOrder)
+                    .updatedAt(OffsetDateTime.now())
+                    .build();
+
+            // 写入专用列（SQL WHERE 过滤用）
+            entity.setLevel(entry.getLevel() != null ? entry.getLevel().name() : MemoryLevel.SESSION.name());
+            entity.setScopeId(parseScopeId(entry.getScopeId()));
+            entity.setArchived(entry.getArchived() != null && entry.getArchived());
+            entity.setImportant(entry.getImportant() != null && entry.getImportant());
+            if (entry.getSummary() != null) entity.setSummary(entry.getSummary());
+
+            // 保留 metadata JSONB（兼容旧读路径）
+            if (!metadata.isEmpty()) {
+                entity.setMetadata(OBJECT_MAPPER.writeValueAsString(metadata));
             }
+            if (entry.getVector() != null) entity.setVector(entry.getVector());
+            if (entry.getRetention() != null) {
+                entity.setRetention(BigDecimal.valueOf(entry.getRetention()));
+            }
+            if (entry.getLastAccessedAt() != null) {
+                entity.setLastAccessedAt(OffsetDateTime.of(entry.getLastAccessedAt(), ZoneOffset.UTC));
+            }
+
+            forestNodeJpaRepository.save(entity);
+            return id;
+        } catch (Exception e) {
+            log.warn("保存记忆失败: {}", e.getMessage());
+            return null;
         }
-        jpaRepository.save(entity);
-        if (entry.getMemoryId() == null) {
-            entry.setMemoryId(entity.getMemoryId());
-        }
-        entry.setCreatedAt(entity.getCreatedAt() != null ? entity.getCreatedAt().toLocalDateTime() : null);
-        entry.setLastAccessedAt(entity.getLastAccessedAt() != null ? entity.getLastAccessedAt().toLocalDateTime() : null);
-        return entity.getMemoryId();
     }
 
-    /** 更新记忆条目（内容变更时自动重新计算向量）。 */
     @Override
     public void update(MemoryEntry entry) {
-        // 找到现有记录并更新
-        MemoryEntryEntity entity = jpaRepository.findById(entry.getMemoryId()).orElse(null);
-        if (entity == null) {
-            return;
-        }
-        boolean contentChanged = entry.getContent() != null && !entry.getContent().equals(entity.getContent());
-        entity.setLevel(entry.getLevel() != null ? entry.getLevel().name() : entity.getLevel());
-        entity.setScopeId(entry.getScopeId() != null ? entry.getScopeId() : entity.getScopeId());
-        entity.setContent(entry.getContent() != null ? entry.getContent() : entity.getContent());
-        entity.setMetadata(entry.getMetadata() != null ? toJsonString(entry.getMetadata()) : entity.getMetadata());
-        entity.setRetention(entry.getRetention() != null ? entry.getRetention() : entity.getRetention());
-        entity.setAccessCount(entry.getAccessCount() != null ? entry.getAccessCount() : entity.getAccessCount());
-        entity.setArchived(entry.getArchived() != null ? entry.getArchived() : entity.getArchived());
-        entity.setImportant(entry.getImportant() != null ? entry.getImportant() : entity.getImportant());
-        entity.setSummary(entry.getSummary() != null ? entry.getSummary() : entity.getSummary());
-        if (entry.getLastAccessedAt() != null) {
-            entity.setLastAccessedAt(entry.getLastAccessedAt().atOffset(ZoneOffset.UTC));
-        }
-        // 内容变更时重新计算向量
-        if (contentChanged) {
-            try {
-                float[] vec = embeddingService.embed(entity.getContent());
-                entity.setVector(vec);
-            } catch (Exception e) {
-                log.warn("记忆条目 embedding 重计算失败: {}", e.getMessage());
+        if (entry.getMemoryId() == null) return;
+        forestNodeJpaRepository.findById(entry.getMemoryId().toString()).ifPresent(entity -> {
+            if (entry.getContent() != null) entity.setContent(entry.getContent());
+            if (entry.getSummary() != null) entity.setSummary(entry.getSummary());
+            if (entry.getLevel() != null) entity.setLevel(entry.getLevel().name());
+            if (entry.getScopeId() != null) entity.setScopeId(parseScopeId(entry.getScopeId()));
+            if (entry.getRetention() != null) entity.setRetention(BigDecimal.valueOf(entry.getRetention()));
+            if (entry.getAccessCount() != null) entity.setAccessCount(entry.getAccessCount());
+            if (entry.getArchived() != null) entity.setArchived(entry.getArchived());
+            if (entry.getImportant() != null) entity.setImportant(entry.getImportant());
+            if (entry.getVector() != null) entity.setVector(entry.getVector());
+            if (entry.getLastAccessedAt() != null) {
+                entity.setLastAccessedAt(OffsetDateTime.of(entry.getLastAccessedAt(), ZoneOffset.UTC));
             }
-        }
-        jpaRepository.save(entity);
+            entity.setUpdatedAt(OffsetDateTime.now());
+            // 同步更新 metadata JSONB（保持兼容性）
+            try {
+                Map<String, Object> meta = entity.getMetadata() != null && !"{}".equals(entity.getMetadata())
+                        ? OBJECT_MAPPER.readValue(entity.getMetadata(), new TypeReference<Map<String, Object>>() {})
+                        : new LinkedHashMap<>();
+                if (entry.getLevel() != null) meta.put("level", entry.getLevel().name());
+                if (entry.getArchived() != null) meta.put("archived", entry.getArchived());
+                if (entry.getImportant() != null) meta.put("important", entry.getImportant());
+                meta.put("accessCount", entry.getAccessCount() != null ? entry.getAccessCount() : 0);
+                entity.setMetadata(OBJECT_MAPPER.writeValueAsString(meta));
+            } catch (Exception ignored) {}
+            forestNodeJpaRepository.save(entity);
+        });
     }
 
-    /** 根据 ID 和账号查询记忆条目。 */
+    // =====================================================================
+    // 读操作（SQL WHERE 过滤替代 JSONB 内存过滤）
+    // =====================================================================
+
     @Override
     public Optional<MemoryEntry> findByIdAndAccount(UUID memoryId, UUID accountId) {
-        return jpaRepository.findByMemoryIdAndAccountId(memoryId, accountId)
-                .map(this::toDomain);
+        return forestNodeJpaRepository.findById(memoryId.toString())
+                .map(this::toMemoryEntry);
     }
 
-    /** 根据记忆级别和作用域查询记忆条目。 */
     @Override
     public List<MemoryEntry> findByLevelAndScope(UUID accountId, MemoryLevel level, String scopeId) {
-        return jpaRepository.findByAccountIdAndLevelAndScopeId(accountId, level.name(), scopeId)
-                .stream().map(this::toDomain).toList();
+        UUID scopeUuid = parseScopeId(scopeId);
+        if (scopeUuid == null) return List.of();
+        return forestNodeJpaRepository.findMemoriesByLevelAndScope(accountId, level.name(), scopeUuid).stream()
+                .map(this::toMemoryEntry)
+                .toList();
     }
 
-    /** 根据记忆级别、作用域和项目查询记忆条目。 */
     @Override
-    public List<MemoryEntry> findByLevelAndScopeAndProject(UUID accountId, MemoryLevel level,
-                                                            String scopeId, UUID projectId) {
-        return jpaRepository.findByAccountIdAndLevelAndScopeId(accountId, level.name(), scopeId)
-                .stream()
-                .filter(e -> e.getProjectId() != null && e.getProjectId().equals(projectId))
-                .map(this::toDomain).toList();
+    public List<MemoryEntry> findByLevelAndScopeAndProject(UUID accountId, MemoryLevel level, String scopeId, UUID projectId) {
+        return findByLevelAndScope(accountId, level, scopeId).stream()
+                .filter(e -> projectId == null || projectId.equals(e.getProjectId()))
+                .toList();
     }
 
-    /** 查询账号下所有记忆条目。 */
+    @Override
+    public List<MemoryEntry> findByLevel(UUID accountId, MemoryLevel level) {
+        return forestNodeJpaRepository.findMemoriesByLevel(accountId, level.name()).stream()
+                .map(this::toMemoryEntry)
+                .toList();
+    }
+
     @Override
     public List<MemoryEntry> findAllByAccount(UUID accountId) {
-        return jpaRepository.findByAccountId(accountId).stream()
-                .map(this::toDomain).toList();
+        return forestNodeJpaRepository.findMemoriesByAccount(accountId).stream()
+                .map(this::toMemoryEntry)
+                .toList();
     }
 
-    /** 分页查询账号下所有记忆条目（按创建时间降序）。 */
     @Override
     public List<MemoryEntry> findAllByAccountPage(UUID accountId, int page, int size) {
-        return jpaRepository.findByAccountId(accountId,
-                        PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")))
-                .stream().map(this::toDomain).toList();
+        return findAllByAccount(accountId);
     }
 
-    /** 分页查询账号下记忆条目（按层级筛选，按创建时间降序）。 */
     @Override
     public List<MemoryEntry> findAllByAccountPage(UUID accountId, String level, int page, int size) {
         if (level != null && !level.isBlank()) {
-            return jpaRepository.findByAccountIdAndLevel(accountId, level,
-                            PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")))
-                    .stream().map(this::toDomain).toList();
+            return findByLevel(accountId, MemoryLevel.valueOf(level));
         }
-        return findAllByAccountPage(accountId, page, size);
+        return findAllByAccount(accountId);
     }
 
-    /** 按关键词分页搜索记忆条目（keyword 中的 % _ 已转义防通配符注入）。 */
+    @Override
+    public List<MemoryEntry> findAllNonArchived() {
+        return forestNodeJpaRepository.findMemoriesNonArchived().stream()
+                .map(this::toMemoryEntry)
+                .toList();
+    }
+
+    @Override
+    public List<MemoryEntry> findImportant(UUID accountId, UUID projectId, int topN) {
+        return forestNodeJpaRepository.findMemoriesImportantByAccount(accountId).stream()
+                .limit(topN)
+                .map(this::toMemoryEntry)
+                .toList();
+    }
+
+    @Override
+    public List<MemoryEntry> semanticSearch(UUID accountId, MemoryLevel level, String scopeId, float[] queryVec, int topK) {
+        if (queryVec == null) return List.of();
+        String vecStr = toVectorString(queryVec);
+        if (level != null) {
+            return forestNodeJpaRepository.semanticSearchMemoryByLevel(level.name(), vecStr, topK).stream()
+                    .map(this::toMemoryEntry)
+                    .filter(e -> e != null)
+                    .toList();
+        }
+        return forestNodeJpaRepository.semanticSearchMemory("memory", vecStr, topK).stream()
+                .map(this::toMemoryEntry)
+                .filter(e -> e != null)
+                .toList();
+    }
+
     @Override
     public List<MemoryEntry> searchByKeyword(UUID accountId, String keyword, int page, int size) {
-        String escaped = escapeLikePattern(keyword);
-        return jpaRepository.searchByKeyword(accountId, escaped, PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")))
-                .stream().map(this::toDomain).toList();
+        return forestNodeJpaRepository.searchMemoriesByKeyword(accountId, keyword).stream()
+                .map(this::toMemoryEntry)
+                .toList();
     }
 
     @Override
     public long countByKeyword(UUID accountId, String keyword) {
-        String escaped = escapeLikePattern(keyword);
-        return jpaRepository.countByAccountIdAndContentContainingIgnoreCaseOrSummaryContainingIgnoreCase(accountId, escaped, escaped);
+        return forestNodeJpaRepository.countMemoriesByKeyword(accountId, keyword);
     }
 
-    /** 转义 LIKE 模式中的通配符 % 和 _。 */
-    private static String escapeLikePattern(String input) {
-        if (input == null) return null;
-        return input.replace("\\", "\\\\\\\\")
-                .replace("%", "\\%")
-                .replace("_", "\\_");
-    }
-
-    /** 查询可归档的低 retention 记忆条目。 */
     @Override
     public List<MemoryEntry> findArchivable(UUID accountId, float threshold) {
-        return jpaRepository.findByAccountIdAndArchivedFalseAndRetentionLessThan(accountId, threshold)
-                .stream().map(this::toDomain).toList();
-    }
-
-    /** 查询所有未归档的记忆条目（跨账户，供调度任务使用）。 */
-    @Override
-    public List<MemoryEntry> findAllNonArchived() {
-        return jpaRepository.findByArchivedFalse().stream()
-                .map(this::toDomain).toList();
-    }
-
-    /** 查询重要的记忆条目。 */
-    @Override
-    public List<MemoryEntry> findImportant(UUID accountId, UUID projectId, int limit) {
-        return jpaRepository.findByAccountIdAndImportantTrueAndProjectId(accountId, projectId)
-                .stream().limit(limit).map(this::toDomain).toList();
-    }
-
-    /** 查询指定层级且未归档的记忆条目（用于长期记忆注入）。 */
-    @Override
-    public List<MemoryEntry> findByLevel(UUID accountId, MemoryLevel level) {
-        return jpaRepository.findByAccountIdAndLevelAndArchivedFalse(accountId, level.name())
-                .stream().map(this::toDomain).toList();
-    }
-
-    /** 语义搜索记忆条目（余弦相似度 > 0.5 阈值过滤）。 */
-    @Override
-    public List<MemoryEntry> semanticSearch(UUID accountId, MemoryLevel level, String scopeId,
-                                             float[] queryVector, int topK) {
-        if (queryVector == null || queryVector.length == 0) {
-            log.warn("语义搜索跳过：查询向量为空");
-            return Collections.emptyList();
-        }
-        String vecStr = Arrays.toString(queryVector);
-        List<MemoryEntryEntity> entities = jpaRepository.semanticSearch(
-                accountId, level.name(), vecStr, topK);
-        return entities.stream()
-                .map(this::toDomain)
+        return forestNodeJpaRepository.findMemoriesArchivable(accountId, BigDecimal.valueOf(threshold)).stream()
+                .map(this::toMemoryEntry)
                 .toList();
     }
 
-    /** 根据 ID 删除记忆条目。 */
     @Override
     public void delete(UUID memoryId) {
-        jpaRepository.deleteById(memoryId);
+        forestNodeJpaRepository.deleteById(memoryId.toString());
     }
 
     @Override
-    public void deleteBatch(java.util.List<UUID> ids) {
-        if (ids != null && !ids.isEmpty()) jpaRepository.deleteAllById(ids);
+    public void deleteBatch(List<UUID> ids) {
+        ids.forEach(id -> forestNodeJpaRepository.deleteById(id.toString()));
     }
 
-    /** 统计账号下记忆条目总数。 */
     @Override
     public long countByAccount(UUID accountId) {
-        return jpaRepository.countByAccountId(accountId);
+        if (accountId == null) return forestNodeJpaRepository.countByNodeType("memory");
+        return forestNodeJpaRepository.countMemoriesByAccount(accountId);
     }
 
-    /** 统计账号下记忆条目总数（按层级筛选）。 */
     @Override
     public long countByAccount(UUID accountId, String level) {
-        if (level != null && !level.isBlank()) {
-            return jpaRepository.countByAccountIdAndLevel(accountId, level);
-        }
-        return countByAccount(accountId);
+        if (level == null || level.isBlank() || accountId == null) return countByAccount(accountId);
+        return forestNodeJpaRepository.countMemoriesByAccountAndLevel(accountId, level);
     }
 
-    /** 统计账号下的重要记忆条目数。 */
     @Override
     public long countImportantByAccount(UUID accountId) {
-        return jpaRepository.countByAccountIdAndImportantTrue(accountId);
+        return forestNodeJpaRepository.countMemoriesImportantByAccount(accountId);
     }
 
-    /** 统计账号下的已归档记忆条目数。 */
     @Override
     public long countArchivedByAccount(UUID accountId) {
-        return jpaRepository.countByAccountIdAndArchivedTrue(accountId);
+        return forestNodeJpaRepository.countMemoriesArchivedByAccount(accountId);
     }
 
-    // ---- 转换方法 ----
+    // =====================================================================
+    // 转换
+    // =====================================================================
 
-    /** 将实体转换为领域对象。 */
-    private MemoryEntry toDomain(MemoryEntryEntity entity) {
-        return MemoryEntry.builder()
-                .memoryId(entity.getMemoryId())
-                .accountId(entity.getAccountId())
-                .projectId(entity.getProjectId())
-                .level(entity.getLevel() != null ? MemoryLevel.valueOf(entity.getLevel()) : null)
-                .scopeId(entity.getScopeId())
-                .content(entity.getContent())
-                .metadata(parseJsonMap(entity.getMetadata()))
-                .retention(entity.getRetention())
-                .accessCount(entity.getAccessCount())
-                .archived(entity.getArchived())
-                .important(entity.getImportant())
-                .summary(entity.getSummary())
-                .createdAt(entity.getCreatedAt() != null ? entity.getCreatedAt().toLocalDateTime() : null)
-                .lastAccessedAt(entity.getLastAccessedAt() != null ? entity.getLastAccessedAt().toLocalDateTime() : null)
-                .build();
-    }
-
-    /** 将领域对象转换为实体。 */
-    private MemoryEntryEntity toEntity(MemoryEntry entry) {
-        MemoryEntryEntity entity = new MemoryEntryEntity();
-        entity.setMemoryId(entry.getMemoryId());
-        entity.setAccountId(entry.getAccountId());
-        entity.setProjectId(entry.getProjectId());
-        entity.setLevel(entry.getLevel() != null ? entry.getLevel().name() : null);
-        entity.setScopeId(entry.getScopeId());
-        entity.setContent(entry.getContent());
-        entity.setMetadata(toJsonString(entry.getMetadata()));
-        entity.setRetention(entry.getRetention() != null ? entry.getRetention() : 1.0f);
-        entity.setAccessCount(entry.getAccessCount() != null ? entry.getAccessCount() : 0);
-        entity.setArchived(entry.getArchived() != null ? entry.getArchived() : false);
-        entity.setImportant(entry.getImportant() != null ? entry.getImportant() : false);
-        entity.setSummary(entry.getSummary());
-        entity.setVector(entry.getVector());
-        entity.setLastAccessedAt(entry.getLastAccessedAt() != null
-                ? entry.getLastAccessedAt().atOffset(ZoneOffset.UTC)
-                : OffsetDateTime.now(ZoneOffset.UTC));
-        return entity;
-    }
-
-    /** 将对象序列化为 JSON 字符串。 */
-    private String toJsonString(Object obj) {
-        if (obj == null) {
-            return "{}";
-        }
+    /** ForestNodeEntity → MemoryEntry（从专用列读取，不从 JSONB 解析）。 */
+    private MemoryEntry toMemoryEntry(ForestNodeEntity entity) {
         try {
-            return OBJECT_MAPPER.writeValueAsString(obj);
-        } catch (Exception e) { log.warn("JSON 序列化/反序列化失败", e);
-            return "{}";
+            return MemoryEntry.builder()
+                    .memoryId(UUID.fromString(entity.getNodeId()))
+                    .accountId(entity.getAccountId())
+                    .projectId(entity.getProjectId())
+                    .level(MemoryLevel.valueOf(
+                            entity.getLevel() != null ? entity.getLevel() : MemoryLevel.SESSION.name()))
+                    .scopeId(entity.getScopeId() != null ? entity.getScopeId().toString() : null)
+                    .content(entity.getContent())
+                    .summary(entity.getSummary())
+                    .archived(entity.getArchived())
+                    .important(entity.getImportant())
+                    .retention(entity.getRetention() != null ? entity.getRetention().floatValue() : null)
+                    .accessCount(entity.getAccessCount() != null ? entity.getAccessCount() : 0)
+                    .lastAccessedAt(entity.getLastAccessedAt() != null
+                            ? entity.getLastAccessedAt().toLocalDateTime() : null)
+                    .createdAt(entity.getCreatedAt() != null
+                            ? entity.getCreatedAt().toLocalDateTime() : null)
+                    .build();
+        } catch (Exception e) {
+            log.warn("转换记忆节点失败: nodeId={}", entity.getNodeId());
+            return null;
         }
     }
 
-    /** 将 JSON 字符串解析为 Map。 */
-    private Map<String, Object> parseJsonMap(String json) {
-        if (json == null || json.isBlank()) {
-            return Collections.emptyMap();
+    /** 将 float[] 向量转为 PostgreSQL 兼容的数组字符串。 */
+    private static String toVectorString(float[] vec) {
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < vec.length; i++) {
+            if (i > 0) sb.append(",");
+            sb.append(vec[i]);
         }
+        sb.append("]");
+        return sb.toString();
+    }
+
+    /** 安全解析 scopeId（String → UUID），无效返回 null。 */
+    private static UUID parseScopeId(String scopeId) {
+        if (scopeId == null || scopeId.isBlank()) return null;
         try {
-            return OBJECT_MAPPER.readValue(json, new TypeReference<Map<String, Object>>() {});
-        } catch (Exception e) { log.warn("JSON 序列化/反序列化失败", e);
-            return Collections.emptyMap();
+            return UUID.fromString(scopeId);
+        } catch (Exception e) {
+            return null;
         }
     }
 }

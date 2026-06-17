@@ -16,4 +16,7 @@ public interface IBetaParamRepository {
 
     /** UPSERT：执行完成后更新 Beta 参数。 */
     void upsert(UUID accountId, String featureHash, String agentName, boolean success);
+
+    /** 删除指定 Agent 的所有 Beta 参数（Agent 删除时清理）。 */
+    void deleteByAgent(UUID accountId, String agentName);
 }

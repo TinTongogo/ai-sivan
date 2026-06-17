@@ -6,8 +6,8 @@ import com.icusu.sivan.domain.forest.ForestEvent;
 import com.icusu.sivan.domain.forest.context.ExecutionContext;
 import com.icusu.sivan.domain.forest.context.Progress;
 import com.icusu.sivan.domain.forest.port.ForestRepository;
-import com.icusu.sivan.domain.forest.tree.InnerGoalNode;
-import com.icusu.sivan.domain.forest.tree.TaskNode;
+import com.icusu.sivan.domain.forest.tree.node.InnerGoalNode;
+import com.icusu.sivan.domain.forest.tree.node.TaskNode;
 import com.icusu.sivan.domain.forest.tree.TreeNode;
 import com.icusu.sivan.domain.forest.port.CheckpointHandler;
 import com.icusu.sivan.infra.forest.execution.GoalExecutionService;
@@ -65,7 +65,7 @@ public class ForestGoalController {
         ForestEvent goalEvent = ForestEvent.lifecycle(goalId.toString(), goalId.toString(),
                 accountId.toString(), ForestEvent.EventType.LIFECYCLE);
 
-        Forest forest = new Forest(goalId, accountId, null, null, title, root.nodeId());
+        Forest forest = new Forest(goalId, accountId, null, title, root.nodeId());
 
         return Flux.concat(
                 Flux.just(goalEvent),
@@ -138,7 +138,7 @@ public class ForestGoalController {
                         "goalId", f.forestId().toString(),
                         "title", f.title() != null ? f.title() : "",
                         "status", "EXECUTED",
-                        "conversationId", f.conversationId() != null ? f.conversationId().toString() : "",
+                        "conversationId", f.forestId() != null ? f.forestId().toString() : "",
                         "createdAt", f.createdAt() != null ? f.createdAt().toString() : "",
                         "updatedAt", f.updatedAt() != null ? f.updatedAt().toString() : ""
                 ))
@@ -163,7 +163,7 @@ public class ForestGoalController {
         return ResponseEntity.ok(Map.of(
                 "goalId", forest.forestId().toString(),
                 "title", forest.title() != null ? forest.title() : "",
-                "conversationId", forest.conversationId() != null ? forest.conversationId().toString() : "",
+                "conversationId", forest.forestId() != null ? forest.forestId().toString() : "",
                 "projectId", forest.projectId() != null ? forest.projectId().toString() : "",
                 "rootNodeId", forest.rootNodeId(),
                 "createdAt", forest.createdAt() != null ? forest.createdAt().toString() : "",

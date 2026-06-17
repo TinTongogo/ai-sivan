@@ -58,6 +58,9 @@ public class AgentLeafExecutor implements LeafExecutor {
     @Value("${sivan.agent.max-rounds:200}")
     private int maxRounds;
 
+    @Value("${sivan.file.root-path}")
+    private String fileRootBasePath;
+
     private final DefaultModelRouter modelRouter;
     private final ToolRegistry toolRegistry;
     private final ToolRouter toolRouter;
@@ -92,7 +95,7 @@ public class AgentLeafExecutor implements LeafExecutor {
     @Override
     public Flux<ForestEvent> execute(TreeNode node, ExecutionContext ctx, EventSink sink) {
         UUID accountId = ctx.accountId();
-        String taskContent = node instanceof ContentNode c ? c.content() : "";
+        String taskContent = node.content();
 
         Model model;
         try {
@@ -105,39 +108,33 @@ public class AgentLeafExecutor implements LeafExecutor {
 
         // 获取工具列表：优先使用 ToolRouter 按叶子类型路由，其次使用元数据中指定的
         List<ToolSpec> tools;
-        if (node instanceof ContentNode cn) {
-            // 构建 ForestNodeAdapter 供 ToolRouter 使用
-            String nodeType = supportedType();
-            String agentName = (String) cn.metadata().get("agentName");
-            String serverId = (String) cn.metadata().get("serverId");
+        // 构建 ForestNodeAdapter 供 ToolRouter 使用
+        String agentName = node.metadataString("agentName");
+        String serverId = node.metadataString("serverId");
+        ForestNodeAdapter adapter;
+        if (agentName != null || serverId != null) {
             UUID acctId = resolveAccountId(node);
             Map<String, String> meta = new HashMap<>();
-            for (var entry : cn.metadata().entrySet()) {
+            for (var entry : node.metadata().entrySet()) {
                 if (entry.getValue() instanceof String s) {
                     meta.put(entry.getKey(), s);
                 }
             }
-            ForestNodeAdapter adapter = ForestNodeAdapter.from(
-                    node.nodeId(), nodeType, agentName, serverId, acctId, meta);
-
-            // 通过 ToolRouter 按策略路由
-            ExecutionContext execCtx = ctx;
-            tools = toolRouter.resolve(adapter, taskContent, execCtx);
-
-            // 如果路由结果为空，降级到元数据中指定的工具
-            if (tools.isEmpty()) {
-                Object raw = cn.metadata().get("preferredToolSpecs");
-                if (raw instanceof List<?> list && !list.isEmpty()) {
-                    tools = list.stream()
-                            .filter(ToolSpec.class::isInstance)
-                            .map(ToolSpec.class::cast)
-                            .toList();
-                }
-            }
+            adapter = ForestNodeAdapter.from(
+                    node.nodeId(), supportedType(), agentName, serverId, acctId, meta);
         } else {
-            tools = toolRouter.resolve(
-                    ForestNodeAdapter.from(node.nodeId(), supportedType(), null, null, null, Map.of()),
-                    taskContent, ctx);
+            adapter = ForestNodeAdapter.from(node.nodeId(), supportedType(), null, null, null, Map.of());
+        }
+        ExecutionContext execCtx = ctx;
+        tools = toolRouter.resolve(adapter, taskContent, execCtx);
+        if (tools.isEmpty()) {
+            var rawSpecs = node.metadataList("preferredToolSpecs");
+            if (rawSpecs != null && !rawSpecs.isEmpty()) {
+                tools = rawSpecs.stream()
+                        .filter(ToolSpec.class::isInstance)
+                        .map(ToolSpec.class::cast)
+                        .toList();
+            }
         }
 
         // 注册 A2A 通信工具（始终可用，去重）
@@ -153,8 +150,8 @@ public class AgentLeafExecutor implements LeafExecutor {
         ConcurrentLinkedQueue<AgentMessage> pendingMessages = new ConcurrentLinkedQueue<>();
         String agentId = node.nodeId();
         UUID forestId = null;
-        if (node instanceof ContentNode cn) {
-            Object raw = cn.metadata().get("_forestId");
+        if (!node.metadata().isEmpty()) {
+            Object raw = node.metadata().get("_forestId");
             if (raw instanceof String s && !s.isEmpty()) {
                 try { forestId = UUID.fromString(s); } catch (Exception ignored) {}
             }
@@ -225,20 +222,23 @@ public class AgentLeafExecutor implements LeafExecutor {
                                      ConcurrentLinkedQueue<AgentMessage> pendingMessages) {
         // 提取队友信息
         List<Map<String, String>> peers = null;
-        Object rawPeers = node instanceof ContentNode cn ? cn.metadata().get("peers") : null;
+        Object rawPeers = node.metadata().get("peers");
         if (rawPeers instanceof List<?> list && !list.isEmpty()
                 && list.getFirst() instanceof Map<?, ?>) {
             peers = (List<Map<String, String>>) list;
         }
 
         // 解析 Agent 定义的 systemPrompt 和技能
-        String agentName = node instanceof ContentNode cn
-                ? (String) cn.metadata().get("agentName") : null;
+        String agentName = (node.metadata() == null ? null : node.metadataString("agentName"));
         String agentSystemPrompt = resolveAgentSystemPrompt(node, agentName);
 
+        // SEQUENTIAL 子任务：不携带完整对话历史，仅给系统提示词 + 子任务内容
+        boolean isSequentialSubtask = "true".equals(
+                node.metadata().get("_isSequentialSubtask"));
+
         List<Msg> messages = null;
-        if (node instanceof ContentNode cn) {
-            Object raw = cn.metadata().get("prebuiltMessages");
+        if (!isSequentialSubtask) {
+            Object raw = node.metadata().get("prebuiltMessages");
             if (raw instanceof List<?> list) {
                 messages = new ArrayList<>(list.stream()
                         .filter(Msg.class::isInstance)
@@ -249,8 +249,7 @@ public class AgentLeafExecutor implements LeafExecutor {
         if (messages == null || messages.isEmpty()) {
             messages = new ArrayList<>();
             messages.add(Msg.of(Role.SYSTEM, List.of(new Content.Text(agentSystemPrompt))));
-            String accumulatedContext = node instanceof ContentNode cn2
-                    ? (String) cn2.metadata().get("accumulatedContext") : null;
+            String accumulatedContext = (node.metadata() == null ? null : node.metadataString("accumulatedContext"));
             if (accumulatedContext != null && !accumulatedContext.isEmpty()) {
                 messages.add(Msg.of(Role.USER, List.of(new Content.Text(
                         "以下是从之前步骤获取的结果，你可以在本次任务中参考这些信息：\n" + accumulatedContext))));
@@ -267,12 +266,18 @@ public class AgentLeafExecutor implements LeafExecutor {
                 String peerId = peer.get("agentId");
                 String task = peer.get("task");
                 String peerName = resolvePeerAgentName(peer, acctId);
-                String label = peerName != null ? peerName : peerId.substring(0, 8);
+                // 优先显示名称，其次从任务描述提取，避免显示 UUID
+                String label = peerName;
+                if (label == null && task != null && !task.isBlank()) {
+                    label = task.length() > 30 ? task.substring(0, 27) + "..." : task;
+                }
+                if (label == null) label = "队友";
                 // 任务摘要截断到 50 字
                 String taskBrief = task != null && task.length() > 50 ? task.substring(0, 47) + "..." : task;
                 sb.append("- ").append(label).append(": ").append(taskBrief).append("\n");
             }
-            sb.append("根据各自任务合理协作，不要分派队友不擅长的任务。");
+            sb.append("根据各自任务合理协作，不要分派队友不擅长的任务。\n"
+                    + "不要输出「我先调用」「正在等待」「让我请求」这类过程描述——直接输出你的分析结论即可。");
             messages.add(Msg.of(Role.SYSTEM, List.of(new Content.Text(sb.toString()))));
         }
 
@@ -281,42 +286,28 @@ public class AgentLeafExecutor implements LeafExecutor {
         return messages;
     }
 
-    /** 解析 Agent 的 systemPrompt：优先使用 Agent 定义，无则用通用 prompt，并加载关联的技能。 */
+    /** 解析 Agent 的 systemPrompt：加载 Agent 定义 + 任务匹配的技能内容（组合式路由）。
+     * 技能由 {@code _matchedSkillIds} 元数据决定，不从 Agent 定义中绑定。 */
     private String resolveAgentSystemPrompt(TreeNode node, String agentName) {
         UUID accountId = null;
-        if (node instanceof ContentNode cn) {
-            Object raw = cn.metadata().get("_accountId");
+        if (!node.metadata().isEmpty()) {
+            Object raw = node.metadata().get("_accountId");
             if (raw instanceof String s && !s.isEmpty()) {
                 try { accountId = UUID.fromString(s); } catch (Exception ignored) {}
             }
         }
 
+        StringBuilder sb = new StringBuilder();
+
+        // 1. Agent 系统提示词
         if (agentName != null && !agentName.isBlank() && accountId != null) {
             try {
                 var agentOpt = agentRepository.findByAccountAndName(accountId, agentName);
                 if (agentOpt.isPresent()) {
                     var agent = agentOpt.get();
-                    StringBuilder sb = new StringBuilder();
                     if (agent.getSystemPrompt() != null && !agent.getSystemPrompt().isBlank()) {
                         sb.append(agent.getSystemPrompt());
                     }
-                    // 加载关联的技能内容
-                    if (agent.getSkillIds() != null && !agent.getSkillIds().isEmpty()) {
-                        sb.append("\n\n## 技能参考\n");
-                        for (String skillId : agent.getSkillIds()) {
-                            try {
-                                var skillOpt = skillRepository.findById(UUID.fromString(skillId));
-                                skillOpt.ifPresent(skill -> {
-                                    sb.append("\n### ").append(skill.getName()).append("\n");
-                                    if (skill.getContent() != null && !skill.getContent().isBlank()) {
-                                        sb.append(skill.getContent()).append("\n");
-                                    }
-                                });
-                            } catch (Exception ignored) { }
-                        }
-                    }
-                    sb.append(
-                        "\n\n你可以使用 send_agent_message 工具与同一任务中的其他 Agent 协作。");
                     // 记录使用次数
                     try {
                         agent.recordUsage();
@@ -324,23 +315,54 @@ public class AgentLeafExecutor implements LeafExecutor {
                     } catch (Exception e) {
                         log.warn("[Agent] 记录使用统计失败: name={} error={}", agentName, e.getMessage());
                     }
-                    log.info("[Agent] 使用 Agent 定义: name={} skillCount={}",
-                            agentName, agent.getSkillIds() != null ? agent.getSkillIds().size() : 0);
-                    return sb.toString();
                 }
             } catch (Exception e) {
                 log.warn("[Agent] 加载 Agent 定义失败: name={} error={}", agentName, e.getMessage());
             }
         }
-        // 回退：通用 prompt
-        return "你是一个 AI 助手，请根据用户请求完成任务。你可以使用以下工具来帮助你完成任务。"
-                + "\n\n你可以使用 send_agent_message 工具与同一任务中的其他 Agent 协作。";
+
+        // 2. 任务匹配的技能（组合式路由，从 _matchedSkillIds 元数据读取，非 agent 绑定）
+        List<String> matchedSkillIds = extractMatchedSkillIds(node);
+        if (!matchedSkillIds.isEmpty()) {
+            sb.append("\n\n## 技能参考\n");
+            for (String skillId : matchedSkillIds) {
+                try {
+                    var skillOpt = skillRepository.findById(UUID.fromString(skillId));
+                    skillOpt.ifPresent(skill -> {
+                        sb.append("\n### ").append(skill.getName()).append("\n");
+                        if (skill.getContent() != null && !skill.getContent().isBlank()) {
+                            sb.append(skill.getContent()).append("\n");
+                        }
+                    });
+                } catch (Exception ignored) { }
+            }
+        }
+
+        sb.append(
+            "\n\n## 输出规范\n- 直接输出分析结果，不要输出内部思考过程或协作步骤\n"
+            + "- 不要输出「我先做X」「正在等待Y」「让我调用Z」这类过程描述\n"
+            + "- 其他 Agent 的分析结果会由主控整合给你，你不需要等待或催促他们\n"
+            + "- 只输出结论，不言自语\n\n"
+            + "你可以使用 send_agent_message 工具与同一任务中的其他 Agent 协作。");
+
+        return sb.toString();
+    }
+
+    /** 从节点 metadata 提取任务匹配的技能 ID 列表。 */
+    private List<String> extractMatchedSkillIds(TreeNode node) {
+        if (node instanceof ContentNode cn) {
+            Object raw = cn.metadata().get("_matchedSkillIds");
+            if (raw instanceof String s && !s.isBlank()) {
+                return List.of(s.split(","));
+            }
+        }
+        return List.of();
     }
 
     /** 从节点 metadata 中解析 accountId。 */
     private UUID resolveAccountId(TreeNode node) {
-        if (node instanceof ContentNode cn) {
-            Object raw = cn.metadata().get("_accountId");
+        if (!node.metadata().isEmpty()) {
+            Object raw = node.metadata().get("_accountId");
             if (raw instanceof String s && !s.isEmpty()) {
                 try { return UUID.fromString(s); } catch (Exception ignored) {}
             }
@@ -486,6 +508,13 @@ public class AgentLeafExecutor implements LeafExecutor {
                                 .toList();
 
                         if (toolCalls.isEmpty()) {
+                            // 保存节点产出到 metadata，供执行树展示
+                            if (node instanceof com.icusu.sivan.domain.forest.tree.ContentNode cn) {
+                                String output = textAcc.toString();
+                                if (!output.isBlank()) cn.metadata().put("output", output);
+                                String thinking = thinkAcc.toString();
+                                if (!thinking.isBlank()) cn.metadata().put("thinking", thinking);
+                            }
                             // 本轮完成，发射 token 用量
                             int totalTokens = lastTokenUsage[0] != null
                                     ? lastTokenUsage[0].totalTokens() : 0;
@@ -570,9 +599,9 @@ public class AgentLeafExecutor implements LeafExecutor {
 
         Flux<ForestEvent> resultEvents = Flux.mergeSequential(monos)
                 .flatMap(r -> {
+                    // 工具结果事件仅记录名称和成功状态，不包含输出内容（避免日志和对话膨胀）
                     ForestEvent event = ForestEvent.toolResult(node.nodeId(), null, accountId.toString(),
-                            json("name", r.name(), "success", String.valueOf(r.success()),
-                                    "output", r.output()));
+                            "{\"name\":\"" + r.name() + "\",\"success\":" + r.success() + "}");
                     return Mono.just(event);
                 })
                 .concatWith(Flux.defer(() ->
@@ -603,17 +632,21 @@ public class AgentLeafExecutor implements LeafExecutor {
         String tcName = tc.name();
         if (tcName.startsWith("file_") || "bash".equals(tcName)) {
             Map<String, Object> mergedArgs = new HashMap<>(tc.args() != null ? tc.args() : Map.of());
-            if (toolNode instanceof ContentNode cn) {
-                Object frp = cn.metadata().get("_fileRootPath");
-                if (frp instanceof String s && !s.isEmpty()) mergedArgs.put("_fileRootPath", s);
-                Object archived = cn.metadata().get("_archived");
+            if (!toolNode.metadata().isEmpty()) {
+                Object frp = toolNode.metadata().get("_fileRootPath");
+                if (frp instanceof String s && !s.isEmpty()) {
+                    // metadata 中存储的是相对路径，工具执行需要绝对路径
+                    String absPath = fileRootBasePath + "/" + s;
+                    mergedArgs.put("_fileRootPath", absPath);
+                }
+                Object archived = toolNode.metadata().get("_archived");
                 if (archived instanceof Boolean b) mergedArgs.put("_archived", b);
             }
             enhancedTc = new Content.ToolCall(tc.id(), tcName, mergedArgs);
         }
         Map<String, Object> attrs = new java.util.HashMap<>(Map.of("_accountId", acctId.toString()));
-        if (toolNode instanceof ContentNode cn) {
-            Object kbNames = cn.metadata().get("_kbNames");
+        if (!toolNode.metadata().isEmpty()) {
+            Object kbNames = toolNode.metadata().get("_kbNames");
             if (kbNames instanceof String s && !s.isEmpty()) attrs.put("_kbNames", s);
         }
         var toolCtx = com.icusu.sivan.core.context.ExecutionContext.create(null, List.of(), attrs);

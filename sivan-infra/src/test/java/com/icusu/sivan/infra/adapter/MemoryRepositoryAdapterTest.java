@@ -1,7 +1,7 @@
 package com.icusu.sivan.infra.adapter;
 
 import com.icusu.sivan.common.enums.MemoryLevel;
-import com.icusu.sivan.domain.memory.IMemoryCrudRepository;
+import com.icusu.sivan.domain.memory.IMemoryRepository;
 import com.icusu.sivan.domain.memory.MemoryEntry;
 import com.icusu.sivan.infra.AbstractIntegrationTest;
 import org.junit.jupiter.api.Test;
@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class MemoryRepositoryAdapterTest extends AbstractIntegrationTest {
 
     @Autowired
-    private IMemoryCrudRepository repository;
+    private IMemoryRepository repository;
 
     @Test
     void shouldSaveAndFindById() {

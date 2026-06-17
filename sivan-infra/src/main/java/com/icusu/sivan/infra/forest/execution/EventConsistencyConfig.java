@@ -3,8 +3,6 @@ package com.icusu.sivan.infra.forest.execution;
 import com.icusu.sivan.common.event.GoalTreeCompleted;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
@@ -22,15 +20,6 @@ import org.springframework.transaction.event.TransactionalEventListener;
 public class EventConsistencyConfig {
 
     private static final Logger log = LoggerFactory.getLogger(EventConsistencyConfig.class);
-
-    /**
-     * 默认同步事件发布器 — Spring 默认实现，发布者和订阅者在同一线程事务中。
-     * 订阅者异常 → 事务回滚。
-     */
-    @Bean
-    ApplicationEventPublisher publisher(ApplicationEventPublisher raw) {
-        return raw; // Spring 默认同步实现，无需包装
-    }
 
     /**
      * GoalTree 完成后的异步订阅者。
