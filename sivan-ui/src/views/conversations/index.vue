@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, onBeforeUnmount, nextTick, computed, watch, defineAsyncComponent } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useVirtualizer } from '@tanstack/vue-virtual'
 import api from '../../api'
 import ChatBubble from '../../components/chat/ChatBubble.vue'
@@ -22,6 +22,7 @@ import { useOrchestrationStore } from '../../stores/orchestration'
 const ChatInput = defineAsyncComponent(() => import('../../components/chat/ChatInput.vue'))
 
 const route = useRoute()
+const router = useRouter()
 const msg = useMessage()
 const { t } = useI18n()
 
@@ -78,6 +79,12 @@ const { schedule } = useScrollScheduler(virtualizer, scrollRef)
 const loadingMessages = ref(false)
 const inputText = ref('')
 
+function syncConversationIdToUrl(cid: string) {
+  if (cid) {
+    router.replace({ query: { ...route.query, id: cid } })
+  }
+}
+
 const chatStream = useChatStream({
   store,
   currentConversationId,
@@ -88,6 +95,7 @@ const chatStream = useChatStream({
   inputText,
   autoScroll,
   schedule,
+  onConversationCreated: (conv) => syncConversationIdToUrl(conv.conversationId),
 })
 const { streaming, quoteMsg } = chatStream
 
@@ -183,6 +191,7 @@ async function selectConversation(id: string) {
   chatStream.abortStream()
   loadingMessages.value = true
   currentConversationId.value = id
+  syncConversationIdToUrl(id)
   const conv = conversations.value.find(c => c.conversationId === id)
   currentProjectContext.value = conv?.projectId || null
   const gid = conv?.projectId || projects.value[0]?.projectId || ''
@@ -229,7 +238,10 @@ async function newConversation() {
   localStorage.setItem('sivan-last-group', gid)
 
   const conv = await sidebar.createConversation(t('newConversation'))
-  if (conv) currentConversationId.value = conv.conversationId
+  if (conv) {
+    currentConversationId.value = conv.conversationId
+    syncConversationIdToUrl(conv.conversationId)
+  }
 }
 
 async function deleteConversation(id: string) {

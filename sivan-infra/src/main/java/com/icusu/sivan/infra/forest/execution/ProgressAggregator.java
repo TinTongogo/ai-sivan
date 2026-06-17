@@ -42,7 +42,7 @@ public class ProgressAggregator {
     }
 
     private Progress compute(TreeNode node) {
-        Mode mode = node instanceof ExecutableNode e ? e.mode() : Mode.NONE;
+        Mode mode = node.mode();
 
         ProgressStrategy strategy = strategies.get(mode);
         if (strategy != null) {

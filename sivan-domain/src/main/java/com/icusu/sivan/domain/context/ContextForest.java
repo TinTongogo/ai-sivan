@@ -74,6 +74,8 @@ public class ContextForest {
      * 按场景和树类型分配 token 预算。
      * CHAT: 对话树占 70%，其余 30% 平分
      * SQUAD: Squad 树占 50%，对话树 30%，其余 20% 平分
+     * KB: 知识库树占 60%，对话树 25%，其余 15% 平分
+     * TOOL: 工具链树占 50%，对话树 30%，其余 20% 平分
      */
     private Map<String, Integer> allocateBudget(String scene, int maxTokens) {
         Map<String, Integer> result = new HashMap<>();
@@ -102,6 +104,34 @@ public class ContextForest {
                     int perOther = remaining / otherCount;
                     for (ContextTree t : trees.values()) {
                         if (!"squad".equals(t.treeType()) && !"conversation".equals(t.treeType())) {
+                            result.put(t.treeType(), perOther);
+                        }
+                    }
+                }
+            }
+            case SCENE_KB -> {
+                result.put("kb", (int) (maxTokens * 0.60));
+                result.put("conversation", (int) (maxTokens * 0.25));
+                int remaining = maxTokens - result.get("kb") - result.get("conversation");
+                int otherCount = trees.size() - 2;
+                if (otherCount > 0) {
+                    int perOther = remaining / otherCount;
+                    for (ContextTree t : trees.values()) {
+                        if (!"kb".equals(t.treeType()) && !"conversation".equals(t.treeType())) {
+                            result.put(t.treeType(), perOther);
+                        }
+                    }
+                }
+            }
+            case SCENE_TOOL -> {
+                result.put("toolchain", (int) (maxTokens * 0.50));
+                result.put("conversation", (int) (maxTokens * 0.30));
+                int remaining = maxTokens - result.get("toolchain") - result.get("conversation");
+                int otherCount = trees.size() - 2;
+                if (otherCount > 0) {
+                    int perOther = remaining / otherCount;
+                    for (ContextTree t : trees.values()) {
+                        if (!"toolchain".equals(t.treeType()) && !"conversation".equals(t.treeType())) {
                             result.put(t.treeType(), perOther);
                         }
                     }

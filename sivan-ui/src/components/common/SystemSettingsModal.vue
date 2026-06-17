@@ -104,13 +104,14 @@ function selectFont(family: string) {
   showFontBrowser.value = false
 }
 
-type Section = 'general' | 'account' | 'llm' | 'mcp' | 'agreement'
+type Section = 'general' | 'account' | 'llm' | 'rag' | 'mcp' | 'agreement'
 const activeSection = ref<Section>('general')
 
 const sections: { key: Section; labelKey: string }[] = [
   { key: 'general', labelKey: 'general' },
   { key: 'account', labelKey: 'account' },
   { key: 'llm', labelKey: 'llm' },
+  { key: 'rag', labelKey: 'rag' },
   { key: 'mcp', labelKey: 'mcp' },
   { key: 'agreement', labelKey: 'agreement' },
 ]
@@ -257,6 +258,9 @@ function doLogout() {
 }
 
 // LLM 配置
+const chatProviders = computed(() =>
+  settings.llmProviders.filter(p => (p.tags || 'chat').includes('chat'))
+)
 const selectedLlmIdx = ref(0)
 const testing = ref(false)
 const modelOptions = ref<{ name: string; contextLength: number | null }[]>([])
@@ -272,7 +276,7 @@ const savingLlm = ref(false)
 const deletingLlm = ref(false)
 
 const currentProvider = computed(() =>
-    settings.llmProviders[selectedLlmIdx.value] || null
+    chatProviders.value[selectedLlmIdx.value] || null
 )
 
 // 所有可用的能力定义（code → label）
@@ -364,7 +368,7 @@ async function selectLlm(index: number) {
   selectedLlmIdx.value = index
   testResult.value = null
   modelOptions.value = []
-  if (settings.llmProviders[index]?.providerId) {
+  if (chatProviders.value[index]?.providerId) {
     await settings.loadProviders()
   }
 }
@@ -403,9 +407,12 @@ async function saveLlm() {
         contextLength: p.contextLength || undefined,
         tags: p.tags || 'chat',
       })
-      const idx = selectedLlmIdx.value
-      settings.llmProviders.splice(idx, 1)
-      selectedLlmIdx.value = Math.max(0, settings.llmProviders.length - 1)
+      const tmpP = chatProviders.value[selectedLlmIdx.value]
+      if (tmpP) {
+        const tmpIdx = settings.llmProviders.indexOf(tmpP)
+        if (tmpIdx >= 0) settings.llmProviders.splice(tmpIdx, 1)
+      }
+      selectedLlmIdx.value = Math.max(0, chatProviders.value.length - 1)
     }
     message.success(t('saved'))
   } catch (e: any) {
@@ -418,7 +425,8 @@ async function saveLlm() {
 async function addLlmProvider() {
   const existingIdx = settings.llmProviders.findIndex(p => !p.providerId)
   if (existingIdx >= 0) {
-    selectedLlmIdx.value = existingIdx
+    const tempEntry = settings.llmProviders[existingIdx]
+    selectedLlmIdx.value = chatProviders.value.indexOf(tempEntry)
     return
   }
   settings.llmProviders.push({
@@ -437,23 +445,25 @@ async function addLlmProvider() {
     createdAt: '',
     updatedAt: '',
   })
-  selectedLlmIdx.value = settings.llmProviders.length - 1
+  selectedLlmIdx.value = chatProviders.value.length - 1
   testResult.value = null
   modelOptions.value = []
 }
 
 async function removeLlmProvider(idx: number) {
-  const p = settings.llmProviders[idx]
+  const p = chatProviders.value[idx]
   if (!p) return
+  const realIdx = settings.llmProviders.indexOf(p)
+  if (realIdx < 0) return
   if (!confirm(t('confirmDeleteProvider') || '确定删除该提供商吗？')) return
   deletingLlm.value = true
   try {
     if (p.providerId) {
       await settings.deleteProvider(p.providerId)
     }
-    settings.llmProviders.splice(idx, 1)
-    if (selectedLlmIdx.value >= settings.llmProviders.length) {
-      selectedLlmIdx.value = Math.max(0, settings.llmProviders.length - 1)
+    settings.llmProviders.splice(realIdx, 1)
+    if (selectedLlmIdx.value >= chatProviders.value.length) {
+      selectedLlmIdx.value = Math.max(0, chatProviders.value.length - 1)
     }
     testResult.value = null
     modelOptions.value = []
@@ -488,7 +498,7 @@ async function testConnection() {
 
 
 async function setAsDefault(idx: number) {
-  const p = settings.llmProviders[idx]
+  const p = chatProviders.value[idx]
   if (!p || !p.providerId) {
     message.warning(t('saveFirst'))
     return
@@ -503,6 +513,90 @@ const providerTypeOptions = computed(() => [
   { value: 'openai-compatible', label: t('providerTypeCompat') },
 ])
 
+// RAG 配置
+const ragTesting = ref<'embedding' | 'reranker' | null>(null)
+const ragSaving = ref<'embedding' | 'reranker' | null>(null)
+const ragTestResult = ref<{ type: 'embedding' | 'reranker'; success: boolean; message: string } | null>(null)
+
+const embeddingProvider = computed(() =>
+  settings.llmProviders.find(p => p.tags?.includes('embedding'))
+)
+const rerankerProvider = computed(() =>
+  settings.llmProviders.find(p => p.tags?.includes('reranker'))
+)
+
+const embeddingUrl = computed({
+  get: () => embeddingProvider.value?.baseUrl ?? '',
+  set: (v) => { if (embeddingProvider.value) embeddingProvider.value.baseUrl = v },
+})
+const embeddingApiKey = computed({
+  get: () => embeddingProvider.value?.apiKey ?? '',
+  set: (v) => { if (embeddingProvider.value) embeddingProvider.value.apiKey = v },
+})
+const embeddingModel = computed({
+  get: () => embeddingProvider.value?.model ?? '',
+  set: (v) => { if (embeddingProvider.value) embeddingProvider.value.model = v },
+})
+const rerankerUrl = computed({
+  get: () => rerankerProvider.value?.baseUrl ?? '',
+  set: (v) => { if (rerankerProvider.value) rerankerProvider.value.baseUrl = v },
+})
+const rerankerApiKey = computed({
+  get: () => rerankerProvider.value?.apiKey ?? '',
+  set: (v) => { if (rerankerProvider.value) rerankerProvider.value.apiKey = v },
+})
+const rerankerModel = computed({
+  get: () => rerankerProvider.value?.model ?? '',
+  set: (v) => { if (rerankerProvider.value) rerankerProvider.value.model = v },
+})
+
+async function saveRagProvider(tag: 'embedding' | 'reranker') {
+  ragSaving.value = tag
+  try {
+    let p = settings.llmProviders.find(pr => pr.tags?.includes(tag))
+    const url = tag === 'embedding' ? embeddingUrl.value : rerankerUrl.value
+    const key = tag === 'embedding' ? embeddingApiKey.value : rerankerApiKey.value
+    const model = tag === 'embedding' ? embeddingModel.value : rerankerModel.value
+    if (!p) {
+      await settings.createProvider({
+        name: tag === 'embedding' ? '默认 Embedding 服务' : '默认 Reranker 服务',
+        providerType: 'openai-compatible',
+        baseUrl: url || undefined,
+        apiKey: key || undefined,
+        model: model || undefined,
+        tags: tag,
+      })
+    } else {
+      const apiKeyToSend = p.apiKey?.includes('****') ? undefined : p.apiKey
+      await settings.updateProvider(p.providerId, {
+        baseUrl: url || undefined,
+        apiKey: apiKeyToSend,
+        model: model || undefined,
+        tags: tag,
+      })
+    }
+    message.success(t('saved'))
+  } catch (e: any) {
+    message.error(e.response?.data?.message || '保存失败')
+  } finally {
+    ragSaving.value = null
+  }
+}
+
+async function testRagProvider(tag: 'embedding' | 'reranker') {
+  ragTesting.value = tag
+  ragTestResult.value = null
+  try {
+    const url = tag === 'embedding' ? embeddingUrl.value : rerankerUrl.value
+    const key = tag === 'embedding' ? embeddingApiKey.value : rerankerApiKey.value
+    const res = await settings.testConnection({ providerType: 'openai-compatible', apiKey: key, baseUrl: url })
+    ragTestResult.value = { type: tag, success: res.success, message: res.message }
+  } catch (e: any) {
+    ragTestResult.value = { type: tag, success: false, message: e.message || '连接失败' }
+  } finally {
+    ragTesting.value = null
+  }
+}
 
 // MCP 配置
 const selectedMcpIdx = ref(0)
@@ -920,7 +1014,7 @@ onMounted(() => {
               <div class="llm-sidebar__header">{{ t('provider') }}</div>
               <div class="llm-sidebar__list">
                 <div
-                  v-for="(p, idx) in settings.llmProviders"
+                  v-for="(p, idx) in chatProviders"
                   :key="p.providerId || idx"
                   :class="['llm-sidebar__item', { 'is-active': selectedLlmIdx === idx }]"
                   @click="selectLlm(idx)"
@@ -947,7 +1041,7 @@ onMounted(() => {
                   </span>
                   <span class="llm-sidebar__model">{{ p.model || p.providerType }}</span>
                 </div>
-                <div v-if="!settings.llmProviders.length" class="llm-sidebar__empty">{{ t('noProvider') }}</div>
+                <div v-if="!chatProviders.length" class="llm-sidebar__empty">{{ t('noProvider') }}</div>
               </div>
               <button class="btn btn-sm llm-add-btn" @click="addLlmProvider">+ {{ t('addProvider') }}</button>
             </div>
@@ -1032,6 +1126,79 @@ onMounted(() => {
               </div>
               <div v-else class="llm-detail__empty">
                 <p>{{ t('configureFirst') }}</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- RAG 配置 -->
+          <div v-if="activeSection === 'rag'" class="settings-panel-llm">
+            <div class="rag-config">
+              <!-- Embedding 配置 -->
+              <div class="rag-provider-block">
+                <h4 class="rag-provider-title">
+                  {{ t('embeddingTitle') }}
+                  <span v-if="embeddingProvider" class="llm-default-badge" style="margin-left:8px;font-size:12px">已配置</span>
+                  <span v-else class="rag-not-configured" style="margin-left:8px;font-size:12px;color:#999">未配置</span>
+                </h4>
+                <div class="form-row">
+                  <div class="form-group" style="flex:3">
+                    <label class="form-label">{{ t('baseUrl') }}</label>
+                    <input class="input" v-model="embeddingUrl" :placeholder="t('embeddingUrlPlaceholder')" />
+                  </div>
+                  <div class="form-group" style="flex:1">
+                    <label class="form-label">{{ t('apiKey') }}</label>
+                    <input class="input" type="password" v-model="embeddingApiKey" :placeholder="t('placeholderKey')" />
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">{{ t('model') }}</label>
+                  <input class="input" v-model="embeddingModel" :placeholder="t('embeddingModelPlaceholder')" />
+                </div>
+                <div class="llm-detail__actions">
+                  <button class="btn btn-primary" :disabled="ragTesting === 'embedding'" @click="testRagProvider('embedding')">
+                    {{ ragTesting === 'embedding' ? t('testing') : t('testConnection') }}
+                  </button>
+                  <button class="btn btn-primary" :disabled="ragSaving === 'embedding'" @click="saveRagProvider('embedding')">
+                    {{ ragSaving === 'embedding' ? '...' : t('save') }}
+                  </button>
+                </div>
+                <div v-if="ragTestResult?.type === 'embedding'" class="llm-test-result-line" :class="ragTestResult.success ? 'is-ok' : 'is-err'">
+                  {{ ragTestResult.message }}
+                </div>
+              </div>
+
+              <!-- Reranker 配置 -->
+              <div class="rag-provider-block" style="margin-top: 24px;">
+                <h4 class="rag-provider-title">
+                  {{ t('rerankerTitle') }}
+                  <span v-if="rerankerProvider" class="llm-default-badge" style="margin-left:8px;font-size:12px">已配置</span>
+                  <span v-else class="rag-not-configured" style="margin-left:8px;font-size:12px;color:#999">未配置</span>
+                </h4>
+                <div class="form-row">
+                  <div class="form-group" style="flex:3">
+                    <label class="form-label">{{ t('baseUrl') }}</label>
+                    <input class="input" v-model="rerankerUrl" :placeholder="t('rerankerUrlPlaceholder')" />
+                  </div>
+                  <div class="form-group" style="flex:1">
+                    <label class="form-label">{{ t('apiKey') }}</label>
+                    <input class="input" type="password" v-model="rerankerApiKey" :placeholder="t('placeholderKey')" />
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">{{ t('model') }}</label>
+                  <input class="input" v-model="rerankerModel" :placeholder="t('rerankerModelPlaceholder')" />
+                </div>
+                <div class="llm-detail__actions">
+                  <button class="btn btn-primary" :disabled="ragTesting === 'reranker'" @click="testRagProvider('reranker')">
+                    {{ ragTesting === 'reranker' ? t('testing') : t('testConnection') }}
+                  </button>
+                  <button class="btn btn-primary" :disabled="ragSaving === 'reranker'" @click="saveRagProvider('reranker')">
+                    {{ ragSaving === 'reranker' ? '...' : t('save') }}
+                  </button>
+                </div>
+                <div v-if="ragTestResult?.type === 'reranker'" class="llm-test-result-line" :class="ragTestResult.success ? 'is-ok' : 'is-err'">
+                  {{ ragTestResult.message }}
+                </div>
               </div>
             </div>
           </div>

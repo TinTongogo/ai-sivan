@@ -1,9 +1,8 @@
 package com.icusu.sivan.common.enums;
 
-/** 记忆层级（四级模型）：SESSION = 对话级（1h 保留），USER = 用户级（24h），TEAM = Squad 团队级（7d），PROJECT = 项目级（30d）。 */
+/** 记忆层级（递进：SESSION → PROJECT → USER）：SESSION = 对话级（5h），PROJECT = 项目级（7d），USER = 用户级（90d）。 */
 public enum MemoryLevel {
     SESSION,
-    USER,
-    TEAM,
-    PROJECT
+    PROJECT,
+    USER
 }

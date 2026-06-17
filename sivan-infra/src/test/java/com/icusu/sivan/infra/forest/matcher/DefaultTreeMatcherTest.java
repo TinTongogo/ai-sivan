@@ -1,7 +1,7 @@
 package com.icusu.sivan.infra.forest.matcher;
 
-import com.icusu.sivan.domain.forest.tree.InnerGoalNode;
-import com.icusu.sivan.domain.forest.tree.TaskNode;
+import com.icusu.sivan.domain.forest.tree.node.InnerGoalNode;
+import com.icusu.sivan.domain.forest.tree.node.TaskNode;
 import org.junit.jupiter.api.Test;
 import reactor.test.StepVerifier;
 

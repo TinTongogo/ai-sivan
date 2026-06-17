@@ -6,6 +6,7 @@ import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTranspor
 import io.modelcontextprotocol.spec.McpClientTransport;
 import lombok.extern.slf4j.Slf4j;
 
+import java.io.Closeable;
 import java.time.Duration;
 
 /**
@@ -16,8 +17,8 @@ import java.time.Duration;
 @Slf4j
 public class McpClientBuilder {
 
-    /** 默认超时 120 秒（批量操作的 MCP 工具如 read_articles_batch 可能需要较长时间）。 */
-    private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(120);
+    /** 默认超时 180 秒（批量操作的 MCP 工具如 read_articles_batch 可能需要较长时间）。 */
+    private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(180);
 
     private final String name;
     private Duration timeout = DEFAULT_TIMEOUT;
@@ -77,9 +78,9 @@ public class McpClientBuilder {
     /** 关闭传输层，清理可能残留的 reactive 流（避免 onErrorDropped）。 */
     private static void closeTransport(McpClientTransport transport) {
         try {
-            if (transport instanceof java.io.Closeable c) {
+            if (transport instanceof Closeable c) {
                 c.close();
-            } else if (transport instanceof java.lang.AutoCloseable c) {
+            } else if (transport instanceof AutoCloseable c) {
                 c.close();
             }
         } catch (Exception ignored) {

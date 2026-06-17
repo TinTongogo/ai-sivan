@@ -50,7 +50,7 @@ public class ContextResult {
         StringBuilder sb = new StringBuilder();
         for (ContextSegment seg : segments) {
             if (seg.hasContent()) {
-                if (sb.length() > 0) sb.append("\n\n");
+                if (!sb.isEmpty()) sb.append("\n\n");
                 sb.append(seg.getContent());
             }
         }

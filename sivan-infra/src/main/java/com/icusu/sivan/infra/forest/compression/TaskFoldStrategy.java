@@ -6,6 +6,7 @@ import com.icusu.sivan.domain.compression.FoldStrategy;
 import com.icusu.sivan.domain.compression.TokenBudget;
 import com.icusu.sivan.domain.forest.tree.ContentNode;
 import com.icusu.sivan.domain.forest.tree.TreeNode;
+import com.icusu.sivan.domain.forest.tree.node.TaskNode;
 import org.springframework.stereotype.Component;
 
 /**
@@ -34,7 +35,7 @@ public class TaskFoldStrategy implements FoldStrategy {
         }
 
         // 已完成/失败/已取消 → 折叠
-        if (node instanceof com.icusu.sivan.domain.forest.tree.TaskNode task) {
+        if (node instanceof TaskNode task) {
             NodeStatus status = task.status();
             return switch (status) {
                 case COMPLETED -> FoldDecision.fold("✅ " + truncate(content, 40));

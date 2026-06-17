@@ -51,7 +51,9 @@ public class FloatArrayVectorType implements UserType<float[]> {
     @Override
     public void nullSafeSet(PreparedStatement st, float[] value, int index, SharedSessionContractImplementor session) throws SQLException {
         if (value == null) {
-            st.setNull(index, Types.VARCHAR);
+            // 用 setObject 发送无类型 NULL，配合 @ColumnTransformer(write = "?::vector") 生成 NULL::vector
+            // 若用 setNull(index, Types.VARCHAR) 会生成 NULL::varchar::vector，PG 无法将 varchar 转换为 vector
+            st.setObject(index, null);
         } else {
             st.setString(index, Arrays.toString(value));
         }

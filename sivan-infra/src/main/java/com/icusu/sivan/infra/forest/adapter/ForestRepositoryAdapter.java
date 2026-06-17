@@ -7,9 +7,8 @@ import com.icusu.sivan.common.NodeStatus;
 import com.icusu.sivan.domain.forest.Forest;
 import com.icusu.sivan.domain.forest.port.ForestRepository;
 import com.icusu.sivan.domain.forest.tree.*;
-import com.icusu.sivan.infra.forest.entity.ForestEntity;
+import com.icusu.sivan.domain.forest.tree.node.*;
 import com.icusu.sivan.infra.forest.entity.ForestNodeEntity;
-import com.icusu.sivan.infra.forest.repository.ForestJpaRepository;
 import com.icusu.sivan.infra.forest.repository.ForestNodeJpaRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,14 +29,17 @@ public class ForestRepositoryAdapter implements ForestRepository {
 
     private static final Logger log = LoggerFactory.getLogger(ForestRepositoryAdapter.class);
 
-    private final ForestJpaRepository forestJpaRepository;
+    /** 运行时 metadata key 黑名单 — 这些 key 仅在内存中使用，禁止持久化到 JSONB。
+     * 仅限大对象和运行时标记，显示需要的元数据（agentName、routeTier 等）应保留。 */
+    private static final java.util.Set<String> RUNTIME_METADATA_KEYS = java.util.Set.of(
+            "prebuiltMessages", "preferredToolSpecs",
+            "_isSequentialSubtask", "accumulatedContext", "peers");
+
     private final ForestNodeJpaRepository forestNodeJpaRepository;
     private final ObjectMapper objectMapper;
 
-    public ForestRepositoryAdapter(ForestJpaRepository forestJpaRepository,
-                                   ForestNodeJpaRepository forestNodeJpaRepository,
+    public ForestRepositoryAdapter(ForestNodeJpaRepository forestNodeJpaRepository,
                                    ObjectMapper objectMapper) {
-        this.forestJpaRepository = forestJpaRepository;
         this.forestNodeJpaRepository = forestNodeJpaRepository;
         this.objectMapper = objectMapper;
     }
@@ -48,33 +50,43 @@ public class ForestRepositoryAdapter implements ForestRepository {
 
     @Override
     public Forest findForestById(UUID forestId, UUID accountId) {
-        var entity = forestJpaRepository.findByForestIdAndAccountId(forestId, accountId)
-                .orElse(null);
-        if (entity == null) return null;
-        return toDomain(entity);
+        // 从 forest_nodes 查找该森林的第一个节点（根节点），提取元数据
+        var roots = forestNodeJpaRepository.findByForestIdAndNodeTypeOrderBySortOrder(forestId, "task");
+        if (roots.isEmpty()) {
+            roots = forestNodeJpaRepository.findByForestIdAndNodeTypeOrderBySortOrder(forestId, "inner_goal");
+        }
+        if (roots.isEmpty()) {
+            // 可能是对话容器节点
+            var convNode = forestNodeJpaRepository.findById(forestId.toString())
+                    .filter(e -> "conversation".equals(e.getNodeType()))
+                    .orElse(null);
+            if (convNode == null) return null;
+            return new Forest(forestId, convNode.getAccountId(), convNode.getProjectId(),
+                    convNode.getContent(), "");
+        }
+        var root = roots.getFirst();
+        return new Forest(forestId, root.getAccountId(), root.getProjectId(),
+                root.getContent(), root.getNodeId());
     }
 
     @Override
     public void saveForest(Forest forest, UUID accountId) {
-        var entity = toEntity(forest);
-        forestJpaRepository.save(entity);
-        forestJpaRepository.flush();
+        // 森林元数据由 rootNode 承载，不需单独存储
+        // rootNodeId 在 saveTree 时写入节点，森林的结构数据全在 forest_nodes 中
+        log.debug("saveForest: forestId={} title={} root={}", forest.forestId(), forest.title(), forest.rootNodeId());
     }
 
     @Override
     public List<Forest> findByConversationId(UUID conversationId, UUID accountId) {
-        return forestJpaRepository.findByConversationIdOrderByCreatedAtDesc(conversationId)
-                .stream()
-                .filter(e -> e.getAccountId().equals(accountId))
-                .map(this::toDomain)
-                .toList();
+        // conversations 已迁到 forest_nodes，不再使用 forests 表
+        return List.of();
     }
 
     @Override
     public List<Forest> listByAccountId(UUID accountId) {
-        return forestJpaRepository.findByAccountIdOrderByCreatedAtDesc(accountId)
-                .stream()
-                .map(this::toDomain)
+        return forestNodeJpaRepository.findForestRootsByAccount(accountId).stream()
+                .map(n -> new Forest(n.getForestId(), n.getAccountId(), n.getProjectId(),
+                        n.getContent() != null ? n.getContent() : "", n.getNodeId()))
                 .toList();
     }
 
@@ -84,14 +96,20 @@ public class ForestRepositoryAdapter implements ForestRepository {
 
     @Override
     public TreeNode findSubtree(String rootNodeId, UUID accountId) {
-        // 从 forests 找到 forestId
-        var forestOpt = forestJpaRepository.findByRootNodeIdAndAccountId(rootNodeId, accountId);
-        if (forestOpt.isEmpty()) {
-            log.debug("findSubtree: 未找到 rootNodeId={} 对应的 forest", rootNodeId);
+        if (rootNodeId == null || rootNodeId.isBlank()) {
+            log.debug("findSubtree: rootNodeId 为空，无子树可加载");
             return null;
         }
-        UUID forestId = forestOpt.get().getForestId();
-
+        // 直接查找 rootNodeId 所在的 forestId
+        UUID forestId = null;
+        var rootNodeOpt = forestNodeJpaRepository.findById(rootNodeId);
+        if (rootNodeOpt.isPresent()) {
+            forestId = rootNodeOpt.get().getForestId();
+        }
+        if (forestId == null) {
+            log.debug("findSubtree: 未找到 rootNodeId={}", rootNodeId);
+            return null;
+        }
         // 递归 CTE 加载所有子孙节点
         List<ForestNodeEntity> rows = forestNodeJpaRepository.findSubtree(rootNodeId, forestId);
         if (rows.isEmpty()) return null;
@@ -251,16 +269,33 @@ public class ForestRepositoryAdapter implements ForestRepository {
                 if (!metadata.isEmpty()) node.setMetadata(metadata);
                 yield node;
             }
+            case "user_message" -> {
+                // 用户消息作为执行树根，用 TaskNode 使其可承载子节点
+                var node = new TaskNode(nodeId, content != null ? content : "",
+                        row.getStatus() != null ? NodeStatus.valueOf(row.getStatus()) : NodeStatus.COMPLETED);
+                node.setNodeType("user_message");
+                if (!metadata.isEmpty()) node.setMetadata(metadata);
+                if (row.getRole() != null) node.metadata().put("role", row.getRole());
+                yield node;
+            }
             case "message" -> {
-                var node = new MessageNode(nodeId, content != null ? content : "");
+                var node = new MessageNode(nodeId, content != null ? content : "", row.getRole());
                 if (!metadata.isEmpty()) node.setMetadata(metadata);
                 yield node;
             }
             case "memory" -> {
-                double importance = row.getImportance() != null ? row.getImportance() : 0.5;
-                var node = new MemoryNode(nodeId, content != null ? content : "", importance);
-                if (row.getEstimateTokens() != null) node.estimateSubtreeTokens(row.getEstimateTokens());
+                double retention = row.getRetention() != null ? row.getRetention().doubleValue() : 0.5;
+                var node = new MemoryNode(nodeId, content != null ? content : "", retention);
+                // 先用 JSONB 填充 metadata（兼容旧数据）
                 if (!metadata.isEmpty()) node.setMetadata(metadata);
+                // 再用专用列覆盖（V30 新增列优先于 JSONB）
+                if (row.getLevel() != null) node.metadata().put("level", row.getLevel());
+                if (row.getArchived() != null) node.metadata().put("archived", row.getArchived());
+                if (row.getImportant() != null) node.metadata().put("important", row.getImportant());
+                if (row.getScopeId() != null) node.metadata().put("scopeId", row.getScopeId().toString());
+                if (row.getSummary() != null) node.metadata().put("summary", row.getSummary());
+                // accessCount 保留在 JSONB 中且可能被 ForgettingCurveService 写入，保持兼容
+                if (row.getVector() != null) node.addVector(row.getVector());
                 yield node;
             }
             case "file_snapshot" -> {
@@ -300,29 +335,6 @@ public class ForestRepositoryAdapter implements ForestRepository {
         }
     }
 
-    /** 领域 Forest → JPA 实体。 */
-    private ForestEntity toEntity(Forest domain) {
-        ForestEntity entity = new ForestEntity();
-        entity.setForestId(domain.forestId());
-        entity.setAccountId(domain.accountId());
-        entity.setProjectId(domain.projectId());
-        entity.setConversationId(domain.conversationId());
-        entity.setTitle(domain.title());
-        entity.setRootNodeId(domain.rootNodeId());
-        return entity;
-    }
-
-    /** JPA 实体 → 领域 Forest。 */
-    private Forest toDomain(ForestEntity entity) {
-        return new Forest(
-                entity.getForestId(),
-                entity.getAccountId(),
-                entity.getProjectId(),
-                entity.getConversationId(),
-                entity.getTitle(),
-                entity.getRootNodeId()
-        );
-    }
 
     /** TreeNode → JPA 实体。 */
     private ForestNodeEntity toEntity(TreeNode node, UUID forestId) {
@@ -331,20 +343,23 @@ public class ForestRepositoryAdapter implements ForestRepository {
                 .nodeId(node.nodeId())
                 .forestId(forestId)
                 .nodeType(node.nodeType())
-                .parentNodeId(node.parent() != null ? node.parent().nodeId() : null)
+                .parentNodeId(resolveParentNodeId(node, forestId))
                 .sortOrder(node.order())
                 .kind("INSTANCE")
                 .updatedAt(now);
 
         // ExecutableNode → mode + status + completedAt
-        if (node instanceof ExecutableNode exec) {
-            builder.mode(exec.mode().name());
-            builder.status(exec.status().name());
-            if (exec.status() == NodeStatus.COMPLETED
-                    || exec.status() == NodeStatus.FAILED
-                    || exec.status() == NodeStatus.CANCELLED) {
-                builder.completedAt(now);
-            }
+        builder.mode(node.mode().name());
+        builder.status(node.status().name());
+        if (node.status() == NodeStatus.COMPLETED
+                || node.status() == NodeStatus.FAILED
+                || node.status() == NodeStatus.CANCELLED) {
+            builder.completedAt(now);
+        }
+
+        // MessageNode → role
+        if (node instanceof MessageNode mn) {
+            builder.role(mn.role());
         }
 
         // ContentNode → content + contentHash + metadata
@@ -358,13 +373,22 @@ public class ForestRepositoryAdapter implements ForestRepository {
                 long estimated = (long) (content.length() * 1.5);
                 if (estimated > 0) builder.estimateTokens(estimated);
             }
-            // 收集 metadata（含 FileSnapshotNode 的 filePath）
+            // 收集 metadata（过滤运行时 key，补充节点特有字段的序列化）
             Map<String, Object> meta = new HashMap<>();
             if (contentNode.metadata() != null) {
-                meta.putAll(contentNode.metadata());
+                for (var entry : contentNode.metadata().entrySet()) {
+                    if (!RUNTIME_METADATA_KEYS.contains(entry.getKey())) {
+                        meta.put(entry.getKey(), entry.getValue());
+                    }
+                }
             }
+            // FileSnapshotNode.filePath → 补充写入 metadata（字段值优先于已有 meta）
             if (node instanceof FileSnapshotNode fsn && fsn.filePath() != null && !fsn.filePath().isEmpty()) {
                 meta.put("filePath", fsn.filePath());
+            }
+            // ContextBlockNode.blockType → 补充写入 metadata（防止 persist 后丢失）
+            if (node instanceof ContextBlockNode cbn && cbn.blockType() != null && !cbn.blockType().isEmpty()) {
+                meta.put("blockType", cbn.blockType());
             }
             if (!meta.isEmpty()) {
                 try {
@@ -383,6 +407,18 @@ public class ForestRepositoryAdapter implements ForestRepository {
         return builder.build();
     }
 
+    /**
+     * 解析父节点 ID：
+     * - 树节点有 parent → 用 parent.nodeId()
+     * - 无 parent 的顶层节点 → 挂接到对话容器节点（forestId 对应的 type='conversation' 节点）
+     *   （对话容器节点 node_id = forestId.toString()，已由 ConversationRepositoryAdapter 创建）
+     */
+    private static String resolveParentNodeId(TreeNode node, UUID forestId) {
+        if (node.parent() != null) return node.parent().nodeId();
+        // 顶层节点挂接到对话容器
+        return forestId.toString();
+    }
+
     /** 计算内容哈希（SHA256 前 16 位），用于增量更新判断。 */
     private static String computeContentHash(String content) {
         try {
@@ -396,6 +432,77 @@ public class ForestRepositoryAdapter implements ForestRepository {
         } catch (Exception e) {
             return Integer.toHexString(content.hashCode());
         }
+    }
+
+    @Override
+    public List<? extends TreeNode> findNodesByType(UUID forestId, String nodeType, UUID accountId) {
+        var entities = forestNodeJpaRepository.findByForestIdAndNodeTypeOrderBySortOrder(forestId, nodeType);
+        if (entities == null || entities.isEmpty()) return List.of();
+        return entities.stream()
+                .map(this::createNode)
+                .toList();
+    }
+
+    @Override
+    public void updateNodeContent(String nodeId, String content, Map<String, Object> metadata, UUID accountId) {
+        forestNodeJpaRepository.findById(nodeId).ifPresent(entity -> {
+            entity.setContent(content);
+            if (metadata != null && !metadata.isEmpty()) {
+                try {
+                    String existingJson = entity.getMetadata();
+                    java.util.Map<String, Object> existing = existingJson != null && !existingJson.isBlank() && !"{}".equals(existingJson)
+                            ? objectMapper.readValue(existingJson, new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String, Object>>() {})
+                            : new java.util.HashMap<>();
+                    existing.putAll(metadata);
+                    entity.setMetadata(objectMapper.writeValueAsString(existing));
+                } catch (Exception e) {
+                    log.warn("合并 metadata 失败: {}", e.getMessage());
+                }
+            }
+            entity.setUpdatedAt(java.time.OffsetDateTime.now());
+            forestNodeJpaRepository.save(entity);
+        });
+    }
+
+    @Override
+    public List<? extends TreeNode> findNodesByTypeAndAccount(UUID accountId, String nodeType, int limit) {
+        var entities = forestNodeJpaRepository.findByNodeTypeAndStatusOrderBySortOrder(nodeType, null);
+        if (entities == null || entities.isEmpty()) return List.of();
+        return entities.stream().map(this::createNode).toList();
+    }
+
+    @Override
+    public List<? extends TreeNode> semanticSearchMemory(UUID accountId, float[] queryVec, int topK, String levelFilter) {
+        if (queryVec == null) return List.of();
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < queryVec.length; i++) {
+            if (i > 0) sb.append(",");
+            sb.append(queryVec[i]);
+        }
+        sb.append("]");
+        var entities = forestNodeJpaRepository.semanticSearchMemory("memory", sb.toString(), topK);
+        return entities.stream().map(this::createNode).toList();
+    }
+
+    @Override
+    public long countActiveMemories(UUID accountId) {
+        return forestNodeJpaRepository.countByNodeType("memory");
+    }
+
+    @Override
+    public void updateMemoryRetention(String nodeId, double retention, UUID accountId) {
+        forestNodeJpaRepository.findById(nodeId).ifPresent(entity -> {
+            entity.setRetention(java.math.BigDecimal.valueOf(retention));
+            entity.setUpdatedAt(java.time.OffsetDateTime.now());
+            forestNodeJpaRepository.save(entity);
+        });
+    }
+
+    @Override
+    @Transactional
+    public void deleteForest(UUID forestId, UUID accountId) {
+        forestNodeJpaRepository.deleteByForestId(forestId);
+        log.debug("deleteForest: 已删除森林节点: forestId={}", forestId);
     }
 
     /** 解析 metadata JSON → Map。 */

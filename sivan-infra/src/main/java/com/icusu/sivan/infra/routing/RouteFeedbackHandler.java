@@ -36,12 +36,13 @@ public class RouteFeedbackHandler {
     /**
      * 节点执行完毕后记录反馈。
      *
-     * @param accountId  账户 ID
-     * @param agentName  使用的 Agent 名称
+     * @param accountId   账户 ID
+     * @param agentName   使用的 Agent 名称
      * @param taskContent 节点任务内容
-     * @param success    是否成功
+     * @param success     是否成功
+     * @param routeTier   路由层级字符串（"0"/"1"/"2"/"3"/null），用于 strategy 字段
      */
-    public void onNodeCompleted(UUID accountId, String agentName, String taskContent, boolean success) {
+    public void onNodeCompleted(UUID accountId, String agentName, String taskContent, boolean success, String routeTier) {
         if (accountId == null || agentName == null || taskContent == null) return;
 
         try {
@@ -53,7 +54,8 @@ public class RouteFeedbackHandler {
                 log.warn("[反馈] embedding 计算失败(跳过写入): {}", e.getMessage());
             }
 
-            // 2. 写入 routing_decisions
+            // 2. 写入 routing_decisions（strategy 使用实际路由层级）
+            String strategy = resolveStrategy(routeTier);
             if (emb != null) {
                 StringBuilder sb = new StringBuilder("[");
                 for (int i = 0; i < emb.length; i++) {
@@ -63,13 +65,13 @@ public class RouteFeedbackHandler {
                 sb.append("]");
                 jdbc.update(
                         "INSERT INTO routing_decisions (account_id, task_description, selected_agent, success, task_embedding, strategy) " +
-                        "VALUES (?, ?, ?, ?, ?::vector, 'pg_route')",
-                        accountId, truncate(taskContent, 500), agentName, success, sb.toString());
+                        "VALUES (?, ?, ?, ?, ?::vector, ?)",
+                        accountId, truncate(taskContent, 500), agentName, success, sb.toString(), strategy);
             } else {
                 jdbc.update(
                         "INSERT INTO routing_decisions (account_id, task_description, selected_agent, success, strategy) " +
-                        "VALUES (?, ?, ?, ?, 'pg_route')",
-                        accountId, truncate(taskContent, 500), agentName, success);
+                        "VALUES (?, ?, ?, ?, ?)",
+                        accountId, truncate(taskContent, 500), agentName, success, strategy);
             }
 
             // 3. 更新 Beta 参数（使用结构化特征哈希，提升泛化能力）
@@ -96,5 +98,17 @@ public class RouteFeedbackHandler {
 
     private static String truncate(String s, int max) {
         return s != null && s.length() > max ? s.substring(0, max) : s;
+    }
+
+    /** 将路由层级字符串转为策略名称，默认 'auto'。 */
+    private static String resolveStrategy(String routeTier) {
+        if (routeTier == null) return "auto";
+        return switch (routeTier) {
+            case "0" -> "exact";
+            case "1" -> "semantic";
+            case "2" -> "explore";
+            case "3" -> "auto_create";
+            default -> "auto";
+        };
     }
 }

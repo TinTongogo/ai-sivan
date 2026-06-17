@@ -4,8 +4,8 @@ import com.icusu.sivan.common.Mode;
 import com.icusu.sivan.common.NodeStatus;
 import com.icusu.sivan.domain.compression.FoldDecision;
 import com.icusu.sivan.domain.compression.TokenBudget;
-import com.icusu.sivan.domain.forest.tree.InnerGoalNode;
-import com.icusu.sivan.domain.forest.tree.TaskNode;
+import com.icusu.sivan.domain.forest.tree.node.InnerGoalNode;
+import com.icusu.sivan.domain.forest.tree.node.TaskNode;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

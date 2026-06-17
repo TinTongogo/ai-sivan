@@ -24,6 +24,7 @@ export interface Message {
   generationTotal?: number
   chain?: string
   sections?: any[]
+  rating?: string
   _key: string
 }
 

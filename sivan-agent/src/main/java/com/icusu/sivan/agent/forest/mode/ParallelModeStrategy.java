@@ -64,16 +64,14 @@ public class ParallelModeStrategy implements ModeStrategy {
                         peer.put("agentId", sibling.nodeId());
                         peer.put("task", sc.content());
                         // 传递队友的 Agent 名称（如有），供 AgentLeafExecutor 查询能力
-                        Object peerAgent = sc.metadata().get("agentName");
+                        String peerAgent = sibling.metadataString("agentName");
                         if (peerAgent instanceof String s && !s.isBlank()) {
                             peer.put("agentName", s);
                         }
                         peers.add(peer);
                     }
                 }
-                if (child instanceof ContentNode cn) {
-                    cn.metadata().put("peers", peers);
-                }
+                child.putMetadata("peers", peers);
             }
         }
 

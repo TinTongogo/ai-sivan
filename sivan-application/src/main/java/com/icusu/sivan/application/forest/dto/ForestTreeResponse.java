@@ -39,14 +39,35 @@ public class ForestTreeResponse {
         public void setMessageType(String messageType) { this.messageType = messageType; }
     }
 
+    /** 工具调用摘要。 */
+    public static class ToolCall {
+        private String name;
+        private int count;
+        private String status;
+
+        public ToolCall() {}
+        public ToolCall(String name, int count, String status) {
+            this.name = name; this.count = count; this.status = status;
+        }
+        public String getName() { return name; }
+        public void setName(String name) { this.name = name; }
+        public int getCount() { return count; }
+        public void setCount(int count) { this.count = count; }
+        public String getStatus() { return status; }
+        public void setStatus(String status) { this.status = status; }
+    }
+
     public static class TreeNode {
         private String nodeId;
         private String name;
         private String status;
         private String mode;
         private String agent;
+        private String reasoning;
+        private String output;
         private boolean leaf;
         private List<A2aMessage> a2aMessages;
+        private List<ToolCall> toolCalls;
         private Integer durationMs;
         private Integer tokens;
         private Integer routeTier;
@@ -63,6 +84,10 @@ public class ForestTreeResponse {
         public void setMode(String mode) { this.mode = mode; }
         public String getAgent() { return agent; }
         public void setAgent(String agent) { this.agent = agent; }
+        public String getReasoning() { return reasoning; }
+        public void setReasoning(String reasoning) { this.reasoning = reasoning; }
+        public String getOutput() { return output; }
+        public void setOutput(String output) { this.output = output; }
         public boolean isLeaf() { return leaf; }
         public void setLeaf(boolean leaf) { this.leaf = leaf; }
         public Integer getDurationMs() { return durationMs; }
@@ -75,6 +100,8 @@ public class ForestTreeResponse {
         public void setRouteConfidence(Double routeConfidence) { this.routeConfidence = routeConfidence; }
         public List<A2aMessage> getA2aMessages() { return a2aMessages; }
         public void setA2aMessages(List<A2aMessage> a2aMessages) { this.a2aMessages = a2aMessages; }
+        public List<ToolCall> getToolCalls() { return toolCalls; }
+        public void setToolCalls(List<ToolCall> toolCalls) { this.toolCalls = toolCalls; }
         public List<TreeNode> getChildren() { return children; }
         public void setChildren(List<TreeNode> children) { this.children = children; }
     }

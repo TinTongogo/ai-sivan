@@ -1,8 +1,9 @@
 package com.icusu.sivan.infra.memory.flashback;
 
 import com.icusu.sivan.common.enums.MemoryLevel;
-import com.icusu.sivan.domain.memory.MemoryEntry;
-import com.icusu.sivan.domain.memory.IMemoryRepository;
+import com.icusu.sivan.domain.forest.port.ForestRepository;
+import com.icusu.sivan.domain.forest.tree.node.MemoryNode;
+import com.icusu.sivan.domain.forest.tree.TreeNode;
 import com.icusu.sivan.domain.memory.MemoryRetrievalStrategy;
 import com.icusu.sivan.domain.memory.curve.EbbinghausForgettingCurve;
 import com.icusu.sivan.domain.memory.flashback.FlashbackCandidate;
@@ -24,7 +25,7 @@ import java.util.*;
 @RequiredArgsConstructor
 public class FlashbackScanner implements MemoryRetrievalStrategy<FlashbackCandidate> {
 
-    private final IMemoryRepository memoryRepository;
+    private final ForestRepository forestRepository;
     private final IEmbeddingService embeddingService;
 
     private static final int MAX_CANDIDATES = 10;
@@ -33,25 +34,25 @@ public class FlashbackScanner implements MemoryRetrievalStrategy<FlashbackCandid
 
     private static final Map<MemoryLevel, Double> LEVEL_WEIGHTS = Map.of(
             MemoryLevel.SESSION, 0.3,
-            MemoryLevel.USER,    1.0,
-            MemoryLevel.TEAM,    0.7,
-            MemoryLevel.PROJECT, 0.8
+            MemoryLevel.PROJECT, 0.8,
+            MemoryLevel.USER,    1.0
     );
 
     public List<FlashbackCandidate> scan(UUID accountId, String context, int limit) {
-        List<MemoryEntry> allMemories;
+        List<? extends TreeNode> allNodes;
         if (context != null && !context.isBlank() && embeddingService.isAvailable()) {
-            allMemories = vectorSearch(accountId, context, MAX_CANDIDATES * 2);
+            allNodes = vectorSearch(accountId, context, MAX_CANDIDATES * 2);
         } else {
-            allMemories = memoryRepository.findAllByAccount(accountId);
+            allNodes = forestRepository.findNodesByTypeAndAccount(accountId, "memory", MAX_CANDIDATES * 2);
         }
-        if (allMemories == null) allMemories = Collections.emptyList();
+        if (allNodes == null) allNodes = Collections.emptyList();
         LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
         int take = Math.min(Math.max(limit, 1), MAX_CANDIDATES);
 
-        List<FlashbackCandidate> candidates = allMemories.stream()
-                .filter(m -> m.getLevel() != null && m.getLastAccessedAt() != null)
-                .filter(m -> !Boolean.TRUE.equals(m.getArchived()))
+        List<FlashbackCandidate> candidates = allNodes.stream()
+                .filter(n -> n instanceof MemoryNode)
+                .map(n -> (MemoryNode) n)
+                .filter(m -> m.metadata().get("archived") == null || !Boolean.TRUE.equals(m.metadata().get("archived")))
                 .map(m -> toCandidate(m, now, context))
                 .filter(c -> c.getRelevanceScore() > 0)
                 .sorted(Comparator.comparingDouble(FlashbackCandidate::getRelevanceScore).reversed())
@@ -71,64 +72,57 @@ public class FlashbackScanner implements MemoryRetrievalStrategy<FlashbackCandid
         return scan(accountId, query, limit);
     }
 
-    private List<MemoryEntry> vectorSearch(UUID accountId, String context, int topK) {
+    private List<? extends TreeNode> vectorSearch(UUID accountId, String context, int topK) {
         float[] queryVec = embeddingService.embed(context);
         if (queryVec == null) {
-            return memoryRepository.findAllByAccount(accountId);
+            return forestRepository.findNodesByTypeAndAccount(accountId, "memory", topK);
         }
-        Set<UUID> seen = new HashSet<>();
-        List<MemoryEntry> results = new ArrayList<>();
-        for (MemoryLevel level : MemoryLevel.values()) {
-            List<MemoryEntry> hits = memoryRepository.semanticSearch(
-                    accountId, level, "", queryVec, topK);
-            for (MemoryEntry hit : hits) {
-                if (hit != null && seen.add(hit.getMemoryId())) {
-                    results.add(hit);
-                }
-            }
-        }
-        return results;
+        return forestRepository.semanticSearchMemory(accountId, queryVec, topK, null);
     }
 
     public List<FlashbackCandidate> quickScan(UUID accountId) {
         return scan(accountId, "", 5);
     }
 
-    private FlashbackCandidate toCandidate(MemoryEntry entry, LocalDateTime now, String context) {
-        int accessCount = entry.getAccessCount() != null ? entry.getAccessCount() : 0;
+    private FlashbackCandidate toCandidate(MemoryNode node, LocalDateTime now, String context) {
+        MetadataAccess meta = new MetadataAccess(node.metadata());
+        int accessCount = meta.accessCount();
+        MemoryLevel level = meta.level();
+        java.time.LocalDateTime lastAccessedAt = meta.lastAccessedAt();
+
         double retention = EbbinghausForgettingCurve.calculateRetentionWithAccess(
-                entry.getLevel(), entry.getLastAccessedAt(), Math.max(accessCount, 1), now);
+                level, lastAccessedAt, Math.max(accessCount, 1), now);
 
         if (retention > ACTIVATION_THRESHOLD) {
             return FlashbackCandidate.builder().relevanceScore(0).build();
         }
 
-        double score = computeRelevanceScore(entry, retention, accessCount, context);
+        double score = computeRelevanceScore(node, level, retention, accessCount, context);
 
         return FlashbackCandidate.builder()
-                .memoryId(entry.getMemoryId())
-                .content(entry.getContent())
-                .level(entry.getLevel())
+                .memoryId(java.util.UUID.fromString(node.nodeId()))
+                .content(node.content())
+                .level(level)
                 .relevanceScore(score)
                 .retention(retention)
                 .accessCount(accessCount)
-                .important(Boolean.TRUE.equals(entry.getImportant()))
-                .lastAccessedAt(entry.getLastAccessedAt())
+                .important(meta.important())
+                .lastAccessedAt(lastAccessedAt)
                 .build();
     }
 
-    private double computeRelevanceScore(MemoryEntry entry, double retention,
+    private double computeRelevanceScore(MemoryNode node, MemoryLevel level, double retention,
                                           int accessCount, String context) {
-        double importanceWeight = Boolean.TRUE.equals(entry.getImportant())
-                ? IMPORTANCE_WEIGHT : 1.0;
-        double levelWeight = LEVEL_WEIGHTS.getOrDefault(entry.getLevel(), 0.5);
+        MetadataAccess meta = new MetadataAccess(node.metadata());
+        double importanceWeight = meta.important() ? IMPORTANCE_WEIGHT : 1.0;
+        double levelWeight = LEVEL_WEIGHTS.getOrDefault(level, 0.5);
         double forgettingFactor = 1.0 - Math.max(retention, 0);
         double frequencyFactor = Math.log(accessCount + 1) + 0.5;
 
         double contextBonus = 0.0;
-        if (context != null && !context.isBlank() && entry.getContent() != null) {
+        if (context != null && !context.isBlank() && node.content() != null) {
             String ctx = context.toLowerCase();
-            String content = entry.getContent().toLowerCase();
+            String content = node.content().toLowerCase();
             String[] keywords = ctx.split("[\\s,，。.、！!?？]+");
             long matchCount = Arrays.stream(keywords)
                     .filter(kw -> kw.length() > 1 && content.contains(kw))
@@ -137,5 +131,22 @@ public class FlashbackScanner implements MemoryRetrievalStrategy<FlashbackCandid
         }
 
         return importanceWeight * levelWeight * forgettingFactor * frequencyFactor + contextBonus;
+    }
+
+    /** 从 MemoryNode metadata 中提取字段的辅助类。 */
+    private static class MetadataAccess {
+        private final Map<String, Object> meta;
+        MetadataAccess(Map<String, Object> meta) { this.meta = meta; }
+        int accessCount() { return meta.containsKey("accessCount") ? ((Number)meta.get("accessCount")).intValue() : 0; }
+        MemoryLevel level() {
+            String lv = (String) meta.get("level");
+            return lv != null ? MemoryLevel.valueOf(lv) : MemoryLevel.PROJECT;
+        }
+        java.time.LocalDateTime lastAccessedAt() {
+            Object v = meta.get("lastAccessedAt");
+            if (v instanceof String s) return java.time.LocalDateTime.parse(s);
+            return java.time.LocalDateTime.now(java.time.ZoneOffset.UTC);
+        }
+        boolean important() { return Boolean.TRUE.equals(meta.get("important")); }
     }
 }

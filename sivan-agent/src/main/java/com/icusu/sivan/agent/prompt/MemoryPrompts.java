@@ -41,4 +41,8 @@ public final class MemoryPrompts {
         return new Prompt(content, Prompt.CacheStrategy.DYNAMIC,
                 30 + content.length() / 3, Prompt.OutputFormat.FREE_TEXT);
     }
+
+    /** L2 对话摘要 system prompt — 将单个 turn 压缩为 1-2 句话。 */
+    public static final String L2_SUMMARY_SYSTEM =
+            "你是一个对话摘要助手。将以下对话压缩为 1-2 句话，保留关键信息。";
 }

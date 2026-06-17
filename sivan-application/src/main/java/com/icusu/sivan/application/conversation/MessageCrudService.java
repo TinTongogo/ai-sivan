@@ -9,6 +9,7 @@ import com.icusu.sivan.domain.conversation.Conversation;
 import com.icusu.sivan.domain.conversation.IConversationRepository;
 import com.icusu.sivan.domain.conversation.IMessageRepository;
 import com.icusu.sivan.domain.conversation.Message;
+import com.icusu.sivan.agent.prompt.IntentClassifier;
 import com.icusu.sivan.application.conversation.dto.MessagePageResponse;
 import com.icusu.sivan.application.conversation.dto.MessageResponse;
 import com.icusu.sivan.application.conversation.dto.SendMessageRequest;
@@ -31,6 +32,7 @@ public class MessageCrudService {
     private final IMessageRepository messageRepository;
     private final IConversationRepository conversationRepository;
     private final ConversationCrudService conversationCrudService;
+    private final IntentClassifier intentClassifier;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
@@ -153,7 +155,7 @@ public class MessageCrudService {
     }
 
     /**
-     * 为消息打分（点赞/点踩）。
+     * 为消息打分（点赞/点踩），点赞=分类正确，点踩=分类错误，触发意图分类持续学习。
      */
     public MessageResponse rateMessage(UUID accountId, UUID messageId, String rating) {
         Message message = messageRepository.findById(messageId)
@@ -163,6 +165,14 @@ public class MessageCrudService {
         }
         message.setRating(rating);
         message = messageRepository.save(message);
+
+        // 反馈信号 → IntentClassifier 持续学习
+        if ("dislike".equals(rating)) {
+            intentClassifier.recordCorrection(messageId, false);
+        } else if ("like".equals(rating)) {
+            intentClassifier.recordCorrection(messageId, true);
+        }
+
         return toMessageResponse(message);
     }
 
@@ -313,7 +323,6 @@ public class MessageCrudService {
                 .durationMs(message.getDurationMs())
                 .thinkingDurationMs(message.getThinkingDurationMs())
                 .thinkingTokens(message.getThinkingTokens())
-                .chain(message.getChain())
                 .generationIndex(message.getGenerationIndex())
                 .generationGroup(message.getGenerationGroup())
                 .generationTotal(genTotal)

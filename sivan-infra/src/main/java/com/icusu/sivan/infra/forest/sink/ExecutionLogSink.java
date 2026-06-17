@@ -46,7 +46,7 @@ public class ExecutionLogSink implements EventSink {
                         .build();
                 repository.save(entity);
             } catch (Exception e) {
-                log.debug("写入执行日志失败（不影响执行）: {}", e.getMessage());
+                log.warn("写入执行日志失败（不影响执行）: nodeId={} error={}", event.nodeId(), e.getMessage());
             }
         }
     }

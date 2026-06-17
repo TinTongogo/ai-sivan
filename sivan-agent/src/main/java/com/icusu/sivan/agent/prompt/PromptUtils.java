@@ -1,5 +1,6 @@
 package com.icusu.sivan.agent.prompt;
 
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -19,6 +20,21 @@ public final class PromptUtils {
     /** 要求 LLM 只输出数字。 */
     public static final String NUMBER_ONLY =
             "只输出数字，不要包含任何其他文字或标点。\n";
+
+    /** 任务关键词列表 — 用于判断用户输入是否为需要执行的任务（vs 简单对话）。 */
+    public static final List<String> TASK_KEYWORDS = List.of(
+            // 中文动词
+            "分析", "处理", "生成", "创建", "执行", "查找", "计算", "翻译", "总结",
+            "提取", "转换", "合并", "拆分", "比较", "统计", "预测", "优化",
+            "评估", "评价", "检查", "审查", "审核", "了解", "说明", "描述",
+            "推荐", "建议", "规划", "方案", "策略", "思路",
+            "开发", "研发", "构建", "搭建", "配置", "调试", "修复",
+            "写", "改", "删", "查", "修", "重构", "设计", "实现", "测试", "部署",
+            // 英文动词
+            "analyze", "process", "generate", "create", "execute", "find", "calculate",
+            "translate", "summarize", "extract", "convert", "merge", "split", "compare",
+            "write", "edit", "delete", "query", "fix", "refactor", "design", "implement",
+            "test", "deploy", "evaluate", "review", "check", "plan", "build", "develop");
 
     /** 编排者通用人格前缀，供各模式 system prompt 复用。 */
     public static final String ORCHESTRATOR_PERSONA =

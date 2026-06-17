@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import api from '../../api'
 import { fetchMessageForest, approveHitl, rejectHitl, type ForestTreeResponseNode, type ForestTreeResponse } from '../../api/goals'
 import { useMessage } from '../../utils/message'
 import { useI18n } from '../../utils/i18n'
@@ -14,11 +15,15 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{ close: [] }>()
+const feedbackLoading = ref(false)
 
 const forestData = ref<ForestTreeResponse | null>(null)
 const loading = ref(false)
 const error = ref('')
 const msg = useMessage()
+
+// 执行树缓存：messageId → ForestTreeResponse，同一消息不重复请求
+const forestCache = new Map<string, ForestTreeResponse>()
 
 // HITL: 暂停的节点操作
 const hitlPausedNode = ref<{ nodeId: string; name: string } | null>(null)
@@ -64,9 +69,12 @@ function toForestTreeNode(node: ForestTreeResponseNode): ForestTreeNode {
     status: node.status as ForestTreeNode['status'],
     mode: node.mode as ForestTreeNode['mode'] | undefined,
     agent: node.agent,
+    reasoning: (node as any).reasoning,
     isLeaf: node.leaf,
     routeTier: node.routeTier,
     routeConfidence: node.routeConfidence,
+    output: (node as any).output,
+    toolCalls: (node as any).toolCalls?.map((tc: any) => ({ name: tc.name, count: tc.count, status: tc.status })),
     children: node.children?.map(toForestTreeNode),
   }
 }
@@ -76,6 +84,18 @@ const treeNode = computed(() => {
   return toForestTreeNode(forestData.value.root)
 })
 
+// ===== 节点级反馈（执行质量评价） =====
+async function handleNodeFeedback(node: ForestTreeNode, rating: 'like' | 'dislike') {
+  if (feedbackLoading.value) return
+  feedbackLoading.value = true
+  try {
+    await api.post('/v2/conversations/node-feedback', { nodeName: node.name, rating })
+    node.feedback = rating
+    msg.success(t('rateSubmitted'))
+  } catch { msg.error(t('rateSubmitFailed')) }
+  finally { feedbackLoading.value = false }
+}
+
 const progressPercent = computed(() => {
   const p = forestData.value?.progress
   if (!p || p.total === 0) return 0
@@ -84,13 +104,42 @@ const progressPercent = computed(() => {
 
 async function loadForest() {
   if (!props.conversationId || !props.messageId) return
+  // 缓存命中：同一消息不重复请求
+  const cached = forestCache.get(props.messageId)
+  if (cached) {
+    forestData.value = cached
+    return
+  }
+
   loading.value = true
   error.value = ''
   try {
     forestData.value = await fetchMessageForest(props.conversationId, props.messageId)
+    forestCache.set(props.messageId, forestData.value!)
   } catch (e: any) {
     error.value = e.response?.data?.message || t('pipelineLoadFailed')
     forestData.value = null
+    // 自动重试一次（2s 后）
+    setTimeout(() => {
+      if (props.messageId && !forestCache.has(props.messageId)) {
+        loadForestInternal()
+      }
+    }, 2000)
+  } finally {
+    loading.value = false
+  }
+}
+
+/** 无缓存检查的内部加载（用于重试） */
+async function loadForestInternal() {
+  if (!props.conversationId || !props.messageId) return
+  loading.value = true
+  try {
+    forestData.value = await fetchMessageForest(props.conversationId, props.messageId)
+    forestCache.set(props.messageId, forestData.value!)
+    error.value = ''
+  } catch {
+    // 重试失败保持错误状态
   } finally {
     loading.value = false
   }
@@ -111,7 +160,8 @@ watch(() => props.messageId, loadForest, { immediate: true })
             <span class="pipeline-summary__pct">{{ progressPercent }}%</span>
           </div>
           <div v-if="treeNode" class="pipeline-tree">
-            <ForestTree :node="treeNode" :depth="0" :defaultCollapsedDepth="2" />
+            <ForestTree :node="treeNode" :depth="0" :is-last="true" :defaultCollapsedDepth="2"
+              @feedback="handleNodeFeedback" />
           </div>
           <!-- HITL: 暂停节点操作 -->
           <div v-if="pausedNode && forestData?.forestId && pausedNode.nodeId" class="pipeline-hitl">
@@ -133,6 +183,8 @@ watch(() => props.messageId, loadForest, { immediate: true })
           <div v-if="!forestData && !loading && !error" class="pipeline-empty">
             {{ t('pipelineEmpty') }}
           </div>
+
+
         </div>
       </div>
     </div>

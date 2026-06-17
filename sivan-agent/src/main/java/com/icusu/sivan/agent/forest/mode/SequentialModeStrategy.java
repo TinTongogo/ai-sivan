@@ -45,7 +45,8 @@ public class SequentialModeStrategy implements ModeStrategy {
             int depth,
             Continuation next
     ) {
-        // 累计上下文：前一步的 DETAIL 事件内容累积并传递到后一步
+        // 累计上下文：前一步的输出累积并传递到后一步，带步骤标签以便汇总步骤引用
+        final int[] stepIndex = {0};
         AtomicReference<String> accumulatedOutput = new AtomicReference<>("");
 
         return Flux.fromIterable(node.children())
@@ -57,17 +58,27 @@ public class SequentialModeStrategy implements ModeStrategy {
                         return Flux.empty();
                     }
 
-                    // 将累积的上一步输出注入到子节点的元数据中
-                    String prevOutput = accumulatedOutput.get();
-                    if (!prevOutput.isEmpty() && child instanceof ContentNode cn) {
-                        cn.metadata().put("accumulatedContext", prevOutput);
+                    if (child instanceof ContentNode cn) {
+                        // 标记为 SEQUENTIAL 子任务：不携带完整对话历史
+                        child.putMetadata("_isSequentialSubtask", "true");
+
+                        // 将累积的上一步输出（带步骤标签）注入子节点元数据
+                        String prevOutput = accumulatedOutput.get();
+                        if (!prevOutput.isEmpty()) {
+                            child.putMetadata("accumulatedContext", prevOutput);
+                        }
                     }
+
+                    stepIndex[0]++;
+                    final int currentStep = stepIndex[0];
+                    int totalSteps = node.children().size();
 
                     return executeChild(execChild, ctx, depth, next)
                             .doOnNext(event -> {
-                                // 累积当前步的输出，供下一步使用
                                 if (event.type() == ForestEvent.EventType.DETAIL) {
-                                    accumulatedOutput.updateAndGet(s -> s + event.message());
+                                    // 用步骤标签包裹输出，方便后续步骤引用
+                                    String labeled = "步骤" + currentStep + "/" + totalSteps + "：" + event.message();
+                                    accumulatedOutput.updateAndGet(s -> s + (s.isEmpty() ? "" : "\n") + labeled);
                                 }
                             });
                 });

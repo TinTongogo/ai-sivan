@@ -36,7 +36,6 @@ public class MessageResponse {
     private Integer durationMs;
     private Integer thinkingDurationMs;
     private Integer thinkingTokens;
-    private String chain;
     private Integer generationIndex;
     private UUID generationGroup;
     private Integer generationTotal;

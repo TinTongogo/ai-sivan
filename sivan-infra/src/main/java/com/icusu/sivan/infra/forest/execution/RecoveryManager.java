@@ -6,8 +6,7 @@ import com.icusu.sivan.domain.forest.context.ExecutionContext;
 import com.icusu.sivan.domain.forest.port.ForestRepository;
 import com.icusu.sivan.domain.forest.tree.ExecutableNode;
 import com.icusu.sivan.domain.forest.tree.TreeNode;
-import com.icusu.sivan.infra.forest.entity.ForestEntity;
-import com.icusu.sivan.infra.forest.repository.ForestJpaRepository;
+import com.icusu.sivan.infra.forest.entity.ForestNodeEntity;
 import com.icusu.sivan.infra.forest.repository.ForestNodeJpaRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,16 +34,13 @@ public class RecoveryManager {
     private static final Logger log = LoggerFactory.getLogger(RecoveryManager.class);
 
     private final ForestNodeJpaRepository forestNodeJpaRepository;
-    private final ForestJpaRepository forestJpaRepository;
     private final ForestRepository forestRepository;
     private final GoalExecutionService goalExecutionService;
 
     public RecoveryManager(ForestNodeJpaRepository forestNodeJpaRepository,
-                           ForestJpaRepository forestJpaRepository,
                            ForestRepository forestRepository,
                            GoalExecutionService goalExecutionService) {
         this.forestNodeJpaRepository = forestNodeJpaRepository;
-        this.forestJpaRepository = forestJpaRepository;
         this.forestRepository = forestRepository;
         this.goalExecutionService = goalExecutionService;
     }
@@ -79,12 +75,14 @@ public class RecoveryManager {
 
     /** 从断点恢复一棵树。 */
     private void resumeTree(String rootNodeId, UUID forestId) {
-        ForestEntity forestEntity = forestJpaRepository.findById(forestId).orElse(null);
-        if (forestEntity == null) {
-            log.warn("RecoveryManager: Forest 不存在 forestId={}", forestId);
+        // 从 root 节点读取 accountId（forests 表已废弃）
+        UUID accountId = forestNodeJpaRepository.findById(rootNodeId)
+                .map(ForestNodeEntity::getAccountId)
+                .orElse(null);
+        if (accountId == null) {
+            log.warn("RecoveryManager: root 节点不存在或缺少 accountId, rootNodeId={}", rootNodeId);
             return;
         }
-        UUID accountId = forestEntity.getAccountId();
 
         // 加载完整子树
         TreeNode root = forestRepository.findSubtree(rootNodeId, accountId);
@@ -117,10 +115,15 @@ public class RecoveryManager {
 
         log.info("RecoveryManager: 恢复执行 rootNodeId={} from={}", rootNodeId, nextPending.nodeId());
 
+        // 从 root 节点读取项目信息
+        String title = forestNodeJpaRepository.findById(rootNodeId)
+                .map(ForestNodeEntity::getContent)
+                .orElse("");
+        UUID projectId = forestNodeJpaRepository.findById(rootNodeId)
+                .map(ForestNodeEntity::getProjectId)
+                .orElse(null);
         // 构建 Forest 对象并从断点继续执行
-        Forest forest = new Forest(forestId, accountId, forestEntity.getProjectId(),
-                forestEntity.getConversationId(),
-                forestEntity.getTitle(), rootNodeId);
+        Forest forest = new Forest(forestId, accountId, projectId, title, rootNodeId);
         ExecutionContext ctx = ExecutionContext.create(accountId);
 
         // 使用 executeOnly 重新执行（不会重复创建森林结构）
@@ -136,7 +139,7 @@ public class RecoveryManager {
     /** 深度遍历找最后一个 COMPLETED 叶子。 */
     private TreeNode findLastCompleted(TreeNode node) {
         if (node.children().isEmpty()) {
-            if (node instanceof ExecutableNode en && en.status() == NodeStatus.COMPLETED) {
+            if (node.status() == NodeStatus.COMPLETED) {
                 return node;
             }
             return null;

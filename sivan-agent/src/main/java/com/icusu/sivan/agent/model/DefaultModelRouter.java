@@ -41,7 +41,7 @@ public class DefaultModelRouter implements ModelRouter, ModelAccessor {
         }
         LlmProvider provider = getDefaultProvider(accountId);
         Model model = resolveModel(provider);
-        model = new MetricsModel(new RateLimitModel(new RetryableModel(model, 2), 30));
+        model = new MetricsModel(new RateLimitModel(new RetryableModel(model, 2), 60));
         defaultModelCache.put(accountId, new CacheEntry(model, Instant.now()));
         return model;
     }

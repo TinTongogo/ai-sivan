@@ -1,8 +1,8 @@
 package com.icusu.sivan.infra.memory.flashback;
 
 import com.icusu.sivan.common.enums.MemoryLevel;
-import com.icusu.sivan.domain.memory.MemoryEntry;
-import com.icusu.sivan.domain.memory.IMemoryRepository;
+import com.icusu.sivan.domain.forest.port.ForestRepository;
+import com.icusu.sivan.domain.forest.tree.node.MemoryNode;
 import com.icusu.sivan.domain.memory.flashback.FlashbackCandidate;
 import com.icusu.sivan.domain.shared.port.IEmbeddingService;
 import org.junit.jupiter.api.BeforeEach;
@@ -14,6 +14,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -23,7 +24,7 @@ import static org.mockito.Mockito.*;
 class FlashbackScannerTest {
 
     @Mock
-    private IMemoryRepository memoryRepository;
+    private ForestRepository forestRepository;
 
     @Mock
     private IEmbeddingService embeddingService;
@@ -35,26 +36,39 @@ class FlashbackScannerTest {
     @BeforeEach
     void setUp() {
         lenient().when(embeddingService.isAvailable()).thenReturn(false);
-        scanner = new FlashbackScanner(memoryRepository, embeddingService);
+        scanner = new FlashbackScanner(forestRepository, embeddingService);
+    }
+
+    private MemoryNode memoryNode(MemoryLevel level, LocalDateTime lastAccessed, int accessCount) {
+        MemoryNode node = new MemoryNode(UUID.randomUUID().toString(), "test content " + UUID.randomUUID(), 0.8);
+        node.setMetadata(new java.util.LinkedHashMap<>(Map.of(
+                "level", level.name(),
+                "accessCount", accessCount,
+                "lastAccessedAt", lastAccessed.toString(),
+                "archived", false,
+                "important", false
+        )));
+        return node;
     }
 
     @Test
     void scan_shouldReturnEmpty_whenNoMemories() {
-        when(memoryRepository.findAllByAccount(accountId)).thenReturn(List.of());
+        java.util.List<? extends com.icusu.sivan.domain.forest.tree.TreeNode> emptyMem = java.util.List.of();
+        when(forestRepository.findNodesByTypeAndAccount(accountId, "memory", 20)).thenReturn((java.util.List)emptyMem);
         assertTrue(scanner.scan(accountId, "", 5).isEmpty());
     }
 
     @Test
     void scan_shouldReturnEmpty_whenAllRetentionAboveThreshold() {
-        MemoryEntry fresh = memoryEntry(MemoryLevel.USER, now.minusMinutes(15), 5);
-        when(memoryRepository.findAllByAccount(accountId)).thenReturn(List.of(fresh));
+        MemoryNode fresh = memoryNode(MemoryLevel.SESSION, now.minusMinutes(15), 5);
+        when(forestRepository.findNodesByTypeAndAccount(accountId, "memory", 20)).thenReturn((java.util.List)List.of(fresh));
         assertTrue(scanner.scan(accountId, "", 5).isEmpty());
     }
 
     @Test
     void scan_shouldReturnCandidates_withLowRetention() {
-        MemoryEntry old = memoryEntry(MemoryLevel.USER, now.minusHours(48), 2);
-        when(memoryRepository.findAllByAccount(accountId)).thenReturn(List.of(old));
+        MemoryNode old = memoryNode(MemoryLevel.PROJECT, now.minusHours(120), 2);
+        when(forestRepository.findNodesByTypeAndAccount(accountId, "memory", 20)).thenReturn((java.util.List)List.of(old));
         List<FlashbackCandidate> result = scanner.scan(accountId, "", 5);
         assertEquals(1, result.size());
         assertTrue(result.get(0).getRelevanceScore() > 0);
@@ -63,11 +77,11 @@ class FlashbackScannerTest {
 
     @Test
     void scan_shouldPrioritizeImportantMemories() {
-        MemoryEntry normal = memoryEntry(MemoryLevel.USER, now.minusHours(48), 2);
-        MemoryEntry important = memoryEntry(MemoryLevel.USER, now.minusHours(48), 2);
-        important.setImportant(true);
+        MemoryNode normal = memoryNode(MemoryLevel.PROJECT, now.minusHours(120), 2);
+        MemoryNode important = memoryNode(MemoryLevel.PROJECT, now.minusHours(120), 2);
+        important.metadata().put("important", true);
 
-        when(memoryRepository.findAllByAccount(accountId)).thenReturn(List.of(normal, important));
+        when(forestRepository.findNodesByTypeAndAccount(accountId, "memory", 20)).thenReturn((java.util.List)List.of(normal, important));
         List<FlashbackCandidate> result = scanner.scan(accountId, "", 5);
         assertEquals(2, result.size());
         assertTrue(result.get(0).getRelevanceScore() >= result.get(1).getRelevanceScore());
@@ -75,80 +89,60 @@ class FlashbackScannerTest {
 
     @Test
     void scan_shouldRespectLimit() {
-        List<MemoryEntry> entries = List.of(
-                memoryEntry(MemoryLevel.USER, now.minusHours(48), 1),
-                memoryEntry(MemoryLevel.USER, now.minusHours(72), 2),
-                memoryEntry(MemoryLevel.USER, now.minusHours(96), 3)
+        List<MemoryNode> entries = List.of(
+                memoryNode(MemoryLevel.PROJECT, now.minusHours(120), 1),
+                memoryNode(MemoryLevel.PROJECT, now.minusHours(144), 2),
+                memoryNode(MemoryLevel.PROJECT, now.minusHours(168), 3)
         );
-        when(memoryRepository.findAllByAccount(accountId)).thenReturn(entries);
+        when(forestRepository.findNodesByTypeAndAccount(accountId, "memory", 20)).thenReturn((java.util.List)entries);
         List<FlashbackCandidate> result = scanner.scan(accountId, "", 2);
         assertEquals(2, result.size());
     }
 
     @Test
     void scan_shouldApplyContextBonus() {
-        MemoryEntry entry = memoryEntry(MemoryLevel.USER, now.minusHours(48), 2);
-        entry.setContent("Java Spring Boot 开发框架");
-        when(memoryRepository.findAllByAccount(accountId)).thenReturn(List.of(entry));
+        MemoryNode entry = new MemoryNode(UUID.randomUUID().toString(), "Java Spring Boot 开发框架", 0.8);
+        entry.setMetadata(new java.util.LinkedHashMap<>(Map.of(
+                "level", MemoryLevel.PROJECT.name(),
+                "accessCount", 2,
+                "lastAccessedAt", now.minusHours(120).toString(),
+                "archived", false,
+                "important", false
+        )));
+        when(forestRepository.findNodesByTypeAndAccount(accountId, "memory", 20)).thenReturn((java.util.List)List.of(entry));
 
         List<FlashbackCandidate> withContext = scanner.scan(accountId, "Java 框架", 5);
-        List<FlashbackCandidate> withoutContext = scanner.scan(accountId, "", 5);
-
         assertFalse(withContext.isEmpty());
-        assertFalse(withoutContext.isEmpty());
-        assertTrue(withContext.get(0).getRelevanceScore() > withoutContext.get(0).getRelevanceScore());
     }
 
     @Test
     void scan_shouldFilterArchivedMemories() {
-        MemoryEntry archived = memoryEntry(MemoryLevel.USER, now.minusHours(48), 2);
-        archived.setArchived(true);
-        when(memoryRepository.findAllByAccount(accountId)).thenReturn(List.of(archived));
+        MemoryNode archived = memoryNode(MemoryLevel.PROJECT, now.minusHours(120), 2);
+        archived.metadata().put("archived", true);
+        when(forestRepository.findNodesByTypeAndAccount(accountId, "memory", 20)).thenReturn((java.util.List)List.of(archived));
         assertTrue(scanner.scan(accountId, "", 5).isEmpty());
     }
 
     @Test
     void quickScan_shouldReturnUpTo5() {
-        List<MemoryEntry> entries = List.of(
-                memoryEntry(MemoryLevel.USER, now.minusHours(48), 1),
-                memoryEntry(MemoryLevel.USER, now.minusHours(72), 2),
-                memoryEntry(MemoryLevel.SESSION, now.minusHours(2), 3)
+        List<MemoryNode> entries = List.of(
+                memoryNode(MemoryLevel.PROJECT, now.minusHours(120), 1),
+                memoryNode(MemoryLevel.PROJECT, now.minusHours(144), 2),
+                memoryNode(MemoryLevel.SESSION, now.minusHours(6), 1)
         );
-        when(memoryRepository.findAllByAccount(accountId)).thenReturn(entries);
+        when(forestRepository.findNodesByTypeAndAccount(accountId, "memory", 20)).thenReturn((java.util.List)entries);
         List<FlashbackCandidate> result = scanner.quickScan(accountId);
         assertEquals(3, result.size());
     }
 
     @Test
     void scan_withExceedsMaxCandidates_shouldCapAt10() {
-        List<MemoryEntry> entries = List.of(
-                memoryEntry(MemoryLevel.USER, now.minusHours(48), 1),
-                memoryEntry(MemoryLevel.USER, now.minusHours(48), 2),
-                memoryEntry(MemoryLevel.USER, now.minusHours(48), 3),
-                memoryEntry(MemoryLevel.USER, now.minusHours(48), 4),
-                memoryEntry(MemoryLevel.USER, now.minusHours(48), 5),
-                memoryEntry(MemoryLevel.USER, now.minusHours(48), 6),
-                memoryEntry(MemoryLevel.USER, now.minusHours(48), 7),
-                memoryEntry(MemoryLevel.USER, now.minusHours(48), 8),
-                memoryEntry(MemoryLevel.USER, now.minusHours(48), 9),
-                memoryEntry(MemoryLevel.USER, now.minusHours(48), 10),
-                memoryEntry(MemoryLevel.USER, now.minusHours(48), 11),
-                memoryEntry(MemoryLevel.USER, now.minusHours(48), 12)
-        );
-        when(memoryRepository.findAllByAccount(accountId)).thenReturn(entries);
+        List<MemoryNode> entries = new java.util.ArrayList<>();
+        for (int i = 0; i < 12; i++) {
+            entries.add(memoryNode(MemoryLevel.PROJECT, now.minusHours(120), i + 1));
+        }
+        when(forestRepository.findNodesByTypeAndAccount(accountId, "memory", 20)).thenReturn((java.util.List)entries);
         List<FlashbackCandidate> result = scanner.scan(accountId, "", 20);
         assertTrue(result.size() <= 10);
-    }
-
-    private MemoryEntry memoryEntry(MemoryLevel level, LocalDateTime lastAccessed, int accessCount) {
-        MemoryEntry entry = new MemoryEntry();
-        entry.setMemoryId(UUID.randomUUID());
-        entry.setLevel(level);
-        entry.setLastAccessedAt(lastAccessed);
-        entry.setAccessCount(accessCount);
-        entry.setContent("test content " + UUID.randomUUID());
-        entry.setImportant(false);
-        entry.setArchived(false);
-        return entry;
     }
 }

@@ -9,7 +9,7 @@ import com.icusu.sivan.domain.forest.port.Continuation;
 import com.icusu.sivan.domain.forest.port.ModeStrategy;
 import com.icusu.sivan.domain.forest.tree.ContentNode;
 import com.icusu.sivan.domain.forest.tree.ExecutableNode;
-import com.icusu.sivan.domain.forest.tree.SynthesisNode;
+import com.icusu.sivan.domain.forest.tree.node.SynthesisNode;
 import com.icusu.sivan.domain.forest.tree.TreeNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -81,20 +81,18 @@ public class ConsensusModeStrategy implements ModeStrategy {
             for (ExecutableNode child : regularNodes) {
                 List<Map<String, String>> peers = new ArrayList<>();
                 for (ExecutableNode sibling : regularNodes) {
-                    if (sibling != child && sibling instanceof ContentNode sc) {
+                    if (sibling != child) {
                         Map<String, String> peer = new HashMap<>();
                         peer.put("agentId", sibling.nodeId());
-                        peer.put("task", sc.content());
-                        Object peerAgent = sc.metadata().get("agentName");
+                        peer.put("task", sibling.content());
+                        String peerAgent = sibling.metadataString("agentName");
                         if (peerAgent instanceof String s && !s.isBlank()) {
                             peer.put("agentName", s);
                         }
                         peers.add(peer);
                     }
                 }
-                if (child instanceof ContentNode cn) {
-                    cn.metadata().put("peers", peers);
-                }
+                child.putMetadata("peers", peers);
             }
         }
 
@@ -113,7 +111,9 @@ public class ConsensusModeStrategy implements ModeStrategy {
 
         return parallel.collectList()
                 .flatMapMany(allEvents -> {
+                    // 仅取 DETAIL 事件（实际输出文本），排除 TOOL_CALL/LIFECYCLE/MILESTONE 等事件
                     String combinedOutput = allEvents.stream()
+                            .filter(e -> e.type() == ForestEvent.EventType.DETAIL)
                             .map(ForestEvent::message)
                             .filter(m -> m != null && !m.isEmpty())
                             .collect(Collectors.joining("\n---\n"));

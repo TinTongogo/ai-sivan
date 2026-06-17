@@ -1,6 +1,7 @@
 package com.icusu.sivan.application.knowledge;
 
 import com.icusu.sivan.agent.model.ModelRouter;
+import com.icusu.sivan.agent.prompt.KnowledgePrompts;
 import com.icusu.sivan.core.message.Msg;
 import com.icusu.sivan.core.message.Role;
 import com.icusu.sivan.core.model.Model;
@@ -25,19 +26,6 @@ public class QueryRewriter {
 
     private final ModelRouter modelRouter;
 
-    /** 查询改写系统提示词。 */
-    private static final String REWRITE_PROMPT = """
-            你是一个搜索查询改写专家。请将用户的搜索问题改写为 2-3 个不同表述的变体，
-            覆盖同义词、不同表述角度、更精确的术语，以帮助搜索引擎找到更多相关结果。
-
-            要求：
-            - 每行一个变体，不要编号
-            - 保持原意的同时使用不同的词汇和表述方式
-            - 如果原问题很短，补充上下文相关的扩展
-            - 直接输出变体，不要解释
-
-            用户问题：%s""";
-
     /**
      * 改写查询，返回包括原始查询在内的 1-3 个变体。
      * 失败时返回仅包含原始查询的列表。
@@ -47,7 +35,7 @@ public class QueryRewriter {
             return Mono.just(java.util.Collections.singletonList(originalQuery));
         }
 
-        String prompt = String.format(REWRITE_PROMPT, originalQuery);
+        String prompt = KnowledgePrompts.rewriteQuery(originalQuery);
         List<Msg> msgs = List.of(Msg.of(Role.USER, prompt));
 
         return modelRouter.getDefaultModel(accountId).chat(msgs, Model.ModelParams.defaults())

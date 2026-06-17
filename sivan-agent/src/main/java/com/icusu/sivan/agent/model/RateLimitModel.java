@@ -15,9 +15,9 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * 速率限制包装 — 按模型限制每分钟调用次数。
+ * 速率限制包装 — 按模型限制每分钟调用次数，超限时等待而非报错。
  * <p>
- * v1 Model 装饰器，与 RetryableModel / UsageTrackingModel 配合使用。
+ * 使用滑动时间窗口 + 等待队列，不阻塞线程。
  */
 @Slf4j
 public class RateLimitModel implements Model {
@@ -34,7 +34,7 @@ public class RateLimitModel implements Model {
     }
 
     public RateLimitModel(Model delegate) {
-        this(delegate, 30);
+        this(delegate, 60);
     }
 
     @Override
@@ -42,14 +42,12 @@ public class RateLimitModel implements Model {
 
     @Override
     public Mono<Model.ModelResponse> chat(List<Msg> messages, List<ToolSpec> tools, ModelParams params) {
-        if (!tryAcquire()) return Mono.error(new RateLimitExceededException(modelId()));
-        return delegate.chat(messages, tools, params);
+        return waitForSlot().then(delegate.chat(messages, tools, params));
     }
 
     @Override
     public Flux<ModelChunk> stream(List<Msg> messages, List<ToolSpec> tools, ModelParams params) {
-        if (!tryAcquire()) return Flux.error(new RateLimitExceededException(modelId()));
-        return delegate.stream(messages, tools, params);
+        return waitForSlot().thenMany(delegate.stream(messages, tools, params));
     }
 
     @Override
@@ -57,6 +55,27 @@ public class RateLimitModel implements Model {
         return delegate.embed(text);
     }
 
+    /**
+     * 获取调用配额。达到上限时等待下个时间窗口腾出位置。
+     * 每秒检查一次，非阻塞。
+     */
+    private Mono<Void> waitForSlot() {
+        return Mono.defer(() -> {
+            if (tryAcquire()) return Mono.empty();
+            // 计算到下一个 60 秒窗口重置的等待时间
+            long waitMs = Duration.between(Instant.now(), windowStart.plusSeconds(60)).toMillis();
+            if (waitMs <= 0) return Mono.empty();
+            long pollMs = Math.min(waitMs, 1000);
+            log.debug("[限流] {} 配额已满，等待 {}ms", delegate.modelId(), pollMs);
+            return Mono.delay(Duration.ofMillis(pollMs))
+                    .then(Mono.defer(this::waitForSlot));
+        });
+    }
+
+    /**
+     * 尝试获取一个调用配额。
+     * 每分钟窗口重置一次配额计数器。
+     */
     private synchronized boolean tryAcquire() {
         Instant now = Instant.now();
         if (Duration.between(windowStart, now).toSeconds() >= 60) {

@@ -15,7 +15,6 @@ interface Agent {
   category: string
   systemPrompt: string
   craftDeclaration: string
-  skillIds: string[]
   agentType: string
   status: string
   version: number
@@ -25,17 +24,8 @@ interface Agent {
   updatedAt: string
 }
 
-interface Skill {
-  skillId: string
-  displayName: string
-  skillCode: string
-  category: string
-  description: string
-}
-
 const message = useMessage()
 const agents = ref<Agent[]>([])
-const skills = ref<Skill[]>([])
 const loading = ref(false)
 const showModal = ref(false)
 const editing = ref(false)
@@ -78,19 +68,8 @@ const form = ref<Partial<Agent>>({
   category: '',
   systemPrompt: '',
   craftDeclaration: '',
-  skillIds: [],
   status: 'ACTIVE',
 })
-
-// 技能多选
-function toggleSkill(skillId: string) {
-  const list = form.value.skillIds || []
-  if (list.includes(skillId)) {
-    form.value.skillIds = list.filter(id => id !== skillId)
-  } else {
-    form.value.skillIds = [...list, skillId]
-  }
-}
 
 const agentTypes = computed(() => {
   const set = new Set(agents.value.map(a => a.agentType).filter(Boolean))
@@ -148,7 +127,7 @@ const totalPages = computed(() => Math.max(1, Math.ceil(filteredAgents.value.len
 watch([searchQuery, categoryFilter, agentTypeFilter], () => { page.value = 1 })
 
 onMounted(async () => {
-  await Promise.all([fetchAgents(), fetchSkills()])
+  await fetchAgents()
 })
 
 async function fetchAgents() {
@@ -162,19 +141,11 @@ async function fetchAgents() {
   }
 }
 
-async function fetchSkills() {
-  try {
-    const res: any = await api.get('/skills')
-    skills.value = res.data || []
-  } catch { /* noop */
-  }
-}
-
 function openCreateModal() {
   editing.value = false
   form.value = {
     agentName: '', displayName: '', description: '', category: '',
-    systemPrompt: '', craftDeclaration: '', skillIds: [], status: 'ACTIVE',
+    systemPrompt: '', craftDeclaration: '', status: 'ACTIVE',
   }
   showModal.value = true
 }
@@ -190,7 +161,6 @@ function editAgent(agent: Agent) {
     category: agent.category,
     systemPrompt: agent.systemPrompt,
     craftDeclaration: agent.craftDeclaration,
-    skillIds: agent.skillIds || [],
     status: agent.status,
   }
   showModal.value = true
@@ -207,7 +177,6 @@ function viewAgent(agent: Agent) {
     category: agent.category,
     systemPrompt: agent.systemPrompt,
     craftDeclaration: agent.craftDeclaration,
-    skillIds: agent.skillIds || [],
     status: agent.status,
   }
   showModal.value = true
@@ -293,7 +262,6 @@ async function toggleStatus(agent: Agent) {
           <th>{{ t('nameCol') }}</th>
           <th>{{ t('identifier') }}</th>
           <th>{{ t('typeCol') }}</th>
-          <th>{{ t('skills') }}</th>
           <th>{{ t('version') }}</th>
           <th>{{ t('usageCount') }}</th>
           <th>{{ t('status') }}</th>
@@ -302,7 +270,7 @@ async function toggleStatus(agent: Agent) {
       </template>
       <template #tbody>
         <tr v-if="loading">
-          <td colspan="9" class="td-empty">{{ t('loading') }}</td>
+          <td colspan="8" class="td-empty">{{ t('loading') }}</td>
         </tr>
         <tr v-for="agent in pagedAgents" :key="agent.agentId">
           <td @click.stop><input type="checkbox" :checked="selectedIds.has(agent.agentId)" @change="toggleOne(agent.agentId)"></td>
@@ -314,14 +282,6 @@ async function toggleStatus(agent: Agent) {
           <td>
               <span class="tag" :class="agentTypeTagClass(agent.agentType)">
                 {{ agentTypeLabel(agent.agentType) }}
-              </span>
-          </td>
-          <td>
-              <span v-if="agent.skillIds?.length" class="tag-list">
-                <span v-for="sid in agent.skillIds.slice(0, 2)" :key="sid" class="tag tag-ghost">
-                  {{ skills.find(s => s.skillId === sid)?.displayName || sid.slice(0, 8) }}
-                </span>
-                <span v-if="agent.skillIds.length > 2" class="tag-more">+{{ agent.skillIds.length - 2 }}</span>
               </span>
           </td>
           <td>v{{ agent.version }}</td>
@@ -339,7 +299,7 @@ async function toggleStatus(agent: Agent) {
           </td>
         </tr>
         <tr v-if="!loading && !filteredAgents.length">
-          <td colspan="9" class="td-empty">{{ t('noData') }}</td>
+          <td colspan="8" class="td-empty">{{ t('noData') }}</td>
         </tr>
       </template>
     </PaginatedTable>
@@ -388,24 +348,7 @@ async function toggleStatus(agent: Agent) {
                         :placeholder="t('systemPromptPlaceholder')" :disabled="viewOnly"></textarea>
             </div>
 
-            <!-- 能力配置 -->
-            <div class="form-section-title">{{ t('capabilityConfig') }}</div>
-            <div class="form-group">
-              <label class="form-label">{{ t('bindSkills') }} <span class="form-hint-inline">{{ t('bindSkillsHint') }}</span></label>
-              <div class="skill-selector" v-if="skills.length">
-                <label v-for="skill in skills" :key="skill.skillId" class="skill-checkbox" :class="{ 'is-disabled': viewOnly }">
-                  <input type="checkbox" :checked="(form.skillIds || []).includes(skill.skillId)"
-                         @change="toggleSkill(skill.skillId)" :disabled="viewOnly"/>
-                  <div class="skill-checkbox__info">
-                    <span class="skill-checkbox__name">{{ skill.displayName || skill.skillCode }}</span>
-                    <span v-if="skill.description" class="skill-checkbox__desc">{{ skill.description }}</span>
-                  </div>
-                  <span v-if="skill.category" class="tag tag-info"
-                        style="margin-left:auto;flex-shrink:0;">{{ skill.category }}</span>
-                </label>
-              </div>
-              <div v-else class="form-hint">{{ t('noSkillsAvailable') }}</div>
-            </div>
+            <!-- 能力配置已移除：智能体和技能是组合关系，由运行时的匹配管道决定 -->
           </div>
           <div class="modal__footer">
             <template v-if="viewOnly">

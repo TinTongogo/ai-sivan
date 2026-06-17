@@ -1,10 +1,13 @@
 package com.icusu.sivan.infra.routing.entity;
 
+import com.icusu.sivan.infra.knowledge.entity.FloatArrayVectorType;
 import com.icusu.sivan.infra.shared.entity.BaseCreateOnlyEntity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.ColumnTransformer;
 import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.annotations.Type;
 import org.hibernate.type.SqlTypes;
 
 import java.util.UUID;
@@ -58,7 +61,9 @@ public class RoutingDecisionEntity extends BaseCreateOnlyEntity {
     @Column(columnDefinition = "TEXT")
     private String reasoning;
 
-    /** 任务 embedding 向量（1024 维，pgvector）。由 hibernate-vector 自动类型映射。 */
+    /** 任务 embedding 向量（1024 维，pgvector）。 */
+    @Type(FloatArrayVectorType.class)
+    @ColumnTransformer(write = "?::vector")
     @Column(name = "task_embedding", columnDefinition = "vector(1024)")
     private float[] taskEmbedding;
 

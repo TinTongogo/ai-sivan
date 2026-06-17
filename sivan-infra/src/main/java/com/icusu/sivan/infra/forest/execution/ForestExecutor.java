@@ -313,6 +313,21 @@ public class ForestExecutor {
                                 ? (int) Math.max(0, cn.estimateSubtreeTokens()) : 0;
                         emitStatusChange(node, NodeStatus.RUNNING, ctx, dur, tok > 0 ? tok : null);
                     }
+                    // 持久化节点产出（output/thinking 等 metadata）
+                    if (node instanceof com.icusu.sivan.domain.forest.tree.ContentNode cn) {
+                        String output = cn.metadataString("output");
+                        String thinking = cn.metadataString("thinking");
+                        if (output != null || thinking != null) {
+                            java.util.Map<String, Object> meta = new java.util.HashMap<>();
+                            if (output != null) meta.put("output", output);
+                            if (thinking != null) meta.put("thinking", thinking);
+                            try {
+                                forestRepository.updateNodeContent(node.nodeId(), cn.content(), meta, ctx.accountId());
+                            } catch (Exception e) {
+                                log.warn("[执行] 持久化节点产出失败: {}", e.getMessage());
+                            }
+                        }
+                    }
                     ForestEvent completed = ForestEvent.lifecycleWithStatus(
                             node.nodeId(), forestId(), ctx.accountId().toString(),
                             ForestEvent.EventType.LIFECYCLE, NodeStatus.RUNNING, node.status());
@@ -330,11 +345,13 @@ public class ForestExecutor {
                     // 路由反馈：更新 Beta 参数 + 写入 embedding（异步，不阻塞）
                     try {
                         String agentName = node instanceof com.icusu.sivan.domain.forest.tree.ContentNode cn
-                                ? (String) cn.metadata().get("agentName") : null;
+                                ? cn.metadataString("agentName") : null;
                         String taskContent = node instanceof com.icusu.sivan.domain.forest.tree.ContentNode cn2
                                 ? cn2.content() : null;
+                        String routeTier = node instanceof com.icusu.sivan.domain.forest.tree.ContentNode cn3
+                                ? cn3.metadataString("_routeTier") : null;
                         if (agentName != null && taskContent != null && ctx.accountId() != null) {
-                            routeFeedback.onNodeCompleted(ctx.accountId(), agentName, taskContent, true);
+                            routeFeedback.onNodeCompleted(ctx.accountId(), agentName, taskContent, true, routeTier);
                         }
                     } catch (Exception ignored) {}
 
@@ -365,11 +382,13 @@ public class ForestExecutor {
             // 路由反馈（失败）
             try {
                 String agentName = node instanceof com.icusu.sivan.domain.forest.tree.ContentNode cn
-                        ? (String) cn.metadata().get("agentName") : null;
+                        ? cn.metadataString("agentName") : null;
                 String taskContent = node instanceof com.icusu.sivan.domain.forest.tree.ContentNode cn2
                         ? cn2.content() : null;
+                String routeTier = node instanceof com.icusu.sivan.domain.forest.tree.ContentNode cn3
+                        ? cn3.metadataString("_routeTier") : null;
                 if (agentName != null && taskContent != null && ctx.accountId() != null) {
-                    routeFeedback.onNodeCompleted(ctx.accountId(), agentName, taskContent, false);
+                    routeFeedback.onNodeCompleted(ctx.accountId(), agentName, taskContent, false, routeTier);
                 }
             } catch (Exception ignored) {}
 

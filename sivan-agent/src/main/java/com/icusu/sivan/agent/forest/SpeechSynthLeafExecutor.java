@@ -37,7 +37,7 @@ public class SpeechSynthLeafExecutor implements LeafExecutor {
 
     @Override
     public Flux<ForestEvent> execute(TreeNode node, ExecutionContext ctx, EventSink sink) {
-        String text = node instanceof ContentNode cn ? cn.content() : "";
+        String text = node.content();
         if (text.isBlank()) {
             log.warn("[TTS] 空文本: nodeId={}", node.nodeId());
             return Flux.just(ForestEvent.detail(node.nodeId(), null,

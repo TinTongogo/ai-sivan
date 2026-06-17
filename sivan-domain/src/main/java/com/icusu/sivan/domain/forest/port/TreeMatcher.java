@@ -1,6 +1,8 @@
 package com.icusu.sivan.domain.forest.port;
 
 import com.icusu.sivan.domain.forest.tree.ExecutableNode;
+import com.icusu.sivan.domain.forest.tree.node.InnerGoalNode;
+import com.icusu.sivan.domain.forest.tree.node.TaskNode;
 import reactor.core.publisher.Mono;
 
 import java.util.UUID;
@@ -11,8 +13,8 @@ import java.util.UUID;
  * 匹配链：启发式 → Embedding → LLM（逐步增强），
  * 返回不同深度的 {@link ExecutableNode}：
  * <ul>
- *   <li>短消息 → 单步 {@link com.icusu.sivan.domain.forest.tree.TaskNode}</li>
- *   <li>含步骤关键词 → 多步 {@link com.icusu.sivan.domain.forest.tree.InnerGoalNode}</li>
+ *   <li>短消息 → 单步 {@link TaskNode}</li>
+ *   <li>含步骤关键词 → 多步 {@link InnerGoalNode}</li>
  *   <li>复杂描述 → LLM 拆解为多级树</li>
  * </ul>
  */

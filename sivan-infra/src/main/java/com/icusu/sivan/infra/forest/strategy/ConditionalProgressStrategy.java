@@ -36,7 +36,7 @@ public class ConditionalProgressStrategy implements ProgressStrategy {
         int depth = 0;
 
         for (TreeNode child : node.children()) {
-            NodeStatus st = child instanceof ExecutableNode e ? e.status() : NodeStatus.PENDING;
+            NodeStatus st = child.status();
             if (st == NodeStatus.PENDING) {
                 // 未触及的条件分支：只计入 total，不计入 activated
                 Progress sub = recurse.apply(child);
