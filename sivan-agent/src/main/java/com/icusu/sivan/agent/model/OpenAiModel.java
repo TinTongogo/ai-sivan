@@ -242,7 +242,7 @@ public class OpenAiModel implements Model {
             }
         }
 
-        String text = textBuilder.toString();
+        String text = sanitizeForJson(textBuilder.toString());
         List<Content.Image> images = contents.stream()
                 .filter(c -> c instanceof Content.Image)
                 .map(c -> (Content.Image) c)
@@ -312,6 +312,33 @@ public class OpenAiModel implements Model {
             arr.add(node);
         }
         return arr;
+    }
+
+    /** 清理可能破坏 JSON 序列化的字符（工具输出中的二进制残片等）。 */
+    static String sanitizeForJson(String text) {
+        if (text == null || text.isEmpty()) return text;
+        StringBuilder sb = new StringBuilder(text.length());
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c == '\t' || c == '\n' || c == '\r') {
+                sb.append(c);
+            } else if (c < 0x20 || c == 0x7F) {
+                sb.append(' '); // 替换控制字符为空格
+            } else if (c == '\\' && i + 1 < text.length()) {
+                // 检查反斜杠后是否跟非法转义（非 JSON 标准转义字符）
+                char next = text.charAt(i + 1);
+                if ("\"/\\bfnrtu".indexOf(next) == -1) {
+                    sb.append(' '); // 非法转义（如 \x）替换为空格
+                } else {
+                    sb.append(c); // 合法转义，保留
+                }
+            } else if (c == '\\') {
+                sb.append(' '); // 行尾孤立反斜杠，替换为空格
+            } else {
+                sb.append(c);
+            }
+        }
+        return sb.toString();
     }
 
     private ArrayNode toJsonTools(List<ToolSpec> tools) {

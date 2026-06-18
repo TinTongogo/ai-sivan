@@ -75,31 +75,56 @@ public class ForestExecutionOrchestrator {
                                        List<String> convKbIds, UUID conversationId,
                                        RouteResult routeResult,
                                        List<String> convMcpServerIds) {
-        if (!(tree instanceof ContentNode cn)) return;
+        injectMetadataRecursive(tree, prebuiltMsgs, tools, projectPath, accountId, agentName,
+                convKbIds, conversationId, routeResult, convMcpServerIds);
+    }
 
-        cn.metadata().put("prebuiltMessages", prebuiltMsgs);
-        cn.metadata().put("_accountId", accountId.toString());
-        if (projectPath != null) cn.metadata().put("_fileRootPath", projectPath);
-        if (tools != null) cn.metadata().put("preferredToolSpecs", tools);
+    /** 递归注入运行时元数据到树中所有节点。 */
+    private void injectMetadataRecursive(ExecutableNode node, List<Msg> prebuiltMsgs, List<ToolSpec> tools,
+                                          String projectPath, UUID accountId, String agentName,
+                                          List<String> convKbIds, UUID conversationId,
+                                          RouteResult routeResult,
+                                          List<String> convMcpServerIds) {
+        // ContentNode（TaskNode）和 InnerGoalNode 都支持 metadata
+        java.util.Map<String, Object> meta;
+        if (node instanceof ContentNode cn) {
+            meta = cn.metadata();
+        } else {
+            // InnerGoalNode 等非 ContentNode 也支持 metadata 写入
+            meta = node.metadata();
+        }
+
+        meta.put("prebuiltMessages", prebuiltMsgs);
+        meta.put("_accountId", accountId.toString());
+        if (projectPath != null) meta.put("_fileRootPath", projectPath);
+        if (tools != null) meta.put("preferredToolSpecs", tools);
         if (convKbIds != null && !convKbIds.isEmpty()) {
-            cn.metadata().put("_kbNames", String.join(",", convKbIds));
+            meta.put("_kbNames", String.join(",", convKbIds));
         }
         if (convMcpServerIds != null && !convMcpServerIds.isEmpty()) {
-            cn.metadata().put("_mcpServerIds", String.join(",", convMcpServerIds));
+            meta.put("_mcpServerIds", String.join(",", convMcpServerIds));
         }
 
         // 路由元数据
         if (routeResult != null) {
             if (routeResult.agentName() != null) agentName = routeResult.agentName();
             if ("task".equals(routeResult.intent())) {
-                cn.metadata().put("_routeTier", routeResult.tier());
-                cn.metadata().put("_routeConfidence", routeResult.confidence());
+                meta.put("_routeTier", routeResult.tier());
+                meta.put("_routeConfidence", routeResult.confidence());
                 if (routeResult.matchedSkillIds() != null && !routeResult.matchedSkillIds().isEmpty()) {
-                    cn.metadata().put("_matchedSkillIds", String.join(",", routeResult.matchedSkillIds()));
+                    meta.put("_matchedSkillIds", String.join(",", routeResult.matchedSkillIds()));
                 }
             }
         }
-        if (agentName != null && !agentName.isBlank()) cn.metadata().put("agentName", agentName);
+        if (agentName != null && !agentName.isBlank()) meta.put("agentName", agentName);
+
+        // 递归子节点
+        for (var child : node.children()) {
+            if (child instanceof ExecutableNode en) {
+                injectMetadataRecursive(en, prebuiltMsgs, null, projectPath, accountId,
+                        agentName, convKbIds, conversationId, routeResult, convMcpServerIds);
+            }
+        }
     }
 
     /**

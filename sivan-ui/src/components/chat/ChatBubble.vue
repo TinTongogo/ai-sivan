@@ -121,10 +121,16 @@ watch(() => props.streaming, (val) => {
   }
 })
 
-function loadTreeDelayed() {
+function loadTreeDelayed(retries = 3) {
   const msgId = props.message.messageId
   const convId = props.message.chain
-  if (!msgId || !convId) return
+  if (!msgId || !convId) {
+    if (retries > 0) {
+      // chain（conversationId）可能还没从 SSE meta 事件到达，延迟重试
+      setTimeout(() => loadTreeDelayed(retries - 1), 1000)
+    }
+    return
+  }
   treeLoading.value = true
   fetchMessageForest(convId, msgId)
     .then(resp => {

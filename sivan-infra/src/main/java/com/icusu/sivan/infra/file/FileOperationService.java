@@ -132,7 +132,7 @@ public class FileOperationService {
             "wasm", "out", "app", "msi", "deb", "rpm"
     );
 
-    public String fileWrite(String rawPath, String content, String fileRootPath, boolean archived) {
+    public String fileWrite(String rawPath, String content, String fileRootPath, boolean archived, boolean append) {
         Path path = securityManager.validate(rawPath, fileRootPath, archived, FileOperation.WRITE);
         if (Files.isDirectory(path)) throw new DomainException("路径是一个目录，无法作为文件写入: " + rawPath);
 
@@ -148,11 +148,39 @@ public class FileOperationService {
 
         try {
             Files.createDirectories(path.getParent());
-            Files.writeString(path, content != null ? content : "");
-            log.info("文件写入成功: {}", rawPath);
-            return "文件已创建/写入: " + rawPath + " (" + Files.size(path) + " 字节)";
+            String safeContent = content != null ? content : "";
+            if (append && Files.exists(path)) {
+                Files.writeString(path, safeContent, java.nio.file.StandardOpenOption.APPEND);
+                log.info("文件追加成功: {}", rawPath);
+                return "文件已追加: " + rawPath + " (" + Files.size(path) + " 字节)";
+            } else {
+                Files.writeString(path, safeContent);
+                log.info("文件写入成功: {}", rawPath);
+                return "文件已创建/写入: " + rawPath + " (" + Files.size(path) + " 字节)";
+            }
         } catch (IOException e) {
             throw new DomainException("写入文件失败: " + e.getMessage());
+        }
+    }
+
+
+    public String fileEdit(String rawPath, String oldText, String newText, String fileRootPath, boolean archived) {
+        java.nio.file.Path path = securityManager.validate(rawPath, fileRootPath, archived, FileOperation.WRITE);
+        if (!java.nio.file.Files.exists(path)) throw new DomainException("文件不存在: " + rawPath);
+        if (java.nio.file.Files.isDirectory(path)) throw new DomainException("路径是一个目录: " + rawPath);
+        try {
+            String content = java.nio.file.Files.readString(path);
+            int idx = content.indexOf(oldText);
+            if (idx == -1) {
+                String preview = oldText.length() > 80 ? oldText.substring(0, 77) + "..." : oldText;
+                throw new DomainException("在文件中未找到匹配的文本: \"" + preview + "\"。请确保 oldText 与文件中的内容完全一致");
+            }
+            String newContent = content.substring(0, idx) + newText + content.substring(idx + oldText.length());
+            java.nio.file.Files.writeString(path, newContent);
+            log.info("文件编辑成功: {}", rawPath);
+            return "文件已编辑: " + rawPath + " (" + oldText.length() + " 字符已替换)";
+        } catch (java.io.IOException e) {
+            throw new DomainException("编辑文件失败: " + e.getMessage());
         }
     }
 

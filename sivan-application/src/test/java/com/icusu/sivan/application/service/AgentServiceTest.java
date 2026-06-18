@@ -3,22 +3,24 @@ package com.icusu.sivan.application.service;
 import com.icusu.sivan.application.agent.dto.AgentResponse;
 import com.icusu.sivan.application.agent.dto.CreateAgentRequest;
 import com.icusu.sivan.application.agent.dto.UpdateAgentRequest;
-import com.icusu.sivan.application.service.AgentService;
 import com.icusu.sivan.common.exception.DomainException;
 import com.icusu.sivan.domain.agent.AgentDefinition;
 import com.icusu.sivan.domain.agent.IAgentRepository;
+import com.icusu.sivan.domain.routing.IBetaParamRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -30,6 +32,10 @@ class AgentServiceTest {
 
     @Mock
     private IAgentRepository agentRepository;
+    @Mock
+    private IBetaParamRepository betaParamRepository;
+    @Mock
+    private JdbcTemplate jdbc;
 
     private AgentService agentService;
 
@@ -40,7 +46,7 @@ class AgentServiceTest {
      */
     @BeforeEach
     void setUp() {
-        agentService = new AgentService(agentRepository);
+        agentService = new AgentService(agentRepository, betaParamRepository, jdbc);
     }
 
     /**

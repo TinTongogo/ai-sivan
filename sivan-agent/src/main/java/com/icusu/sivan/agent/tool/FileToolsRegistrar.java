@@ -33,7 +33,8 @@ public class FileToolsRegistrar {
         registerFileWrite();
         registerFileList();
         registerFileSearch();
-        log.info("文件工具注册完成（file_read/write/list/search）");
+        registerFileEdit();
+        log.info("文件工具注册完成（file_read/write/list/search/edit）");
     }
 
     private void registerFileRead() {
@@ -56,6 +57,9 @@ public class FileToolsRegistrar {
                         return ToolResult.failure("file_read", "rawPath 参数缺失");
                     }
                     String fileRootPath = (String) args.get("_fileRootPath");
+                    if (fileRootPath == null || fileRootPath.isBlank()) {
+                        return ToolResult.failure("file_read", "未配置项目工作目录，文件工具不可用");
+                    }
                     boolean archived = Boolean.TRUE.equals(args.get("_archived"));
                     int offset = args.getOrDefault("offset", 0) instanceof Number n ? n.intValue() : 0;
                     int limit = args.getOrDefault("limit", 0) instanceof Number n ? n.intValue() : 0;
@@ -74,12 +78,13 @@ public class FileToolsRegistrar {
         schema.put("type", "object");
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("rawPath", Map.of("type", "string", "description", "文件路径（相对项目根目录），自动创建父目录"));
-        props.put("content", Map.of("type", "string", "description", "文件完整内容"));
+        props.put("content", Map.of("type", "string", "description", "文件内容"));
+        props.put("mode", Map.of("type", "string", "description", "写入模式：overwrite（覆盖，默认）| append（追加）"));
         schema.put("properties", props);
         schema.put("required", List.of("rawPath", "content"));
 
         toolRegistry.register(
-                new ToolSpec("file_write", "创建或覆写文件，自动创建父目录。替代 bash heredoc/cat/echo 写入。",
+                new ToolSpec("file_write", "写入文件，支持覆盖（overwrite）和追加（append）模式。自动创建父目录。替代 bash heredoc/cat/echo 写入。",
                         schema),
                 (call, ctx) -> Mono.fromCallable(() -> {
                     Map<String, Object> args = call.args();
@@ -89,9 +94,13 @@ public class FileToolsRegistrar {
                         return ToolResult.failure("file_write", "rawPath 参数缺失");
                     }
                     String fileRootPath = (String) args.get("_fileRootPath");
+                    if (fileRootPath == null || fileRootPath.isBlank()) {
+                        return ToolResult.failure("file_write", "未配置项目工作目录，文件工具不可用");
+                    }
                     boolean archived = Boolean.TRUE.equals(args.get("_archived"));
+                    boolean append = "append".equals(args.get("mode"));
                     try {
-                        String output = fileOperationService.fileWrite(rawPath, content, fileRootPath, archived);
+                        String output = fileOperationService.fileWrite(rawPath, content, fileRootPath, archived, append);
                         return ToolResult.success("file_write", output);
                     } catch (Exception e) {
                         log.warn("file_write 异常: {}", e.getMessage());
@@ -119,6 +128,9 @@ public class FileToolsRegistrar {
                         return ToolResult.failure("file_list", "rawPath 参数缺失");
                     }
                     String fileRootPath = (String) args.get("_fileRootPath");
+                    if (fileRootPath == null || fileRootPath.isBlank()) {
+                        return ToolResult.failure("file_list", "未配置项目工作目录，文件工具不可用");
+                    }
                     boolean archived = Boolean.TRUE.equals(args.get("_archived"));
                     String pattern = (String) args.get("pattern");
                     try {
@@ -180,6 +192,42 @@ public class FileToolsRegistrar {
                     } catch (Exception e) {
                         log.warn("file_search 异常: {}", e.getMessage());
                         return ToolResult.failure("file_search", e.getMessage());
+                    }
+                }));
+    }
+
+    private void registerFileEdit() {
+        Map<String, Object> schema = new LinkedHashMap<>();
+        schema.put("type", "object");
+        Map<String, Object> props = new LinkedHashMap<>();
+        props.put("rawPath", Map.of("type", "string", "description", "文件路径（相对项目根目录）"));
+        props.put("oldText", Map.of("type", "string", "description", "要查找的原文，必须完整匹配文件中唯一一处"));
+        props.put("newText", Map.of("type", "string", "description", "替换后的新文本"));
+        schema.put("properties", props);
+        schema.put("required", List.of("rawPath", "oldText", "newText"));
+
+        toolRegistry.register(
+                new ToolSpec("file_edit", "精确查找并替换文件内容。适用于修改文件中的特定部分而不影响其他内容。oldText 必须与文件中待替换的文本完全一致且唯一。替代手动读取→写入的繁琐操作。",
+                        schema),
+                (call, ctx) -> Mono.fromCallable(() -> {
+                    Map<String, Object> args = call.args();
+                    String rawPath = (String) args.get("rawPath");
+                    String oldText = (String) args.get("oldText");
+                    String newText = (String) args.get("newText");
+                    if (rawPath == null || rawPath.isBlank()) return ToolResult.failure("file_edit", "rawPath 参数缺失");
+                    if (oldText == null || oldText.isBlank()) return ToolResult.failure("file_edit", "oldText 参数缺失");
+                    if (newText == null) newText = "";
+                    String fileRootPath = (String) args.get("_fileRootPath");
+                    if (fileRootPath == null || fileRootPath.isBlank()) {
+                        return ToolResult.failure("file_edit", "未配置项目工作目录，文件工具不可用");
+                    }
+                    boolean archived = Boolean.TRUE.equals(args.get("_archived"));
+                    try {
+                        String result = fileOperationService.fileEdit(rawPath, oldText, newText, fileRootPath, archived);
+                        return ToolResult.success("file_edit", result);
+                    } catch (Exception e) {
+                        log.warn("file_edit 异常: {}", e.getMessage());
+                        return ToolResult.failure("file_edit", e.getMessage());
                     }
                 }));
     }

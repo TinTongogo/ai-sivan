@@ -478,6 +478,12 @@ async function removeLlmProvider(idx: number) {
 async function testConnection() {
   const p = currentProvider.value
   if (!p) return
+  // 如果 apiKey 含 "****" 说明是掩码值（用户未重新输入），跳过测试
+  if (p.apiKey?.includes('****')) {
+    message.warning(t('enterApiKeyFirst'))
+    testing.value = false
+    return
+  }
   testing.value = true
   testResult.value = null
   try {

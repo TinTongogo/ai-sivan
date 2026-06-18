@@ -75,10 +75,15 @@ public class RecoveryManager {
 
     /** 从断点恢复一棵树。 */
     private void resumeTree(String rootNodeId, UUID forestId) {
-        // 从 root 节点读取 accountId（forests 表已废弃）
+        // 从 root 节点读取 accountId；若 root 节点无 accountId，从对话容器节点获取
         UUID accountId = forestNodeJpaRepository.findById(rootNodeId)
                 .map(ForestNodeEntity::getAccountId)
                 .orElse(null);
+        if (accountId == null) {
+            accountId = forestNodeJpaRepository.findById(forestId.toString())
+                    .map(ForestNodeEntity::getAccountId)
+                    .orElse(null);
+        }
         if (accountId == null) {
             log.warn("RecoveryManager: root 节点不存在或缺少 accountId, rootNodeId={}", rootNodeId);
             return;

@@ -132,7 +132,7 @@ class FileOperationServiceTest {
         when(securityManager.validate(eq(file.toString()), eq(FILE_ROOT), eq(NOT_ARCHIVED), eq(FileSecurityManager.FileOperation.WRITE)))
                 .thenReturn(file);
 
-        String result = fileOp.fileWrite(file.toString(), "hello world", FILE_ROOT, NOT_ARCHIVED);
+        String result = fileOp.fileWrite(file.toString(), "hello world", FILE_ROOT, NOT_ARCHIVED, false);
 
         assertTrue(result.contains("文件已创建"));
         assertTrue(Files.exists(file));
@@ -145,7 +145,7 @@ class FileOperationServiceTest {
         when(securityManager.validate(eq(file.toString()), eq(FILE_ROOT), eq(NOT_ARCHIVED), eq(FileSecurityManager.FileOperation.WRITE)))
                 .thenReturn(file);
 
-        fileOp.fileWrite(file.toString(), "nested content", FILE_ROOT, NOT_ARCHIVED);
+        fileOp.fileWrite(file.toString(), "nested content", FILE_ROOT, NOT_ARCHIVED, false);
 
         assertTrue(Files.exists(file));
         assertEquals("nested content", Files.readString(file));
@@ -158,7 +158,7 @@ class FileOperationServiceTest {
         when(securityManager.validate(eq(file.toString()), eq(FILE_ROOT), eq(NOT_ARCHIVED), eq(FileSecurityManager.FileOperation.WRITE)))
                 .thenReturn(file);
 
-        fileOp.fileWrite(file.toString(), "new content", FILE_ROOT, NOT_ARCHIVED);
+        fileOp.fileWrite(file.toString(), "new content", FILE_ROOT, NOT_ARCHIVED, false);
 
         assertEquals("new content", Files.readString(file));
     }
@@ -170,6 +170,6 @@ class FileOperationServiceTest {
                 .thenThrow(new DomainException("禁止跨项目访问"));
 
         assertThrows(DomainException.class, () ->
-                fileOp.fileWrite(path, "evil", FILE_ROOT, NOT_ARCHIVED));
+                fileOp.fileWrite(path, "evil", FILE_ROOT, NOT_ARCHIVED, false));
     }
 }

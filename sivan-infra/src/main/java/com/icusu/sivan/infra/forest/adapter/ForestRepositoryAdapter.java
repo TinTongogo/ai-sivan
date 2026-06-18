@@ -119,7 +119,7 @@ public class ForestRepositoryAdapter implements ForestRepository {
 
     @Override
     public void saveNode(TreeNode node, UUID forestId, UUID accountId) {
-        var entity = toEntity(node, forestId);
+        var entity = toEntity(node, forestId, accountId);
         forestNodeJpaRepository.save(entity);
         forestNodeJpaRepository.flush();
     }
@@ -131,7 +131,7 @@ public class ForestRepositoryAdapter implements ForestRepository {
         forestNodeJpaRepository.deleteChildren(forestId, root.nodeId());
 
         List<ForestNodeEntity> entities = new ArrayList<>();
-        collectNodes(root, forestId, entities);
+        collectNodes(root, forestId, entities, accountId);
         forestNodeJpaRepository.saveAll(entities);
         forestNodeJpaRepository.flush();
     }
@@ -328,16 +328,16 @@ public class ForestRepositoryAdapter implements ForestRepository {
     // =====================================================================
 
     /** 递归收集子树所有节点到扁平列表。 */
-    private void collectNodes(TreeNode node, UUID forestId, List<ForestNodeEntity> result) {
-        result.add(toEntity(node, forestId));
+    private void collectNodes(TreeNode node, UUID forestId, List<ForestNodeEntity> result, UUID accountId) {
+        result.add(toEntity(node, forestId, accountId));
         for (TreeNode child : node.children()) {
-            collectNodes(child, forestId, result);
+            collectNodes(child, forestId, result, accountId);
         }
     }
 
 
     /** TreeNode → JPA 实体。 */
-    private ForestNodeEntity toEntity(TreeNode node, UUID forestId) {
+    private ForestNodeEntity toEntity(TreeNode node, UUID forestId, UUID accountId) {
         OffsetDateTime now = OffsetDateTime.now();
         var builder = ForestNodeEntity.builder()
                 .nodeId(node.nodeId())
@@ -346,6 +346,7 @@ public class ForestRepositoryAdapter implements ForestRepository {
                 .parentNodeId(resolveParentNodeId(node, forestId))
                 .sortOrder(node.order())
                 .kind("INSTANCE")
+                .accountId(accountId)
                 .updatedAt(now);
 
         // ExecutableNode → mode + status + completedAt

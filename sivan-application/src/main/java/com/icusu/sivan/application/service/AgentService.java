@@ -9,7 +9,9 @@ import com.icusu.sivan.domain.agent.IAgentRepository;
 import com.icusu.sivan.application.agent.dto.CreateAgentRequest;
 import com.icusu.sivan.application.agent.dto.UpdateAgentRequest;
 import com.icusu.sivan.application.agent.dto.AgentResponse;
+import com.icusu.sivan.domain.routing.IBetaParamRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,8 +25,8 @@ import java.util.UUID;
 public class AgentService {
 
     private final IAgentRepository agentRepository;
-    private final com.icusu.sivan.domain.routing.IBetaParamRepository betaParamRepository;
-    private final org.springframework.jdbc.core.JdbcTemplate jdbc;
+    private final IBetaParamRepository betaParamRepository;
+    private final JdbcTemplate jdbc;
 
     /** 创建智能体。 */
     public AgentResponse create(UUID accountId, CreateAgentRequest request) {
