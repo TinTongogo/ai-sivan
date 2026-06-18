@@ -22,6 +22,7 @@ import com.icusu.sivan.common.exception.DomainException;
 import com.icusu.sivan.common.exception.ResourceNotFoundException;
 import com.icusu.sivan.common.util.JsonUtil;
 import com.icusu.sivan.core.message.Msg;
+import com.icusu.sivan.core.message.Role;
 import com.icusu.sivan.core.tool.ToolSpec;
 import com.icusu.sivan.domain.conversation.Conversation;
 import com.icusu.sivan.domain.conversation.IConversationRepository;
@@ -395,6 +396,12 @@ public class ForestConversationService {
                             conversationId, accountId, null, null,
                             prep.contextLength, null, null, null, null, null);
 
+                    // 注入动态上下文：用户画像、情境闪现、文件快照、项目路径提示
+                    List<Msg> ctxMsgs = toolResult.contextMsgs();
+                    if (ctxMsgs != null && !ctxMsgs.isEmpty()) {
+                        prebuiltMsgs.addAll(1, ctxMsgs);
+                    }
+
                     // 本能模板匹配：优先复用历史成功的任务分解
                     TaskFeatures features = extractTaskFeatures(request.getContent());
                     final AtomicReference<UUID> patternIdRef = new AtomicReference<>();
@@ -702,6 +709,12 @@ public class ForestConversationService {
                                 regenerateImages, regenerateAudios, contextLength,
                                 aiMsg.getMessageId(), null, null, null, providerId);
                         PromptContextService.insertContextMessages(prebuiltMsgs, epochResult, enhancedContext);
+
+                        // 注入项目路径提示，让 LLM 知道当前工作目录
+                        String projHint = promptContextService.buildProjectHint(conversation, accountId);
+                        if (projHint != null) {
+                            prebuiltMsgs.add(1, Msg.of(Role.USER, projHint));
+                        }
 
                         TaskNode tree = new TaskNode(userContent);
                         String projectPath = groupService.getProjectDisplayPath(accountId, conversation.getProjectId());

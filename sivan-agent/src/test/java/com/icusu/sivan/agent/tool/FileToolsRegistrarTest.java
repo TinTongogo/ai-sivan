@@ -103,7 +103,7 @@ class FileToolsRegistrarTest {
 
     @Test
     void fileWrite_成功写入() {
-        when(fileOperationService.fileWrite(anyString(), anyString(), any(), anyBoolean()))
+        when(fileOperationService.fileWrite(anyString(), anyString(), any(), anyBoolean(), anyBoolean()))
                 .thenReturn("written");
 
         registrar.init();

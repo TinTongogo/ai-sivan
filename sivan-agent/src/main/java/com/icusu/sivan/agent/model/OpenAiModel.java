@@ -252,26 +252,32 @@ public class OpenAiModel implements Model {
                 .map(c -> (Content.Audio) c)
                 .toList();
 
-        if (!images.isEmpty() || !audios.isEmpty()) {
+        boolean supportsVision = capabilities.contains(ModelCapability.VISION);
+        boolean supportsAudio = capabilities.contains(ModelCapability.AUDIO);
+        if ((!images.isEmpty() && supportsVision) || (!audios.isEmpty() && supportsAudio)) {
             ArrayNode contentArray = objectMapper.createArrayNode();
             if (!text.isEmpty()) {
                 ObjectNode textPart = contentArray.addObject();
                 textPart.put("type", "text");
                 textPart.put("text", text);
             }
-            for (Content.Image img : images) {
-                ObjectNode imgPart = contentArray.addObject();
-                imgPart.put("type", "image_url");
-                ObjectNode urlObj = imgPart.putObject("image_url");
-                urlObj.put("url", "data:" + img.mimeType() + ";base64,"
-                        + Base64.getEncoder().encodeToString(img.data()));
+            if (supportsVision) {
+                for (Content.Image img : images) {
+                    ObjectNode imgPart = contentArray.addObject();
+                    imgPart.put("type", "image_url");
+                    ObjectNode urlObj = imgPart.putObject("image_url");
+                    urlObj.put("url", "data:" + img.mimeType() + ";base64,"
+                            + Base64.getEncoder().encodeToString(img.data()));
+                }
             }
-            for (Content.Audio audio : audios) {
-                ObjectNode audioPart = contentArray.addObject();
-                audioPart.put("type", "input_audio");
-                ObjectNode audioObj = audioPart.putObject("input_audio");
-                audioObj.put("data", Base64.getEncoder().encodeToString(audio.data()));
-                audioObj.put("format", audio.mimeType().replace("audio/", ""));
+            if (supportsAudio) {
+                for (Content.Audio audio : audios) {
+                    ObjectNode audioPart = contentArray.addObject();
+                    audioPart.put("type", "input_audio");
+                    ObjectNode audioObj = audioPart.putObject("input_audio");
+                    audioObj.put("data", Base64.getEncoder().encodeToString(audio.data()));
+                    audioObj.put("format", audio.mimeType().replace("audio/", ""));
+                }
             }
             node.set("content", contentArray);
         } else if (msg.role() == Role.ASSISTANT && text.isEmpty() && !toolCalls.isEmpty()) {

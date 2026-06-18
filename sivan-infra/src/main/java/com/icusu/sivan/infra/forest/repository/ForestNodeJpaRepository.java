@@ -48,12 +48,12 @@ public interface ForestNodeJpaRepository extends JpaRepository<ForestNodeEntity,
             + "ORDER BY fn.forest_id, fn.created_at DESC", nativeQuery = true)
     List<ForestNodeEntity> findForestRootsByAccount(UUID accountId);
 
-    @Query(value = "SELECT * FROM forest_nodes WHERE node_type = ?1 AND vector IS NOT NULL ORDER BY vector <=> ?2::vector LIMIT ?3", nativeQuery = true)
-    List<ForestNodeEntity> semanticSearchMemory(String nodeType, String queryVec, int limit);
+    @Query(value = "SELECT * FROM forest_nodes WHERE node_type = :nodeType AND vector IS NOT NULL ORDER BY vector <=> CAST(:queryVec AS vector) LIMIT :limit", nativeQuery = true)
+    List<ForestNodeEntity> semanticSearchMemory(@Param("nodeType") String nodeType, @Param("queryVec") String queryVec, @Param("limit") int limit);
 
     /** 带层级过滤的语义搜索。 */
-    @Query(value = "SELECT * FROM forest_nodes WHERE node_type = 'memory' AND level = ?1 AND vector IS NOT NULL ORDER BY vector <=> ?2::vector LIMIT ?3", nativeQuery = true)
-    List<ForestNodeEntity> semanticSearchMemoryByLevel(String level, String queryVec, int limit);
+    @Query(value = "SELECT * FROM forest_nodes WHERE node_type = 'memory' AND level = :level AND vector IS NOT NULL ORDER BY vector <=> CAST(:queryVec AS vector) LIMIT :limit", nativeQuery = true)
+    List<ForestNodeEntity> semanticSearchMemoryByLevel(@Param("level") String level, @Param("queryVec") String queryVec, @Param("limit") int limit);
 
     @Query(value = "SELECT COUNT(*) FROM forest_nodes WHERE node_type = ?1 AND status IS DISTINCT FROM 'ARCHIVED'", nativeQuery = true)
     long countByNodeType(String nodeType);

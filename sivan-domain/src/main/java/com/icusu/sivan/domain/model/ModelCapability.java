@@ -22,7 +22,8 @@ public enum ModelCapability {
     IMAGE_GEN("image_gen", "图像生成"),
     SPEECH_SYNTH("speech_synth", "语音合成"),
     SPEECH_RECOG("speech_recog", "语音识别"),
-    VIDEO_GEN("video_gen", "视频生成");
+    VIDEO_GEN("video_gen", "视频生成"),
+    MULTIMODAL_EMBED("multimodal_embed", "多模态向量化");
 
     private final String code;
     private final String label;

@@ -73,6 +73,14 @@ public class AccountRepositoryAdapter implements IAccountRepository {
     }
 
     /**
+     * 根据短标识符查找账户。
+     */
+    @Override
+    public Optional<Account> findByShortId(String shortId) {
+        return jpaRepository.findByShortId(shortId).map(this::toDomain);
+    }
+
+    /**
      * 检查短标识符是否已存在（全局唯一）。
      */
     @Override

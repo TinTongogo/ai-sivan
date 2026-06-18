@@ -1,7 +1,9 @@
 package com.icusu.sivan.domain.forest.port;
 
 import com.icusu.sivan.common.Mode;
+import com.icusu.sivan.common.NodeStatus;
 import com.icusu.sivan.domain.forest.context.Progress;
+import com.icusu.sivan.domain.forest.tree.ExecutableNode;
 import com.icusu.sivan.domain.forest.tree.TreeNode;
 
 /**
@@ -33,27 +35,28 @@ public interface ProgressStrategy {
     /**
      * 默认的叶子节点判断规则：
      * <ul>
-     *   <li>COMPLETED → 1/1/1（完成）</li>
-     *   <li>RUNNING → 0/1/1（激活中）</li>
-     *   <li>FAILED / CANCELLED → 0/1/1（已触及但未完成）</li>
-     *   <li>PENDING / FOLDED → 0/0/1（未触及）</li>
+     *   <li>COMPLETED → (1, 0, 1, 1, 0) 完成</li>
+     *   <li>RUNNING → (0, 0, 1, 1, 0) 执行中</li>
+     *   <li>FAILED → (0, 1, 1, 1, 0) 已失败</li>
+     *   <li>CANCELLED → (0, 0, 0, 1, 0) 已取消（不计入激活）</li>
+     *   <li>PENDING → (0, 0, 0, 1, 0) 未触及</li>
      * </ul>
      */
     static Progress leafProgress(TreeNode node) {
         return switch (NodeStatusOf(node)) {
-            case COMPLETED -> new Progress(1, 1, 1, 0);
-            case RUNNING   -> new Progress(0, 1, 1, 0);
-            case FAILED    -> new Progress(0, 1, 1, 0);
-            case CANCELLED -> new Progress(0, 1, 1, 0);
-            default        -> new Progress(0, 0, 1, 0); // PENDING / FOLDED
+            case COMPLETED -> new Progress(1, 0, 1, 1, 0);
+            case RUNNING   -> new Progress(0, 0, 1, 1, 0);
+            case FAILED    -> new Progress(0, 1, 1, 1, 0);
+            case CANCELLED -> new Progress(0, 0, 0, 1, 0);
+            default        -> new Progress(0, 0, 0, 1, 0); // PENDING / FOLDED
         };
     }
 
     /** 安全的 status 提取。 */
     static com.icusu.sivan.common.NodeStatus NodeStatusOf(TreeNode node) {
-        if (node instanceof com.icusu.sivan.domain.forest.tree.ExecutableNode e) {
+        if (node instanceof ExecutableNode e) {
             return e.status();
         }
-        return com.icusu.sivan.common.NodeStatus.PENDING;
+        return NodeStatus.PENDING;
     }
 }

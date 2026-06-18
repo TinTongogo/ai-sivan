@@ -21,6 +21,8 @@ public interface AccountJpaRepository extends JpaRepository<AccountEntity, UUID>
 
     boolean existsByEmail(String email);
 
+    Optional<AccountEntity> findByShortId(String shortId);
+
     boolean existsByShortId(String shortId);
 
 }

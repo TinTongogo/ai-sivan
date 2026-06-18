@@ -45,7 +45,9 @@ public class RecoveryManager {
         this.goalExecutionService = goalExecutionService;
     }
 
-    /** 应用启动时自动执行恢复。 */
+    /**
+     * 应用启动时自动执行恢复。
+     */
     @EventListener(ApplicationReadyEvent.class)
     public void recoverOnStartup() {
         log.info("RecoveryManager: 启动恢复扫描...");
@@ -73,7 +75,9 @@ public class RecoveryManager {
         log.info("RecoveryManager: 恢复完成 {}/{}", success.get(), rootNodes.size());
     }
 
-    /** 从断点恢复一棵树。 */
+    /**
+     * 从断点恢复一棵树。
+     */
     private void resumeTree(String rootNodeId, UUID forestId) {
         // 从 root 节点读取 accountId；若 root 节点无 accountId，从对话容器节点获取
         UUID accountId = forestNodeJpaRepository.findById(rootNodeId)
@@ -133,15 +137,18 @@ public class RecoveryManager {
 
         // 使用 executeOnly 重新执行（不会重复创建森林结构）
         goalExecutionService.executeOnly(forest, execRoot, ctx,
-                com.icusu.sivan.domain.forest.context.Delivery.STREAM)
+                        com.icusu.sivan.domain.forest.context.Delivery.STREAM)
                 .subscribe(
-                        event -> {},
+                        event -> {
+                        },
                         error -> log.error("RecoveryManager: 恢复执行异常: {}", error.getMessage()),
                         () -> log.info("RecoveryManager: 恢复执行完成 rootNodeId={}", rootNodeId)
                 );
     }
 
-    /** 深度遍历找最后一个 COMPLETED 叶子。 */
+    /**
+     * 深度遍历找最后一个 COMPLETED 叶子。
+     */
     private TreeNode findLastCompleted(TreeNode node) {
         if (node.children().isEmpty()) {
             if (node.status() == NodeStatus.COMPLETED) {

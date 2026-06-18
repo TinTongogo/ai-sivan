@@ -1,14 +1,14 @@
 package com.icusu.sivan.application.service;
 
+import com.icusu.sivan.application.agent.dto.AgentResponse;
+import com.icusu.sivan.application.agent.dto.CreateAgentRequest;
+import com.icusu.sivan.application.agent.dto.UpdateAgentRequest;
 import com.icusu.sivan.common.enums.AgentStatus;
 import com.icusu.sivan.common.enums.AgentType;
 import com.icusu.sivan.common.exception.DomainException;
 import com.icusu.sivan.common.util.OwnershipValidator;
 import com.icusu.sivan.domain.agent.AgentDefinition;
 import com.icusu.sivan.domain.agent.IAgentRepository;
-import com.icusu.sivan.application.agent.dto.CreateAgentRequest;
-import com.icusu.sivan.application.agent.dto.UpdateAgentRequest;
-import com.icusu.sivan.application.agent.dto.AgentResponse;
 import com.icusu.sivan.domain.routing.IBetaParamRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -19,7 +19,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-/** 智能体管理服务。 */
+/**
+ * 智能体管理服务。
+ */
 @Service
 @RequiredArgsConstructor
 public class AgentService {
@@ -28,7 +30,9 @@ public class AgentService {
     private final IBetaParamRepository betaParamRepository;
     private final JdbcTemplate jdbc;
 
-    /** 创建智能体。 */
+    /**
+     * 创建智能体。
+     */
     public AgentResponse create(UUID accountId, CreateAgentRequest request) {
         if (agentRepository.findByAccountAndName(accountId, request.getAgentName()).isPresent()) {
             throw DomainException.conflict("智能体名称已存在");
@@ -54,19 +58,25 @@ public class AgentService {
         return toResponse(config);
     }
 
-    /** 根据 ID 查询智能体。 */
+    /**
+     * 根据 ID 查询智能体。
+     */
     public AgentResponse getById(UUID accountId, UUID agentId) {
         AgentDefinition config = findOwned(accountId, agentId);
         return toResponse(config);
     }
 
-    /** 查询智能体列表。 */
+    /**
+     * 查询智能体列表。
+     */
     public List<AgentResponse> list(UUID accountId) {
         return agentRepository.findAllByAccount(accountId).stream()
                 .map(this::toResponse).toList();
     }
 
-    /** 更新智能体配置。 */
+    /**
+     * 更新智能体配置。
+     */
     public AgentResponse update(UUID accountId, UUID agentId, UpdateAgentRequest request) {
         AgentDefinition config = findOwned(accountId, agentId);
         config.updateFrom(request.getDisplayName(), request.getDescription(), request.getCategory(),
@@ -77,7 +87,9 @@ public class AgentService {
         return toResponse(config);
     }
 
-    /** 删除智能体（同时清理 Beta 参数和路由记录）。 */
+    /**
+     * 删除智能体（同时清理 Beta 参数和路由记录）。
+     */
     public void delete(UUID accountId, UUID agentId) {
         AgentDefinition config = findOwned(accountId, agentId);
         String agentName = config.getAgentName();
@@ -88,7 +100,9 @@ public class AgentService {
                 accountId, agentName);
     }
 
-    /** 批量删除智能体（校验所有权后删除）。 */
+    /**
+     * 批量删除智能体（校验所有权后删除）。
+     */
     @Transactional
     public void deleteBatch(java.util.List<UUID> ids, UUID accountId) {
         if (ids == null || ids.isEmpty()) return;
@@ -102,18 +116,24 @@ public class AgentService {
         }
     }
 
-    /** 获取智能体类型分布统计。 */
+    /**
+     * 获取智能体类型分布统计。
+     */
     public Map<String, Long> getTypeDistribution(UUID accountId) {
         return agentRepository.countByType(accountId);
     }
 
-    /** 查找当前用户拥有的智能体。 */
+    /**
+     * 查找当前用户拥有的智能体。
+     */
     private AgentDefinition findOwned(UUID accountId, UUID agentId) {
         return OwnershipValidator.findOwned(accountId, "智能体", agentId,
                 agentRepository::findById, AgentDefinition::getAccountId);
     }
 
-    /** 转换为响应对象。 */
+    /**
+     * 转换为响应对象。
+     */
     private AgentResponse toResponse(AgentDefinition config) {
         return AgentResponse.builder()
                 .agentId(config.getAgentId())

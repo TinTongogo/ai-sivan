@@ -3,8 +3,12 @@ package com.icusu.sivan.infra.forest.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.annotations.Type;
 import org.hibernate.type.SqlTypes;
 import org.springframework.data.domain.Persistable;
+
+import com.icusu.sivan.infra.knowledge.entity.FloatArrayVectorType;
+import org.hibernate.annotations.ColumnTransformer;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -105,7 +109,9 @@ public class ForestNodeEntity implements Persistable<String> {
     @Column(name = "last_accessed_at")
     private OffsetDateTime lastAccessedAt;
 
-    @Column(name = "vector")
+    @Column(name = "vector", columnDefinition = "vector(1024)")
+    @ColumnTransformer(write = "?::vector")
+    @Type(FloatArrayVectorType.class)
     private float[] vector;
 
     @Column(name = "updated_at", nullable = false)

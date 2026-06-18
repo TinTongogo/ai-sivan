@@ -57,14 +57,15 @@ public class ProgressAggregator {
         if (node.isLeaf()) {
             return ProgressStrategy.leafProgress(node);
         }
-        int completed = 0, activated = 0, total = 0, depth = 0;
+        int completed = 0, failed = 0, activated = 0, total = 0, depth = 0;
         for (TreeNode child : node.children()) {
             Progress cp = compute(child);
             completed += cp.completed();
+            failed += cp.failed();
             activated += cp.activated();
             total += cp.total();
             depth = Math.max(depth, cp.depth());
         }
-        return new Progress(completed, activated, total, depth);
+        return new Progress(completed, failed, activated, total, depth);
     }
 }

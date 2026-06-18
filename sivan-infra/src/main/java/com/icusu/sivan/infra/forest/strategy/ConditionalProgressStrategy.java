@@ -31,6 +31,7 @@ public class ConditionalProgressStrategy implements ProgressStrategy {
         // 先算自身贡献
         Progress self = ProgressStrategy.leafProgress(node);
         int completed = self.completed();
+        int failed = self.failed();
         int activated = self.activated();
         int total = self.total();
         int depth = 0;
@@ -46,10 +47,11 @@ public class ConditionalProgressStrategy implements ProgressStrategy {
             }
             Progress cp = recurse.apply(child);
             completed += cp.completed();
+            failed += cp.failed();
             activated += cp.activated();
             total += cp.total();
             depth = Math.max(depth, cp.depth() + 1);
         }
-        return new Progress(completed, activated, total, depth);
+        return new Progress(completed, failed, activated, total, depth);
     }
 }

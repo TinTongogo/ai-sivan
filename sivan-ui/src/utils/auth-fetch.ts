@@ -4,6 +4,7 @@
  */
 
 const blobCache = new Map<string, string>()
+export { blobCache }
 const BLOB_CACHE_MAX = 50
 
 export async function fetchAuthBlob(url: string): Promise<string> {

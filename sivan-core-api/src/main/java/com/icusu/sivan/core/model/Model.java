@@ -63,6 +63,13 @@ public interface Model {
             m.put("prefix_caching", enabled);
             return new ModelParams(temperature, maxTokens, contextLength, m);
         }
+
+        /** 添加额外参数（如 response_format 等），合并到已有 extra 中。 */
+        public ModelParams withExtra(String key, Object value) {
+            var m = new HashMap<>(extra);
+            m.put(key, value);
+            return new ModelParams(temperature, maxTokens, contextLength, m);
+        }
     }
 
     record ModelResponse(Msg msg, TokenUsage usage) {

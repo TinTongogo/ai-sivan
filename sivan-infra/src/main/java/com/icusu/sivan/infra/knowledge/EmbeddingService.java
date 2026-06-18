@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.icusu.sivan.common.util.UrlValidator;
 import com.icusu.sivan.domain.model.ILlmProviderRepository;
 import com.icusu.sivan.domain.model.LlmProvider;
+import com.icusu.sivan.domain.model.ModelCapability;
 import com.icusu.sivan.domain.shared.port.IEmbeddingService;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
@@ -194,9 +195,18 @@ public class EmbeddingService implements IEmbeddingService {
 
         boolean hasImages = inputs.stream().anyMatch(in -> in.getImage() != null);
         if (hasImages) {
-            String url = buildOllamaEmbedUrl(p);
-            log.debug("Embedding 请求(buildOllamaEmbedUrl): url={}, model={}, hasImages={}", url, model, hasImages);
-            return embedOllamaNative(inputs, model, buildOllamaEmbedUrl(p), apiKey);
+            // 多模态向量化：仅当 provider 明确声明 multimodel_embed 能力时才发送图片
+            if (p.supportsCapability(ModelCapability.MULTIMODAL_EMBED.getCode())) {
+                String url = buildOllamaEmbedUrl(p);
+                log.debug("Embedding 请求(buildOllamaEmbedUrl): url={}, model={}, hasImages={}", url, model, hasImages);
+                return embedOllamaNative(inputs, model, buildOllamaEmbedUrl(p), apiKey);
+            } else {
+                log.debug("Provider {} 不支持多模态向量化，降级为 text-only (model={})", p.getName(), model);
+                List<EmbeddingInput> textInputs = inputs.stream()
+                        .map(in -> new EmbeddingInput(in.getText(), null))
+                        .toList();
+                return embedOpenAiCompatible(textInputs, model, buildEmbedUrl(p), apiKey);
+            }
         } else {
             String url = buildEmbedUrl(p);
             log.debug("Embedding 请求(embedOpenAiCompatible): url={}, model={}, hasImages={}", url, model, hasImages);

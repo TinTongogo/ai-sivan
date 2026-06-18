@@ -26,6 +26,9 @@ public interface IAccountRepository {
     /** 检查邮箱是否已存在。 */
     boolean existsByEmail(String email);
 
+    /** 根据短标识符查找账户。 */
+    Optional<Account> findByShortId(String shortId);
+
     /** 检查短标识符是否已存在（全局唯一）。 */
     boolean existsByShortId(String shortId);
 }

@@ -104,15 +104,24 @@ public final class ChatPrompts {
         StringBuilder sb = new StringBuilder("\n## 项目文件环境\n");
         sb.append("当前在项目「").append(projectName).append("」中操作。\n");
         sb.append("工作目录已锁定为项目根目录，使用相对路径即可。\n");
-        sb.append("\n### 文件操作 — 必须使用 file_read / file_write 工具\n");
-        sb.append("读取文件内容必须使用 file_read（支持文本与 PDF/DOCX/XLSX 文档的自动文本提取），");
-        sb.append("即便文件较大也能处理。\n");
-        sb.append("禁止使用 bash 调用 cat、python、pdftotext 等命令读取文档内容。\n");
-        sb.append("创建或编辑文件请使用 file_write（自动创建父目录）。\n");
-        sb.append("目录列表使用 file_list，内容搜索使用 file_search。\n");
-        sb.append("仅在需要运行脚本时使用 bash，不要用 bash cat/grep/ls 替代专用文件工具。\n");
-        sb.append("\n### 代码执行 — 使用 bash 工具\n");
-        sb.append("写完脚本后必须立即执行。\n");
+        sb.append("\n### 文件操作 — 使用 file_* 工具（禁止用 bash 替代）\n");
+        sb.append("| 用途 | 正确工具 | 错误做法 |\n");
+        sb.append("|------|---------|---------|\n");
+        sb.append("| 读文件 | file_read（支持文本与 PDF/DOCX/XLSX） | bash cat/python/pdftotext |\n");
+        sb.append("| 写文件 | file_write（自动创建父目录） | bash echo/cat/heredoc |\n");
+        sb.append("| 追加内容 | file_write mode=append | bash >> |\n");
+        sb.append("| 修改内容 | file_edit（精确查找替换） | bash sed/awk |\n");
+        sb.append("| 列目录 | file_list | bash ls |\n");
+        sb.append("| 搜索内容 | file_search（正则） | bash grep |\n");
+        sb.append("file_* 工具直接在当前项目目录中操作，无需转义、不怕特殊字符、不产生 shell 注入风险。\n");
+        sb.append("禁止用 bash 做上述任何文件操作。\n");
+        sb.append("\n### 命令执行 — 使用 bash（仅用于运行脚本/命令）\n");
+        sb.append("bash 的唯一用途：\n");
+        sb.append("- 运行 Python/Node/Shell 脚本（写完脚本后必须立即执行）\n");
+        sb.append("- 编译、构建、安装依赖\n");
+        sb.append("- git 操作\n");
+        sb.append("- 启动服务或进程\n");
+        sb.append("不要用 bash 做文件读写或目录操作。\n");
         return new Prompt(sb.toString(), Prompt.CacheStrategy.SESSION_STABLE, 40, Prompt.OutputFormat.FREE_TEXT);
     }
 }

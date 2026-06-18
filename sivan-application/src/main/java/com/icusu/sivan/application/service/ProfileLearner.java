@@ -79,7 +79,9 @@ public class ProfileLearner {
                     Msg.of(Role.USER, conversationText)
             );
 
-            model.chat(llmMessages, List.of(), Model.ModelParams.defaults().withTemperature(0.1))
+            model.chat(llmMessages, List.of(), Model.ModelParams.defaults()
+                            .withTemperature(0.1)
+                            .withExtra("response_format", Map.of("type", "json_object")))
                     .subscribe(response -> {
                         List<String> tags = parseExpertise(response != null ? response.msg().text() : null);
                         if (tags.isEmpty()) {
@@ -112,20 +114,50 @@ public class ProfileLearner {
 
     /**
      * 从 LLM 响应中解析 expertise 数组。
+     * 优先直接解析 JSON；失败时尝试正则提取 JSON 对象后重试。
      */
     static List<String> parseExpertise(String jsonText) {
         if (jsonText == null || jsonText.isBlank()) return Collections.emptyList();
-        String trimmed = jsonText.trim();
-        // 去掉可能的 markdown 代码块标记
-        if (trimmed.startsWith("```")) {
-            int start = trimmed.indexOf("{");
-            int end = trimmed.lastIndexOf("}");
-            if (start >= 0 && end > start) {
-                trimmed = trimmed.substring(start, end + 1);
+
+        // 1. 清理输入：去掉 markdown 代码块标记及前后空白
+        String cleaned = stripMarkdownFence(jsonText);
+
+        // 2. 尝试直接解析
+        List<String> result = tryParseJson(cleaned);
+        if (!result.isEmpty()) return result;
+
+        // 3. 直接解析失败，尝试正则提取最外层 {…} JSON
+        String extracted = extractJsonObject(cleaned);
+        if (extracted != null) {
+            result = tryParseJson(extracted);
+            if (!result.isEmpty()) return result;
+        }
+
+        log.debug("[ProfileLearner] JSON 解析失败: raw={}", truncate(jsonText, 120));
+        return Collections.emptyList();
+    }
+
+    /** 去掉 markdown 代码块标记（```json ... ``` 或 ``` ... ```）。 */
+    private static String stripMarkdownFence(String text) {
+        String s = text.trim();
+        if (s.startsWith("```")) {
+            // 去掉首行 ``` 标记
+            int firstNewline = s.indexOf('\n');
+            if (firstNewline > 0 && firstNewline < s.length() - 1) {
+                s = s.substring(firstNewline + 1).trim();
+            }
+            // 去掉末尾 ``` 标记
+            if (s.endsWith("```")) {
+                s = s.substring(0, s.length() - 3).trim();
             }
         }
+        return s;
+    }
+
+    /** 尝试以 Map 形式解析 JSON，提取 expertise 数组。 */
+    private static List<String> tryParseJson(String text) {
         try {
-            Map<String, Object> map = OBJECT_MAPPER.readValue(trimmed,
+            Map<String, Object> map = OBJECT_MAPPER.readValue(text,
                     new TypeReference<Map<String, Object>>() {});
             Object expertiseObj = map.get("expertise");
             if (expertiseObj instanceof List<?> list) {
@@ -137,9 +169,36 @@ public class ProfileLearner {
                 }
                 return tags;
             }
-        } catch (Exception e) {
-            log.debug("[ProfileLearner] JSON 解析失败: {}", e.getMessage());
+        } catch (Exception ignored) {
+            // fall through to next fallback
         }
         return Collections.emptyList();
+    }
+
+    /** 从文本中正则提取最外层 {…} JSON 对象。 */
+    private static String extractJsonObject(String text) {
+        // 找到第一个 { 和最后一个 }，尝试提取中间的 JSON
+        int start = text.indexOf('{');
+        int end = text.lastIndexOf('}');
+        if (start >= 0 && end > start) {
+            String candidate = text.substring(start, end + 1);
+            // 快速校验：花括号基本平衡（简单计数）
+            int open = 0;
+            boolean valid = true;
+            for (int i = 0; i < candidate.length(); i++) {
+                char c = candidate.charAt(i);
+                if (c == '{') open++;
+                else if (c == '}') open--;
+                if (open < 0) { valid = false; break; }
+            }
+            if (valid && open == 0) return candidate;
+        }
+        return null;
+    }
+
+    /** 截断长文本用于日志输出。 */
+    private static String truncate(String text, int maxLen) {
+        if (text == null) return null;
+        return text.length() <= maxLen ? text : text.substring(0, maxLen) + "...";
     }
 }

@@ -1,5 +1,6 @@
 package com.icusu.sivan.agent.routing.engine;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.icusu.sivan.agent.model.DefaultModelRouter;
 import com.icusu.sivan.agent.prompt.AgentPrompts;
 import com.icusu.sivan.agent.prompt.IntentClassifier;
@@ -31,6 +32,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
 
@@ -285,7 +287,7 @@ public class PgRouteEngine {
                     .category(category)
                     .systemPrompt(systemPrompt != null && !systemPrompt.isBlank()
                             ? systemPrompt
-                            : "你是一位通用的「" + agentName + "」领域助手，具备该领域的核心专业能力。")
+                            : "你擅长「" + agentName + "」领域，具备该领域的核心专业能力。")
                     .craftDeclaration(craftDeclaration)
                     .createdBy("system")
                     .build();
@@ -633,7 +635,6 @@ public class PgRouteEngine {
      * 从 LLM 返回的 JSON 中提取字段值。
      * 处理 markdown 代码块包裹、空格、多行值。
      */
-    @SuppressWarnings("unchecked")
     private static String extractJson(String json, String key) {
         if (json == null || json.isBlank()) return null;
         try {
@@ -647,12 +648,11 @@ public class PgRouteEngine {
                 }
             }
             var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            java.util.Map<String, Object> map = mapper.readValue(cleaned,
-                    new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String, Object>>() {});
+            Map<String, Object> map = mapper.readValue(cleaned, new TypeReference<>() {});
             Object val = map.get(key);
             if (val == null) return null;
             // 数组类型（如 tags）转为 JSON 字符串
-            if (val instanceof java.util.List) {
+            if (val instanceof List) {
                 return mapper.writeValueAsString(val);
             }
             return val.toString();

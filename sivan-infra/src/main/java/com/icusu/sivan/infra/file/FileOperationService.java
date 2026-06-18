@@ -37,11 +37,19 @@ public class FileOperationService {
     /** 文本提取最大字符数（~500KB 纯文本，用于 file_read 兜底）。 */
     private static final int FILE_READ_MAX_CHARS = 500_000;
 
+    /** 未指定 limit 时默认预览行数，超出则提示 LLM 使用 offset/limit 分段读取。 */
+    private static final int PREVIEW_MAX_LINES = 100;
+
     /** 二进制文档（PDF/DOCX 等）原始大小上限（50MB），Tika 会提取文本后返回。 */
     private static final long BINARY_MAX_FILE_SIZE = 50 * 1024 * 1024;
 
     /**
      * 读取文件内容，支持行范围。
+     * <p>策略（让 LLM 先看概览再分段读取）：
+     * <ul>
+     *   <li>未指定 offset/limit → 返回文件总行数 + 前 {@link #PREVIEW_MAX_LINES} 行预览</li>
+     *   <li>指定了 offset/limit → 返回指定行段 + 文件总行数</li>
+     * </ul>
      * 二进制文档（PDF、DOCX 等）自动走 Tika 文本提取。
      */
     public String fileRead(String rawPath, String fileRootPath, boolean archived, int offset, int limit) {
@@ -51,40 +59,79 @@ public class FileOperationService {
 
         // 二进制文档走 Tika 文本提取（忽略行范围，整文件提取）
         if (isBinaryDocumentFile(path)) {
-            String mimeType = detectMimeTypeByExtension(path);
-            try {
-                byte[] bytes = Files.readAllBytes(path);
-                if (bytes.length > BINARY_MAX_FILE_SIZE) {
-                    throw new DomainException("文件过大，超过 " + BINARY_MAX_FILE_SIZE / (1024 * 1024) + "MB 限制");
-                }
-                String extracted = documentTextExtractor.extractText(bytes, mimeType, FILE_READ_MAX_CHARS);
-                if (extracted == null) {
-                    return "[文档解析失败: " + rawPath + "，无法提取文本内容]";
-                }
-                return "[文档文本提取: " + rawPath + "]\n" + extracted;
-            } catch (IOException e) {
-                log.warn("读取二进制文档失败: {}", rawPath, e);
-                return "[文档读取失败: " + e.getMessage() + "]";
-            }
+            return extractBinaryDocument(rawPath, path);
         }
 
         try {
-            if (Files.size(path) > maxFileSize) throw new DomainException("文件过大，超过 " + maxFileSize + " 字节限制");
+            if (Files.size(path) > maxFileSize) {
+                return "[文件 " + rawPath + " 过大 (" + Files.size(path) + " 字节)，超过 file_read 限制。\n"
+                        + "可用 bash sed/head/tail 分段读取，或用 file_search 聚焦查找目标内容]";
+            }
         } catch (IOException e) {
             throw new DomainException("读取文件大小失败: " + e.getMessage());
         }
         try {
             List<String> allLines = Files.readAllLines(path);
+            int totalLines = allLines.size();
+
+            // 未指定 limit：智能预览模式 — 返回文件总行数 + 前 N 行预览
+            if (limit <= 0) {
+                int previewEnd = Math.min(totalLines, PREVIEW_MAX_LINES);
+                StringBuilder sb = new StringBuilder();
+                sb.append("[文件信息] ").append(rawPath)
+                        .append(" 共 ").append(totalLines).append(" 行")
+                        .append("，").append(Files.size(path)).append(" 字节\n");
+                if (totalLines > PREVIEW_MAX_LINES) {
+                    sb.append("[预览行 1-").append(previewEnd).append(" / ").append(totalLines)
+                            .append("，可通过 offset/limit 参数分段读取更多]\n");
+                }
+                sb.append("━━━━━━━━━━━━━━━━━━━━\n");
+                for (int i = 0; i < previewEnd; i++) {
+                    sb.append(allLines.get(i)).append('\n');
+                }
+                if (totalLines > previewEnd) {
+                    sb.append("━━━━━━━━━━━━━━━━━━━━\n");
+                    sb.append("[剩余 ").append(totalLines - previewEnd).append(" 行未显示，指定 offset=")
+                            .append(previewEnd).append(" limit=").append(PREVIEW_MAX_LINES)
+                            .append(" 读取下一段]\n");
+                }
+                return sb.toString();
+            }
+
+            // 指定了 offset/limit：返回指定行段 + 文件总行数
             int start = Math.max(0, offset);
-            int end = Math.min(allLines.size(), limit > 0 ? start + limit : allLines.size());
+            int end = Math.min(totalLines, start + limit);
             StringBuilder sb = new StringBuilder();
+            sb.append("[文件信息] ").append(rawPath)
+                    .append(" 共 ").append(totalLines).append(" 行")
+                    .append("，显示行 ").append(start + 1).append("-").append(end)
+                    .append(" / ").append(totalLines).append("\n");
+            sb.append("━━━━━━━━━━━━━━━━━━━━\n");
             for (int i = start; i < end; i++) {
-                if (sb.length() > 0) sb.append("\n");
-                sb.append(allLines.get(i));
+                sb.append(allLines.get(i)).append('\n');
             }
             return sb.toString();
         } catch (IOException e) {
             throw new DomainException("读取文件失败: " + e.getMessage());
+        }
+    }
+
+    /** 二进制文档走 Tika 提取。 */
+    private String extractBinaryDocument(String rawPath, Path path) {
+        String mimeType = detectMimeTypeByExtension(path);
+        try {
+            byte[] bytes = Files.readAllBytes(path);
+            if (bytes.length > BINARY_MAX_FILE_SIZE) {
+                throw new DomainException("文件过大，超过 " + BINARY_MAX_FILE_SIZE / (1024 * 1024) + "MB 限制");
+            }
+            String extracted = documentTextExtractor.extractText(bytes, mimeType, FILE_READ_MAX_CHARS);
+            if (extracted == null) {
+                return "[文档解析失败: " + rawPath + "，无法提取文本内容]";
+            }
+            return "[文档文本提取: " + rawPath + "]\n" + extracted;
+        } catch (IOException e) {
+            log.warn("读取二进制文档失败: {}", rawPath, e);
+            return "[文档读取失败: " + e.getMessage() + "]";
         }
     }
 

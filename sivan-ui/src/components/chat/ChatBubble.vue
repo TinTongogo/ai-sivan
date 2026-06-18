@@ -2,7 +2,7 @@
 import { ref, computed, watch, onUnmounted } from 'vue'
 import { renderMarkdown } from '../../utils/markdown'
 import { useI18n } from '../../utils/i18n'
-import { fetchAuthBlob, downloadAuthFile } from '../../utils/auth-fetch'
+import { fetchAuthBlob, downloadAuthFile, blobCache } from '../../utils/auth-fetch'
 import { fetchMessageForest, type ForestTreeResponse, type ForestTreeResponseNode } from '../../api/goals'
 import TreeNodeRender from '../orchestration/TreeNodeRender.vue'
 const { t } = useI18n()
@@ -49,13 +49,25 @@ const previewImageUrl = ref('')
 // 图片 blob URL 缓存：原始 URL → blob URL（<img> 无法发 Authorization header）
 const imageBlobUrls = ref<Record<string, string>>({})
 
+/** 已成功加载 blob URL 的图片列表（模板直接用此数组渲染，避免回退到原始 API URL 触发 401） */
+const loadedImageUrls = computed(() =>
+  Object.values(imageBlobUrls.value).filter(Boolean)
+)
+
 watch(() => props.message.images, async (images) => {
   if (!images?.length) { imageBlobUrls.value = {}; return }
   const map: Record<string, string> = {}
   for (const img of images) {
     try {
       map[img] = imageBlobUrls.value[img] || await fetchAuthBlob(img)
-    } catch { map[img] = img }
+    } catch {
+      // fetchAuthBlob 失败时保留旧的 blob URL（如有），
+      // 但不降级为原始 API URL —— <img> 无法发送 Authorization header 会 401
+      if (imageBlobUrls.value[img]) {
+        map[img] = imageBlobUrls.value[img]
+      }
+      // 无旧缓存且请求失败：此图片不可显示，从 map 中排除
+    }
   }
   imageBlobUrls.value = map
 }, { immediate: true })
@@ -267,9 +279,12 @@ function stopTyping() {
 
 onUnmounted(() => {
   stopTyping()
-  // 清理 blob URL，防止内存泄漏
-  for (const blobUrl of Object.values(imageBlobUrls.value)) {
-    if (blobUrl.startsWith('blob:')) URL.revokeObjectURL(blobUrl)
+  // 只清理全局缓存中已不存在的 blob URL（被淘汰的），
+  // 全局缓存中仍保留的 blob 可能被其他组件实例共用，不撤销
+  for (const [originalUrl, blobUrl] of Object.entries(imageBlobUrls.value)) {
+    if (blobUrl.startsWith('blob:') && blobCache.get(originalUrl) !== blobUrl) {
+      URL.revokeObjectURL(blobUrl)
+    }
   }
 })
 
@@ -370,8 +385,8 @@ function formatFileSize(bytes: number): string {
       </div>
 
       <!-- 图片展示 -->
-      <div v-if="message.images && message.images.length" class="bubble__images">
-        <img v-for="(img, idx) in message.images" :key="idx" :src="imageBlobUrls[img] || img" class="bubble__image" loading="lazy" @click="previewImage(img)" @error="(e) => { (e.target as HTMLImageElement).style.display = 'none' }" />
+      <div v-if="loadedImageUrls.length" class="bubble__images">
+        <img v-for="img of loadedImageUrls" :key="img" :src="img" class="bubble__image" loading="lazy" @click="previewImage(img)" />
       </div>
 
       <!-- 文件附件展示 -->
@@ -482,7 +497,7 @@ function formatFileSize(bytes: number): string {
   <Teleport to="body">
     <div v-if="previewImageUrl" class="image-preview-overlay" @click.self="closePreview">
       <button class="image-preview-close-btn" @click="closePreview">&times;</button>
-      <img :src="imageBlobUrls[previewImageUrl] || previewImageUrl" class="image-preview-full" />
+      <img :src="previewImageUrl" class="image-preview-full" />
     </div>
   </Teleport>
 </template>

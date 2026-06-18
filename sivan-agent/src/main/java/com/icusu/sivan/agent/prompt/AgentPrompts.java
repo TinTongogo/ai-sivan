@@ -27,7 +27,7 @@ public final class AgentPrompts {
                 "4. 该智能体应能复用于同类任务场景，不局限于本次单次指令\n" +
                 PromptUtils.JSON_ONLY +
                 "{\n" +
-                "  \"displayName\": \"展示名（反映领域专长，不含 auto/默认 等占位词）\",\n" +
+                "  \"displayName\": \"展示名（纯文本，不含 auto/—/| 等占位或装饰符）\",\n" +
                 "  \"description\": \"一句话描述（不超过30字）\",\n" +
                 "  \"systemPrompt\": \"系统提示词：定义角色身份和领域专长，通用、可复用\",\n" +
                 "  \"craftDeclaration\": \"匠心宣言\",\n" +

@@ -187,6 +187,13 @@ public class FileToolsRegistrar {
                         for (Map<String, Object> r : results) {
                             sb.append(r.get("file")).append(":").append(r.get("line")).append(" ");
                             sb.append(r.get("content")).append("\n");
+                            @SuppressWarnings("unchecked")
+                            List<String> contextLines = (List<String>) r.get("context");
+                            if (contextLines != null && !contextLines.isEmpty()) {
+                                for (String line : contextLines) {
+                                    sb.append(line).append("\n");
+                                }
+                            }
                         }
                         return ToolResult.success("file_search", sb.toString());
                     } catch (Exception e) {
@@ -214,8 +221,10 @@ public class FileToolsRegistrar {
                     String rawPath = (String) args.get("rawPath");
                     String oldText = (String) args.get("oldText");
                     String newText = (String) args.get("newText");
-                    if (rawPath == null || rawPath.isBlank()) return ToolResult.failure("file_edit", "rawPath 参数缺失");
-                    if (oldText == null || oldText.isBlank()) return ToolResult.failure("file_edit", "oldText 参数缺失");
+                    if (rawPath == null || rawPath.isBlank())
+                        return ToolResult.failure("file_edit", "rawPath 参数缺失");
+                    if (oldText == null || oldText.isBlank())
+                        return ToolResult.failure("file_edit", "oldText 参数缺失");
                     if (newText == null) newText = "";
                     String fileRootPath = (String) args.get("_fileRootPath");
                     if (fileRootPath == null || fileRootPath.isBlank()) {
