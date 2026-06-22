@@ -2,10 +2,9 @@ package com.icusu.sivan.web.shared.controller;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.icusu.sivan.application.forest.IntentPrototypeService;
 import com.icusu.sivan.agent.prompt.IntentClassifier;
 import com.icusu.sivan.common.dto.BaseResponse;
-import com.icusu.sivan.infra.forest.entity.IntentPrototypeEntity;
-import com.icusu.sivan.infra.forest.repository.IntentPrototypeJpaRepository;
 import com.icusu.sivan.domain.model.LlmProvider;
 import com.icusu.sivan.application.knowledge.KnowledgeBaseService;
 import com.icusu.sivan.application.model.dto.ConnectionTestResult;
@@ -44,7 +43,7 @@ public class SettingsController {
     private final RestTemplate restTemplate;
     private final KnowledgeBaseService knowledgeBaseService;
     private final IntentClassifier intentClassifier;
-    private final IntentPrototypeJpaRepository prototypeRepo;
+    private final IntentPrototypeService intentPrototypeService;
 
     @Value("${sivan.embedding.default-url:}")
     private String defaultEmbeddingUrl;
@@ -57,11 +56,11 @@ public class SettingsController {
 
     public SettingsController(LlmProviderService llmProviderService, KnowledgeBaseService knowledgeBaseService,
                               IntentClassifier intentClassifier,
-                              IntentPrototypeJpaRepository prototypeRepo) {
+                              IntentPrototypeService intentPrototypeService) {
         this.llmProviderService = llmProviderService;
         this.knowledgeBaseService = knowledgeBaseService;
         this.intentClassifier = intentClassifier;
-        this.prototypeRepo = prototypeRepo;
+        this.intentPrototypeService = intentPrototypeService;
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(CONNECT_TIMEOUT);
         factory.setReadTimeout(READ_TIMEOUT);
@@ -122,11 +121,7 @@ public class SettingsController {
         if (chat == null || task == null || chat.isBlank() || task.isBlank()) {
             throw new IllegalArgumentException("chat 和 task 原型文本不能为空");
         }
-        var now = java.time.OffsetDateTime.now();
-        prototypeRepo.save(com.icusu.sivan.infra.forest.entity.IntentPrototypeEntity.builder()
-                .prototypeKey("chat").prototypeText(chat).updatedAt(now).build());
-        prototypeRepo.save(com.icusu.sivan.infra.forest.entity.IntentPrototypeEntity.builder()
-                .prototypeKey("task").prototypeText(task).updatedAt(now).build());
+        intentPrototypeService.updatePrototypes(chat, task);
         intentClassifier.reload();
         log.info("意图原型已更新: chat={}chars task={}chars", chat.length(), task.length());
         return BaseResponse.success();

@@ -524,13 +524,6 @@ public class ForestConversationService {
                                                             prep.sink.tryEmitNext(SseFormatter.buildPhaseStartEvent(
                                                                     "执行", null, null, 0, totalLeaves));
                                                         }
-                                                        // 注入 Agent 分隔头
-                                                        String agentName = agentNameByNodeId.get(nid);
-                                                        if (agentName != null) {
-                                                            String header = "\n--- " + agentName + " ---\n";
-                                                            contentAcc.append(header);
-                                                            prep.sink.tryEmitNext(SseFormatter.toJsonEvent("response", header));
-                                                        }
                                                     } else {
                                                         activePhases.remove(nid);
                                                         completedCount[0]++;
@@ -794,12 +787,6 @@ public class ForestConversationService {
                                                 if (++regActiveCount[0] == 1) {
                                                     sink.tryEmitNext(SseFormatter.buildPhaseStartEvent(
                                                             "执行", null, null, 0, regTotalLeaves));
-                                                }
-                                                String regAgentName = regAgentNameByNodeId.get(nid);
-                                                if (regAgentName != null) {
-                                                    String header = "\n--- " + regAgentName + " ---\n";
-                                                    contentAcc.append(header);
-                                                    sink.tryEmitNext(SseFormatter.toJsonEvent("response", header));
                                                 }
                                             } else {
                                                 regActivePhases.remove(nid);
@@ -1251,5 +1238,12 @@ public class ForestConversationService {
         for (TreeNode child : node.children()) {
             collectAgentNames(child, map);
         }
+    }
+
+    /**
+     * 订阅 Flashback SSE 流，委托给 StreamManager。
+     */
+    public Flux<String> subscribeFlashback() {
+        return streamManager.subscribeFlashback();
     }
 }

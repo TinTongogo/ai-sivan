@@ -2,7 +2,6 @@ package com.icusu.sivan.web.forest.controller;
 
 import com.icusu.sivan.agent.prompt.IntentClassifier;
 import com.icusu.sivan.common.dto.BaseResponse;
-import com.icusu.sivan.infra.shared.sse.StreamManager;
 import com.icusu.sivan.application.conversation.dto.*;
 import com.icusu.sivan.application.forest.dto.ForestTreeResponse;
 import com.icusu.sivan.application.forest.ForestConversationService;
@@ -32,7 +31,6 @@ public class ForestConversationController {
 
 
     private final ForestConversationService forestConversationService;
-    private final StreamManager streamManager;
     private final com.icusu.sivan.application.conversation.MessageCrudService messageCrudService;
     private final IntentClassifier intentClassifier;
 
@@ -80,7 +78,6 @@ public class ForestConversationController {
      * 删除会话。
      */
     @DeleteMapping("/{conversationId}")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
     public BaseResponse<Void> delete(@PathVariable UUID conversationId,
                                       @CurrentAccountId UUID accountId) {
         forestConversationService.delete(accountId, conversationId);
@@ -213,7 +210,6 @@ public class ForestConversationController {
      * 删除单条消息。
      */
     @DeleteMapping("/messages/{messageId}")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
     public BaseResponse<Void> deleteMessage(@PathVariable UUID messageId,
                                              @CurrentAccountId UUID accountId) {
         forestConversationService.deleteMessage(accountId, messageId);
@@ -261,7 +257,7 @@ public class ForestConversationController {
      */
     @GetMapping(value = "/flashback/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<String> flashbackStream(@CurrentAccountId UUID accountId) {
-        return streamManager.subscribeFlashback()
+        return forestConversationService.subscribeFlashback()
                 .filter(json -> json.contains(accountId.toString()) || json.contains("flashback"))
                 .map(json -> "event: flashback\ndata: " + json + "\n\n");
     }

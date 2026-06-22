@@ -33,8 +33,9 @@ export interface GoalListResponse {
  * 查询 Forest 执行进度。
  * 后端端点: GET /api/v2/goals/{goalId}/progress
  */
-export function fetchForestProgress(goalId: string): Promise<ForestProgress> {
-  return api.get(`/v2/goals/${goalId}/progress`) as Promise<ForestProgress>
+export async function fetchForestProgress(goalId: string): Promise<ForestProgress> {
+  const res: any = await api.get(`/v2/goals/${goalId}/progress`)
+  return res?.data as ForestProgress
 }
 
 /** Goal 列表（分页，按创建时间倒序）。 */

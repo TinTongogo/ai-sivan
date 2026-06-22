@@ -1,23 +1,21 @@
 package com.icusu.sivan.web.forest.controller;
 
+import com.icusu.sivan.application.forest.ForestGoalAppService;
 import com.icusu.sivan.common.Mode;
+import com.icusu.sivan.common.dto.BaseResponse;
 import com.icusu.sivan.domain.forest.Forest;
 import com.icusu.sivan.domain.forest.ForestEvent;
 import com.icusu.sivan.domain.forest.context.ExecutionContext;
 import com.icusu.sivan.domain.forest.context.Progress;
+import com.icusu.sivan.domain.forest.port.CheckpointHandler;
 import com.icusu.sivan.domain.forest.port.ForestRepository;
+import com.icusu.sivan.domain.forest.tree.TreeNode;
 import com.icusu.sivan.domain.forest.tree.node.InnerGoalNode;
 import com.icusu.sivan.domain.forest.tree.node.TaskNode;
-import com.icusu.sivan.domain.forest.tree.TreeNode;
-import com.icusu.sivan.domain.forest.port.CheckpointHandler;
-import com.icusu.sivan.infra.forest.execution.GoalExecutionService;
-import com.icusu.sivan.infra.forest.execution.ProgressAggregator;
 import com.icusu.sivan.web.shared.security.CurrentAccountId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 
@@ -33,17 +31,14 @@ import java.util.UUID;
 @RequestMapping("/api/v2/goals")
 public class ForestGoalController {
     private static final Logger log = LoggerFactory.getLogger(ForestGoalController.class);
-    private final GoalExecutionService goalExecutionService;
-    private final ProgressAggregator progressAggregator;
+    private final ForestGoalAppService forestGoalAppService;
     private final ForestRepository forestRepository;
     private final CheckpointHandler checkpointHandler;
 
-    public ForestGoalController(GoalExecutionService goalExecutionService,
-                                ProgressAggregator progressAggregator,
+    public ForestGoalController(ForestGoalAppService forestGoalAppService,
                                 ForestRepository forestRepository,
                                 CheckpointHandler checkpointHandler) {
-        this.goalExecutionService = goalExecutionService;
-        this.progressAggregator = progressAggregator;
+        this.forestGoalAppService = forestGoalAppService;
         this.forestRepository = forestRepository;
         this.checkpointHandler = checkpointHandler;
     }
@@ -69,33 +64,31 @@ public class ForestGoalController {
 
         return Flux.concat(
                 Flux.just(goalEvent),
-                goalExecutionService.execute(forest, root, ExecutionContext.create(accountId))
+                forestGoalAppService.execute(forest, root, ExecutionContext.create(accountId))
         );
     }
 
     @PostMapping("/{goalId}/cancel")
-    public ResponseEntity<Map<String, Object>> cancelGoal(@PathVariable UUID goalId,
-                                                           @CurrentAccountId UUID accountId) {
-        boolean cancelled = goalExecutionService.cancelExecution(goalId);
+    public BaseResponse<Map<String, Object>> cancelGoal(@PathVariable UUID goalId,
+                                                         @CurrentAccountId UUID accountId) {
+        boolean cancelled = forestGoalAppService.cancelExecution(goalId);
         if (!cancelled) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(Map.of("goalId", goalId.toString(), "error", "未找到活跃执行"));
+            return BaseResponse.notFound("未找到活跃执行");
         }
-        return ResponseEntity.ok(Map.of("goalId", goalId.toString(), "status", "cancelled"));
+        return BaseResponse.success(Map.of("goalId", goalId.toString(), "status", "cancelled"));
     }
 
     @GetMapping("/{goalId}/progress")
-    public ResponseEntity<Map<String, Object>> getProgress(@PathVariable UUID goalId,
-                                                            @CurrentAccountId UUID accountId) {
+    public BaseResponse<Map<String, Object>> getProgress(@PathVariable UUID goalId,
+                                                          @CurrentAccountId UUID accountId) {
         Forest forest = forestRepository.findForestById(goalId, accountId);
         if (forest == null) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(Map.of("goalId", goalId.toString(), "error", "goal not found"));
+            return BaseResponse.notFound("goal not found");
         }
 
         TreeNode root = forestRepository.findSubtree(forest.rootNodeId(), accountId);
         if (root == null) {
-            return ResponseEntity.ok(Map.of(
+            return BaseResponse.success(Map.of(
                     "goalId", goalId.toString(),
                     "progress", 0,
                     "completed", 0,
@@ -103,12 +96,12 @@ public class ForestGoalController {
                     "total", 0,
                     "depth", 0
             ));
-    }
+        }
 
-        Progress p = progressAggregator.aggregate(root);
+        Progress p = forestGoalAppService.aggregateProgress(root);
         double percentage = p.total() > 0 ? (double) p.completed() / p.total() : 0.0;
 
-        return ResponseEntity.ok(Map.of(
+        return BaseResponse.success(Map.of(
                 "goalId", goalId.toString(),
                 "title", forest.title(),
                 "progress", Math.round(percentage * 100.0) / 100.0,
@@ -125,7 +118,7 @@ public class ForestGoalController {
 
     /** Goal 列表（按创建时间倒序）。 */
     @GetMapping
-    public ResponseEntity<Map<String, Object>> listGoals(
+    public BaseResponse<Map<String, Object>> listGoals(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @CurrentAccountId UUID accountId) {
@@ -143,7 +136,7 @@ public class ForestGoalController {
                         "updatedAt", f.updatedAt() != null ? f.updatedAt().toString() : ""
                 ))
                 .toList();
-        return ResponseEntity.ok(Map.of(
+        return BaseResponse.success(Map.of(
                 "items", items,
                 "total", forests.size(),
                 "page", page,
@@ -153,14 +146,13 @@ public class ForestGoalController {
 
     /** Goal 详情。 */
     @GetMapping("/{goalId}")
-    public ResponseEntity<Map<String, Object>> getGoal(@PathVariable UUID goalId,
-                                                        @CurrentAccountId UUID accountId) {
+    public BaseResponse<Map<String, Object>> getGoal(@PathVariable UUID goalId,
+                                                      @CurrentAccountId UUID accountId) {
         Forest forest = forestRepository.findForestById(goalId, accountId);
         if (forest == null) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(Map.of("goalId", goalId.toString(), "error", "goal not found"));
+            return BaseResponse.notFound("goal not found");
         }
-        return ResponseEntity.ok(Map.of(
+        return BaseResponse.success(Map.of(
                 "goalId", forest.forestId().toString(),
                 "title", forest.title() != null ? forest.title() : "",
                 "conversationId", forest.forestId() != null ? forest.forestId().toString() : "",
@@ -183,18 +175,17 @@ public class ForestGoalController {
      * @param accountId 当前账户
      */
     @PostMapping("/{goalId}/hitl/approve")
-    public ResponseEntity<Map<String, Object>> approveHitl(
+    public BaseResponse<Map<String, Object>> approveHitl(
             @PathVariable UUID goalId,
             @RequestBody Map<String, Object> body,
             @CurrentAccountId UUID accountId) {
         String nodeId = (String) body.get("nodeId");
         if (nodeId == null || nodeId.isBlank()) {
-            return ResponseEntity.badRequest()
-                    .body(Map.of("error", "nodeId is required"));
+            return BaseResponse.badRequest("nodeId is required");
         }
         checkpointHandler.approve(nodeId, accountId.toString());
         log.info("[HITL] 审批通过: goalId={} nodeId={}", goalId, nodeId);
-        return ResponseEntity.ok(Map.of(
+        return BaseResponse.success(Map.of(
                 "goalId", goalId.toString(),
                 "nodeId", nodeId,
                 "status", "approved"
@@ -209,19 +200,18 @@ public class ForestGoalController {
      * @param accountId 当前账户
      */
     @PostMapping("/{goalId}/hitl/reject")
-    public ResponseEntity<Map<String, Object>> rejectHitl(
+    public BaseResponse<Map<String, Object>> rejectHitl(
             @PathVariable UUID goalId,
             @RequestBody Map<String, Object> body,
             @CurrentAccountId UUID accountId) {
         String nodeId = (String) body.get("nodeId");
         if (nodeId == null || nodeId.isBlank()) {
-            return ResponseEntity.badRequest()
-                    .body(Map.of("error", "nodeId is required"));
+            return BaseResponse.badRequest("nodeId is required");
         }
         String reason = (String) body.getOrDefault("reason", "");
         checkpointHandler.reject(nodeId, accountId.toString(), reason);
         log.info("[HITL] 审批拒绝: goalId={} nodeId={} reason={}", goalId, nodeId, reason);
-        return ResponseEntity.ok(Map.of(
+        return BaseResponse.success(Map.of(
                 "goalId", goalId.toString(),
                 "nodeId", nodeId,
                 "status", "rejected"

@@ -1,7 +1,7 @@
 package com.icusu.sivan.web.forest.controller;
 
+import com.icusu.sivan.application.forest.MetricsAppService;
 import com.icusu.sivan.common.dto.BaseResponse;
-import com.icusu.sivan.infra.forest.sink.ForestMetricsCollector;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -14,10 +14,10 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class ForestMetricsController {
 
-    private final ForestMetricsCollector metricsCollector;
+    private final MetricsAppService metricsAppService;
 
     @GetMapping
     public BaseResponse<Map<String, Object>> getMetrics() {
-        return BaseResponse.success(metricsCollector.snapshot());
+        return BaseResponse.success(metricsAppService.snapshot());
     }
 }

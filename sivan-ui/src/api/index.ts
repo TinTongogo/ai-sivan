@@ -22,6 +22,10 @@ const APP_KEYS = ['sivan-last-group', 'sivan-settings']
 api.interceptors.response.use(
   (res) => res.data,
   (err) => {
+    // 统一 BaseResponse 格式的错误消息
+    if (err.response?.data?.code !== undefined) {
+      err.message = err.response.data.message || err.message
+    }
     if (err.response?.status === 401) {
       const hadToken = !!localStorage.getItem('token')
       AUTH_KEYS.forEach(k => localStorage.removeItem(k))

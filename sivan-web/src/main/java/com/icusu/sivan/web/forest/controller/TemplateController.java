@@ -7,7 +7,6 @@ import com.icusu.sivan.common.exception.ResourceNotFoundException;
 import com.icusu.sivan.domain.forest.template.GoalTreeTemplate;
 import com.icusu.sivan.domain.forest.template.TemplateRepository;
 import com.icusu.sivan.domain.forest.tree.ExecutableNode;
-import com.icusu.sivan.infra.forest.execution.GoalExecutionService;
 import com.icusu.sivan.application.forest.dto.TemplateRequest;
 import com.icusu.sivan.application.forest.dto.TemplateResponse;
 import com.icusu.sivan.web.shared.security.CurrentAccountId;
@@ -33,14 +32,11 @@ public class TemplateController {
     private static final Logger log = LoggerFactory.getLogger(TemplateController.class);
 
     private final TemplateRepository templateRepository;
-    private final GoalExecutionService goalExecutionService;
     private final ObjectMapper objectMapper;
 
     public TemplateController(TemplateRepository templateRepository,
-                              GoalExecutionService goalExecutionService,
                               ObjectMapper objectMapper) {
         this.templateRepository = templateRepository;
-        this.goalExecutionService = goalExecutionService;
         this.objectMapper = objectMapper;
     }
 
@@ -96,29 +92,29 @@ public class TemplateController {
 
     /** 删除模板。 */
     @DeleteMapping("/{templateId}")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable UUID templateId, @CurrentAccountId UUID accountId) {
+    public BaseResponse<Void> delete(@PathVariable UUID templateId, @CurrentAccountId UUID accountId) {
         GoalTreeTemplate template = findOwned(templateId, accountId);
         templateRepository.delete(templateId);
         log.info("模板已删除: templateId={}", templateId);
+        return BaseResponse.success();
     }
 
     /** 实例化为 GoalTree（创建并开始执行）。 */
     @PostMapping("/{templateId}/instantiate")
     @ResponseStatus(HttpStatus.CREATED)
-    public Map<String, Object> instantiate(@PathVariable UUID templateId,
-                                            @CurrentAccountId UUID accountId) {
+    public BaseResponse<Map<String, Object>> instantiate(@PathVariable UUID templateId,
+                                                          @CurrentAccountId UUID accountId) {
         GoalTreeTemplate template = findOwned(templateId, accountId);
         ExecutableNode root = template.deepClone();
         UUID goalId = UUID.randomUUID();
         // 记录使用
         templateRepository.updateStats(templateId, template.usageCount(), template.successCount());
         log.info("模板已实例化: templateId={} goalId={}", templateId, goalId);
-        return Map.of(
+        return BaseResponse.created(Map.of(
                 "goalId", goalId.toString(),
                 "templateId", templateId.toString(),
                 "status", "created"
-        );
+        ));
     }
 
     // ====== 内部 ======

@@ -320,7 +320,7 @@ public class AgentLeafExecutor implements LeafExecutor {
             }
         }
 
-        sb.append("\n\n## 输出规范\n- 直接输出分析结果，不要输出内部思考过程或协作步骤\n" + "- 不要输出「我先做X」「正在等待Y」「让我调用Z」这类过程描述\n" + "- 读取文件内容后，不要将完整文件内容输出到对话中——用 file_edit/file_write 修改即可\n" + "- 其他 Agent 的分析结果会由主控整合给你，你不需要等待或催促他们\n" + "- 不要在回复中使用分隔线、装饰符号自我介绍——直接回答问题\n" + "- 只输出结论，不言自语\n\n" + "你可以使用 send_agent_message 工具与同一任务中的其他 Agent 协作。");
+        sb.append("\n\n## 输出规范\n- 直接输出分析结果，不要输出内部思考过程或协作步骤\n" + "- 不要输出「我先做X」「正在等待Y」「让我调用Z」这类过程描述\n" + "- 读取文件内容后，不要将完整文件内容输出到对话中——用 file_edit/file_write 修改即可\n" + "- 其他 Agent 的分析结果会由主控整合给你，你不需要等待或催促他们\n" + "- 只输出结论，不言自语\n\n" + "你可以使用 send_agent_message 工具与同一任务中的其他 Agent 协作。");
 
         return sb.toString();
     }

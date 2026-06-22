@@ -172,113 +172,14 @@ function toForestTreeNode(node: ForestTreeResponseNode): LocalForestTreeNode {
 // 首次内容到达时自动折叠思考区（仅一次），之后由用户控制
 let initialContentCollapseDone = false
 
-// 思考内容打字机效果
-const displayThinking = ref(props.message.thinking || '')
-const pendingThinkingChars = ref('')
-const thinkingDisplayedUpTo = ref((props.message.thinking || '').length)
-
-// 打字机效果 — 120fps setTimeout 驱动，每帧批量渲染
-const displayContent = ref(props.message.content)
-const pendingChars = ref('')
-const displayedUpTo = ref(props.message.content.length)
-let timerId: ReturnType<typeof setTimeout> | null = null
-let streamEnded = false
-
-const TICK_MS = 8 // 120fps
-const TEXT_SPEED_CPS = 40 // 自然阅读速度（字符/秒），不受帧率影响
-
-/** 将余下的排队字符立即刷到 display */
-function flushDisplay() {
-  displayContent.value = props.message.content
-  displayedUpTo.value = props.message.content.length
-  pendingChars.value = ''
-  displayThinking.value = props.message.thinking || ''
-  thinkingDisplayedUpTo.value = (props.message.thinking || '').length
-  pendingThinkingChars.value = ''
-  stopTyping()
-}
-
 watch(() => props.message.content, (newContent) => {
-  if (newContent && (props.message.thinking || displayThinking.value) && !initialContentCollapseDone) {
+  if (newContent && props.message.thinking && !initialContentCollapseDone) {
     initialContentCollapseDone = true
     thinkingOpen.value = false
-    displayThinking.value = props.message.thinking || ''
-    pendingThinkingChars.value = ''
-    thinkingDisplayedUpTo.value = (props.message.thinking || '').length
-  }
-  if (newContent.length > displayedUpTo.value) {
-    pendingChars.value += newContent.slice(displayedUpTo.value)
-    displayedUpTo.value = newContent.length
-    if (!props.streaming) streamEnded = true
-    startTyping()
-  } else if (newContent !== displayContent.value) {
-    flushDisplay()
   }
 })
-
-watch(() => props.message.thinking, (newThinking) => {
-  if (newThinking && !props.message.content) thinkingOpen.value = true
-  if (newThinking && newThinking.length > thinkingDisplayedUpTo.value) {
-    pendingThinkingChars.value += newThinking.slice(thinkingDisplayedUpTo.value)
-    thinkingDisplayedUpTo.value = newThinking.length
-    startTyping()
-  } else if (newThinking && newThinking !== displayThinking.value) {
-    flushDisplay()
-  }
-})
-
-watch(() => props.streaming, (isStreaming) => {
-  if (!isStreaming) streamEnded = true
-})
-
-/** 120fps 批量渲染：根据 TEXT_SPEED_CPS 和 TICK_MS 计算每帧字符数 */
-function startTyping() {
-  if (timerId !== null || (pendingChars.value.length === 0 && pendingThinkingChars.value.length === 0)) return
-  // 每帧输出的基础字符数 = 40cps / 120fps ≈ 0.33 → 至少 1
-  const baseCharsPerTick = Math.max(1, Math.round(TEXT_SPEED_CPS * TICK_MS / 1000))
-  function tick() {
-    // 思考内容一次性输出
-    if (pendingThinkingChars.value.length > 0) {
-      displayThinking.value += pendingThinkingChars.value
-      pendingThinkingChars.value = ''
-    }
-    if (pendingChars.value.length > 0) {
-      const q = pendingChars.value.length
-      let n: number
-      if (streamEnded) {
-        // 流结束加速收尾，2 tick 内消化完
-        n = Math.ceil(q / 2)
-      } else if (q > 200) {
-        n = baseCharsPerTick * 12 // 队列积压严重 → 快速追赶
-      } else if (q > 80) {
-        n = baseCharsPerTick * 6
-      } else if (q > 30) {
-        n = baseCharsPerTick * 3
-      } else {
-        n = baseCharsPerTick // 自然节奏
-      }
-      displayContent.value += pendingChars.value.slice(0, n)
-      pendingChars.value = pendingChars.value.slice(n)
-    }
-    if (pendingChars.value.length === 0 && pendingThinkingChars.value.length === 0) {
-      stopTyping()
-      if (streamEnded) flushDisplay()
-      return
-    }
-    timerId = setTimeout(tick, TICK_MS)
-  }
-  timerId = setTimeout(tick, TICK_MS)
-}
-
-function stopTyping() {
-  if (timerId !== null) {
-    clearTimeout(timerId)
-    timerId = null
-  }
-}
 
 onUnmounted(() => {
-  stopTyping()
   // 只清理全局缓存中已不存在的 blob URL（被淘汰的），
   // 全局缓存中仍保留的 blob 可能被其他组件实例共用，不撤销
   for (const [originalUrl, blobUrl] of Object.entries(imageBlobUrls.value)) {
@@ -310,18 +211,18 @@ function handleCodeCopy(e: MouseEvent) {
 }
 
 const renderedContent = computed(() => {
-  let html = renderMarkdown(displayContent.value)
+  let html = renderMarkdown(props.message.content)
   // 20-编排产出展示方案: (§Agent) → 可点击 badge
   html = html.replace(/\(§([^)]+)\)/g, (_, agent) =>
     `<span class="agent-badge" onclick="event.stopPropagation()" title="${agent} 的产出">🔍 ${agent}</span>`
   )
   return html
 })
-const renderedThinking = computed(() => renderMarkdown(displayThinking.value))
+const renderedThinking = computed(() => renderMarkdown(props.message.thinking || ''))
 
 // 检测音频内容：格式为 [audio:data:audio/mp3;base64,xxxxx]
 const audioSrc = computed(() => {
-  const c = displayContent.value
+  const c = props.message.content
   if (!c.startsWith('[audio:')) return null
   const match = c.match(/^\[audio:(data:.+)\]$/)
   return match ? match[1] : null
@@ -421,7 +322,7 @@ function formatFileSize(bytes: number): string {
             <div v-html="renderedContent"></div>
           </template>
         </div>
-        <div v-show="streaming && !displayContent" class="bubble__streaming">
+        <div v-show="streaming && !props.message.content" class="bubble__streaming">
           <span class="streaming-dot"></span>
           <span class="streaming-dot"></span>
           <span class="streaming-dot"></span>

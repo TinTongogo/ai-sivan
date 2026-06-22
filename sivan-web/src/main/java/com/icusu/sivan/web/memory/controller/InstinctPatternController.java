@@ -1,17 +1,16 @@
 package com.icusu.sivan.web.memory.controller;
 
+import com.icusu.sivan.application.memory.SharedTemplateAppService;
 import com.icusu.sivan.common.dto.BaseResponse;
 import com.icusu.sivan.domain.memory.IInstinctPatternRepository;
 import com.icusu.sivan.domain.memory.ISharedTemplateRepository;
 import com.icusu.sivan.domain.memory.InstinctPattern;
 import com.icusu.sivan.domain.memory.SharedTemplate;
-import com.icusu.sivan.infra.memory.shared.SharedTemplateService;
 import com.icusu.sivan.application.memory.dto.PatternResponse;
 import com.icusu.sivan.application.memory.dto.ShareRequest;
 import com.icusu.sivan.application.memory.dto.SharedTemplateResponse;
 import com.icusu.sivan.web.shared.security.CurrentAccountId;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
@@ -29,7 +28,7 @@ public class InstinctPatternController {
 
     private final IInstinctPatternRepository patternRepository;
     private final ISharedTemplateRepository sharedTemplateRepository;
-    private final SharedTemplateService sharedTemplateService;
+    private final SharedTemplateAppService sharedTemplateAppService;
 
     // ===== 本能模板 CRUD =====
 
@@ -51,14 +50,14 @@ public class InstinctPatternController {
 
     /** 删除模板。 */
     @DeleteMapping("/{patternId}")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable UUID patternId, @CurrentAccountId UUID accountId) {
+    public BaseResponse<Void> delete(@PathVariable UUID patternId, @CurrentAccountId UUID accountId) {
         InstinctPattern pattern = patternRepository.findById(patternId)
                 .orElseThrow(() -> new IllegalArgumentException("本能模板不存在: " + patternId));
         if (!accountId.equals(pattern.getAccountId())) {
             throw new IllegalArgumentException("只能删除自己的模板");
         }
         patternRepository.delete(patternId);
+        return BaseResponse.success();
     }
 
     // ===== 分享 =====
@@ -69,15 +68,15 @@ public class InstinctPatternController {
                                                        @RequestBody ShareRequest request,
                                                        @CurrentAccountId UUID accountId) {
         SharedTemplate.Visibility visibility = SharedTemplate.Visibility.valueOf(request.getVisibility());
-        SharedTemplate template = sharedTemplateService.share(patternId, accountId, visibility);
+        SharedTemplate template = sharedTemplateAppService.share(patternId, accountId, visibility);
         return BaseResponse.success(toSharedResponse(template));
     }
 
     /** 取消分享。 */
     @DeleteMapping("/share/{templateId}")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void unshare(@PathVariable UUID templateId, @CurrentAccountId UUID accountId) {
-        sharedTemplateService.unshare(templateId, accountId);
+    public BaseResponse<Void> unshare(@PathVariable UUID templateId, @CurrentAccountId UUID accountId) {
+        sharedTemplateAppService.unshare(templateId, accountId);
+        return BaseResponse.success();
     }
 
     // ===== 共享模板查询 =====
@@ -92,7 +91,7 @@ public class InstinctPatternController {
     /** 我可访问的他人共享模板列表。 */
     @GetMapping("/shared/accessible")
     public BaseResponse<List<SharedTemplateResponse>> accessible(@CurrentAccountId UUID accountId) {
-        List<SharedTemplate> list = sharedTemplateService.findAccessibleTemplates(accountId);
+        List<SharedTemplate> list = sharedTemplateAppService.findAccessibleTemplates(accountId);
         return BaseResponse.success(list.stream().map(this::toSharedResponse).toList());
     }
 
