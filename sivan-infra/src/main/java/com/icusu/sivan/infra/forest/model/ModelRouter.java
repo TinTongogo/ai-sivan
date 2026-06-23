@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 
+import java.util.Comparator;
 import java.util.List;
 
 import static com.icusu.sivan.domain.forest.vo.ModelCapabilities.Capability.*;
@@ -37,7 +38,13 @@ public class ModelRouter {
         return registry.get(defaultModelId);
     }
 
-    /** 按调用场景选择模型（设计文档 5.1 节）。 */
+    /**
+     * 按调用场景选择模型（设计文档 5.1 节）。
+     * <p>
+     * TODO: 待接入。当前所有调用方走 {@link #defaultModel()} / {@link #forTask(TaskProfile)}，
+     * 路由结果中的 intent 尚未映射到此方法。
+     * 接入条件：1) 调用方持有路由 intent；2) 将 String "chat"/"task" 映射为 {@link Intent} 枚举。
+     */
     public LanguageModel forIntent(Intent intent) {
         return switch (intent) {
             case CHAT -> registry.get(defaultModelId);
@@ -49,8 +56,7 @@ public class ModelRouter {
             case ANALYSIS -> {
                 // 分析场景优先高 maxToken 的模型
                 var all = registry.all();
-                yield all.stream().max((a, b) -> Integer.compare(
-                        a.capabilities().maxTokens(), b.capabilities().maxTokens()))
+                yield all.stream().max(Comparator.comparingInt(a -> a.capabilities().maxTokens()))
                         .orElse(registry.get(defaultModelId));
             }
         };
@@ -94,9 +100,7 @@ public class ModelRouter {
     private LanguageModel selectCheapest(List<LanguageModel> candidates) {
         if (candidates.isEmpty()) return null;
         return candidates.stream()
-                .min((a, b) -> Double.compare(
-                        a.capabilities().inputPricePer1k(),
-                        b.capabilities().inputPricePer1k()))
+                .min(Comparator.comparingDouble(a -> a.capabilities().inputPricePer1k()))
                 .orElse(null);
     }
 }

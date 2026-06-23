@@ -53,6 +53,15 @@ public class SseFormatter {
     public static String buildMetaEvent(String modelName, Integer totalTokens,
                                          int durationMs, int thinkingMs, Integer thinkingTokens,
                                          String messageId, String chain) {
+        return buildMetaEvent(modelName, totalTokens, durationMs, thinkingMs, thinkingTokens,
+                messageId, chain, null, null);
+    }
+
+    /** 构建 meta 事件 JSON 字符串（含 generation 信息）。 */
+    public static String buildMetaEvent(String modelName, Integer totalTokens,
+                                         int durationMs, int thinkingMs, Integer thinkingTokens,
+                                         String messageId, String chain,
+                                         String generationGroup, Integer generationTotal) {
         StringBuilder meta = new StringBuilder("{\"type\":\"meta\"");
         appendJsonStr(meta, "model", modelName);
         if (totalTokens != null) {
@@ -63,6 +72,8 @@ public class SseFormatter {
         if (thinkingTokens != null && thinkingTokens > 0) appendJsonNum(meta, "thinkingTokens", thinkingTokens);
         if (messageId != null) appendJsonStr(meta, "messageId", messageId);
         if (chain != null) appendJsonStr(meta, "chain", chain);
+        if (generationGroup != null) appendJsonStr(meta, "generationGroup", generationGroup);
+        if (generationTotal != null) appendJsonNum(meta, "generationTotal", generationTotal);
         meta.append("}");
         return meta.toString();
     }

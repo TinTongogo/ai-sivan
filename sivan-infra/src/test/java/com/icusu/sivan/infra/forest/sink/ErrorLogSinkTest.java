@@ -34,7 +34,7 @@ class ErrorLogSinkTest {
 
     @Test
     void lifecycleEventsPassThrough() {
-        sink.emit(ForestEvent.lifecycle("n3", "f1", "a1", ForestEvent.EventType.LIFECYCLE));
+        sink.emit(ForestEvent.lifecycle("n3", "f1", "a1", ForestEvent.EventType.NODE_START));
         assertEquals(1, passThrough);
     }
 

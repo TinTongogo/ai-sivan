@@ -98,7 +98,7 @@ public class SequentialModeStrategy implements ModeStrategy {
                     if (pause.isRejected()) {
                         child.setStatus(NodeStatus.CANCELLED);
                         return Flux.just(ForestEvent.lifecycle(child.nodeId(), null,
-                                ctx.accountId().toString(), ForestEvent.EventType.LIFECYCLE));
+                                ctx.accountId().toString(), ForestEvent.EventType.NODE_END));
                     }
                     return next.execute(child, ctx, depth + 1);
                 });

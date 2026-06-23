@@ -392,14 +392,20 @@ public class ForestConversationService {
 
                     log.info("Forest 执行: toolCount={}", coreTools != null ? coreTools.size() : 0);
 
+                    List<ToolSpec> internalTools = promptContextService.getInternalTools();
                     List<Msg> prebuiltMsgs = promptContextService.buildLlmMessages(
                             conversationId, accountId, null, null,
-                            prep.contextLength, null, null, null, null, null);
+                            prep.contextLength, null, null, null, null, null,
+                            internalTools, null, null);
 
                     // 注入动态上下文：用户画像、情境闪现、文件快照、项目路径提示
                     List<Msg> ctxMsgs = toolResult.contextMsgs();
                     if (ctxMsgs != null && !ctxMsgs.isEmpty()) {
-                        prebuiltMsgs.addAll(1, ctxMsgs);
+                        // 在 SYSTEM 消息块（system prompt + tools）之后插入
+                        int insertPos = 0;
+                        while (insertPos < prebuiltMsgs.size()
+                                && prebuiltMsgs.get(insertPos).role() == Role.SYSTEM) insertPos++;
+                        prebuiltMsgs.addAll(insertPos, ctxMsgs);
                     }
 
                     // 本能模板匹配：优先复用历史成功的任务分解
@@ -480,7 +486,7 @@ public class ForestConversationService {
                                 final int[] activeCount = {0};
                                 final int[] completedCount = {0};
                                 final int totalLeaves = countLeaves(tree);
-                                final Map<String, String> agentNameByNodeId = buildNodeAgentMap(tree);
+                                final Map<String, String> taskContentByNodeId = buildTaskContentMap(tree);
                                 final long startProgressMs = System.currentTimeMillis();
 
                                 goalExecutionService.executeOnly(forest, tree, execCtx, Delivery.SUMMARY)
@@ -503,12 +509,12 @@ public class ForestConversationService {
                                                 case MILESTONE -> {
                                                     String m = event.message();
                                                     try {
-                                                        totalTokens[0] = Integer.parseInt(
+                                                        totalTokens[0] += Integer.parseInt(
                                                                 m.replaceAll(".*\"totalTokens\":(\\d+).*", "$1"));
                                                     } catch (Exception ignored) {
                                                     }
                                                     try {
-                                                        thinkingTokens[0] = Integer.parseInt(
+                                                        thinkingTokens[0] += Integer.parseInt(
                                                                 m.replaceAll(".*\"thinkingTokens\":(\\d+).*", "$1"));
                                                     } catch (Exception ignored) {
                                                     }
@@ -517,25 +523,37 @@ public class ForestConversationService {
                                                     prep.sink.tryEmitNext("{\"type\":\"error\",\"message\":\""
                                                             + escapeJson(event.message()) + "\"}");
                                                 }
-                                                case LIFECYCLE -> {
+                                                case NODE_START -> {
                                                     String nid = event.nodeId();
-                                                    if (activePhases.add(nid)) {
-                                                        if (++activeCount[0] == 1) {
-                                                            prep.sink.tryEmitNext(SseFormatter.buildPhaseStartEvent(
-                                                                    "执行", null, null, 0, totalLeaves));
+                                                    activePhases.add(nid);
+                                                    // 多子任务才展示标题头，单任务直接输出避免冗余
+                                                    if (taskContentByNodeId.size() > 1) {
+                                                        String taskContent = taskContentByNodeId.get(nid);
+                                                        if (taskContent != null) {
+                                                            String truncated = taskContent.length() > 50
+                                                                    ? taskContent.substring(0, 50) + "…" : taskContent;
+                                                            String header = "\n\n#### 📋 " + truncated + "\n\n";
+                                                            contentAcc.append(header);
+                                                            prep.sink.tryEmitNext(SseFormatter.toJsonEvent("response", header));
                                                         }
+                                                    }
+                                                    if (++activeCount[0] == 1) {
+                                                        prep.sink.tryEmitNext(SseFormatter.buildPhaseStartEvent(
+                                                                "执行", null, null, 0, totalLeaves));
+                                                    }
+                                                }
+                                                case NODE_END -> {
+                                                    String nid = event.nodeId();
+                                                    activePhases.remove(nid);
+                                                    completedCount[0]++;
+                                                    if (--activeCount[0] > 0) {
+                                                        prep.sink.tryEmitNext(buildProgressJson(
+                                                                completedCount[0], totalLeaves,
+                                                                System.currentTimeMillis() - startProgressMs));
                                                     } else {
-                                                        activePhases.remove(nid);
-                                                        completedCount[0]++;
-                                                        if (--activeCount[0] > 0) {
-                                                            prep.sink.tryEmitNext(buildProgressJson(
-                                                                    completedCount[0], totalLeaves,
-                                                                    System.currentTimeMillis() - startProgressMs));
-                                                        } else {
-                                                            prep.sink.tryEmitNext(SseFormatter.buildPhaseEndEvent(
-                                                                    "执行", null, totalTokens[0] > 0 ? totalTokens[0] : null,
-                                                                    null, null));
-                                                        }
+                                                        prep.sink.tryEmitNext(SseFormatter.buildPhaseEndEvent(
+                                                                "执行", null, totalTokens[0] > 0 ? totalTokens[0] : null,
+                                                                null, null));
                                                     }
                                                 }
                                                 case BRANCH_DECISION -> {
@@ -563,7 +581,13 @@ public class ForestConversationService {
                                                     + (thinkingStartMs[0] > 0
                                                     ? System.currentTimeMillis() - thinkingStartMs[0] : 0));
                                             String thinkingContent = thinkingAcc.length() > 0 ? thinkingAcc.toString() : null;
-                                            prep.assistantMsg.setContent(contentAcc.toString());
+                                            String msgContent = contentAcc.toString();
+                                            // LLM 可能将全部产出放入 thinking 而非 content，降级回退
+                                            if (msgContent.isEmpty() && thinkingContent != null) {
+                                                msgContent = thinkingContent;
+                                                thinkingContent = null;
+                                            }
+                                            prep.assistantMsg.setContent(msgContent);
                                             prep.assistantMsg.setThinking(thinkingContent);
                                             prep.assistantMsg.setStatus(
                                                     signal == SignalType.ON_COMPLETE
@@ -698,9 +722,11 @@ public class ForestConversationService {
                             log.warn("ContextBuilder 增强失败(regenerate)，降级到压缩摘要", e);
                             enhancedContext = compressResult.toSummaryText();
                         }
+                        List<ToolSpec> regInternalTools = promptContextService.getInternalTools();
                         List<Msg> prebuiltMsgs = promptContextService.buildLlmMessages(conversationId, accountId,
                                 regenerateImages, regenerateAudios, contextLength,
-                                aiMsg.getMessageId(), null, null, null, providerId);
+                                aiMsg.getMessageId(), null, null, null, providerId,
+                                regInternalTools, null, null);
                         PromptContextService.insertContextMessages(prebuiltMsgs, epochResult, enhancedContext);
 
                         // 注入项目路径提示，让 LLM 知道当前工作目录
@@ -743,7 +769,7 @@ public class ForestConversationService {
                         final int[] regActiveCount = {0};
                         final int[] regCompletedCount = {0};
                         final int regTotalLeaves = countLeaves(tree);
-                        final Map<String, String> regAgentNameByNodeId = buildNodeAgentMap(tree);
+                        final Map<String, String> regTaskContentByNodeId = buildTaskContentMap(tree);
                         final long regStartMs = System.currentTimeMillis();
                         String modelName = resolveModelName(providerId, accountId);
 
@@ -781,25 +807,36 @@ public class ForestConversationService {
                                             sink.tryEmitNext("{\"type\":\"error\",\"message\":\""
                                                     + escapeJson(event.message()) + "\"}");
                                         }
-                                        case LIFECYCLE -> {
+                                        case NODE_START -> {
                                             String nid = event.nodeId();
-                                            if (regActivePhases.add(nid)) {
-                                                if (++regActiveCount[0] == 1) {
-                                                    sink.tryEmitNext(SseFormatter.buildPhaseStartEvent(
-                                                            "执行", null, null, 0, regTotalLeaves));
+                                            regActivePhases.add(nid);
+                                            if (regTaskContentByNodeId.size() > 1) {
+                                                String taskContent = regTaskContentByNodeId.get(nid);
+                                                if (taskContent != null) {
+                                                    String truncated = taskContent.length() > 50
+                                                            ? taskContent.substring(0, 50) + "…" : taskContent;
+                                                    String header = "\n\n#### 📋 " + truncated + "\n\n";
+                                                    contentAcc.append(header);
+                                                    sink.tryEmitNext(SseFormatter.toJsonEvent("response", header));
                                                 }
+                                            }
+                                            if (++regActiveCount[0] == 1) {
+                                                sink.tryEmitNext(SseFormatter.buildPhaseStartEvent(
+                                                        "执行", null, null, 0, regTotalLeaves));
+                                            }
+                                        }
+                                        case NODE_END -> {
+                                            String nid = event.nodeId();
+                                            regActivePhases.remove(nid);
+                                            regCompletedCount[0]++;
+                                            if (--regActiveCount[0] > 0) {
+                                                sink.tryEmitNext(buildProgressJson(regCompletedCount[0],
+                                                        regTotalLeaves,
+                                                        System.currentTimeMillis() - regStartMs));
                                             } else {
-                                                regActivePhases.remove(nid);
-                                                regCompletedCount[0]++;
-                                                if (--regActiveCount[0] > 0) {
-                                                    sink.tryEmitNext(buildProgressJson(regCompletedCount[0],
-                                                            regTotalLeaves,
-                                                            System.currentTimeMillis() - regStartMs));
-                                                } else {
-                                                    sink.tryEmitNext(SseFormatter.buildPhaseEndEvent(
-                                                            "执行", null, totalTokens[0] > 0 ? totalTokens[0] : null,
-                                                            null, null));
-                                                }
+                                                sink.tryEmitNext(SseFormatter.buildPhaseEndEvent(
+                                                        "执行", null, totalTokens[0] > 0 ? totalTokens[0] : null,
+                                                        null, null));
                                             }
                                         }
                                     }
@@ -811,7 +848,13 @@ public class ForestConversationService {
                                             + (thinkingStartMs[0] > 0
                                             ? System.currentTimeMillis() - thinkingStartMs[0] : 0));
                                     String thinkingContent = thinkingAcc.length() > 0 ? thinkingAcc.toString() : null;
-                                    finalAssistantMsg.setContent(contentAcc.toString());
+                                    String msgContent = contentAcc.toString();
+                                    // LLM 可能将全部产出放入 thinking 而非 content，降级回退
+                                    if (msgContent.isEmpty() && thinkingContent != null) {
+                                        msgContent = thinkingContent;
+                                        thinkingContent = null;
+                                    }
+                                    finalAssistantMsg.setContent(msgContent);
                                     finalAssistantMsg.setThinking(thinkingContent);
                                     finalAssistantMsg.setStatus(
                                             signal == SignalType.ON_COMPLETE
@@ -834,11 +877,16 @@ public class ForestConversationService {
                                             msgId, conversationId, accountId,
                                             conversation.getProjectId(), contentAcc.toString(), thinkingContent,
                                             modelName, totalTokens[0], durationMs, thinkingDurationMs));
+                                    UUID genGroup = finalAssistantMsg.getGenerationGroup();
+                                    String genGroupStr = genGroup != null ? genGroup.toString() : null;
+                                    Integer genTotal = genGroup != null
+                                            ? messageRepository.countByGenerationGroup(genGroup) : null;
                                     sink.tryEmitNext(SseFormatter.buildMetaEvent(
                                             modelName, totalTokens[0] > 0 ? totalTokens[0] : null,
                                             durationMs, thinkingDurationMs,
                                             thinkingTokens[0] > 0 ? thinkingTokens[0] : null,
-                                            msgId.toString(), conversationId.toString()));
+                                            msgId.toString(), conversationId.toString(),
+                                            genGroupStr, genTotal));
                                     streamManager.complete(msgId);
                                 })
                                 .subscribeOn(Schedulers.boundedElastic())
@@ -1050,14 +1098,18 @@ public class ForestConversationService {
                                                           java.util.Map<String, java.util.List<ForestExecutionLogEntity>> toolLogsByNode) {
         ForestTreeResponse.TreeNode tn = new ForestTreeResponse.TreeNode();
         tn.setNodeId(node.nodeId());
-        // 节点名优先显示 output（Agent 执行产出），没有时才回退到任务描述
+        // name = 节点描述（任务内容），output = 执行产出（metadata.output）
         String nodeOutput = null;
         if (node instanceof ContentNode cn) {
             nodeOutput = cn.metadataString("output");
-            tn.setName(nodeOutput != null && !nodeOutput.isBlank() ? nodeOutput : cn.content());
+            String taskContent = cn.content();
+            tn.setName(taskContent != null && !taskContent.isBlank() ? taskContent : node.nodeType());
             tn.setOutput(nodeOutput);
         } else {
-            tn.setName(node.nodeType());
+            nodeOutput = node.metadataString("output");
+            String reasoning = node.metadataString("reasoning");
+            tn.setName(reasoning != null && !reasoning.isBlank() ? reasoning : node.nodeType());
+            tn.setOutput(nodeOutput);
         }
         tn.setLeaf(node.isLeaf());
         if (node instanceof ExecutableNode en) {
@@ -1083,6 +1135,22 @@ public class ForestConversationService {
         Object output = node.metadata().get("output");
         if (output instanceof String os && !os.isBlank()) {
             tn.setOutput(os);
+        }
+        // durationMs & tokens（实际执行耗时和 token 消耗）
+        Object durationMs = node.metadata().get("durationMs");
+        if (durationMs instanceof Integer dms) {
+            tn.setDurationMs(dms);
+        } else if (durationMs instanceof Number n) {
+            tn.setDurationMs(n.intValue());
+        }
+        if (node instanceof com.icusu.sivan.domain.forest.tree.CompressibleNode comp) {
+            Object actualTokens = node.metadata().get("_actualTokens");
+            if (actualTokens instanceof Number n && n.intValue() > 0) {
+                tn.setTokens(n.intValue());
+            } else {
+                long est = comp.estimateSubtreeTokens();
+                if (est > 0) tn.setTokens((int) Math.min(est, Integer.MAX_VALUE));
+            }
         }
         // 加载工具调用摘要
         String nid = node.nodeId();
@@ -1207,36 +1275,22 @@ public class ForestConversationService {
     }
 
     /**
-     * 持久化已组装好 metadata 的 Forest + 树。
-     */
-
-    /**
-     * 将路由层级转为策略名称，用于路由日志展示。
-     */
-
-
-    /**
-     * 遍历树，构建 nodeId → agentName 映射。
-     */
-    private static Map<String, String> buildNodeAgentMap(
-            TreeNode root) {
+     * 遍历树，构建 nodeId → taskContent 映射（仅叶子 TaskNode）。 */
+    private static Map<String, String> buildTaskContentMap(TreeNode root) {
         Map<String, String> map = new HashMap<>();
-        collectAgentNames(root, map);
+        collectTaskContent(root, map);
         return map;
     }
 
-    @SuppressWarnings("unchecked")
-    private static void collectAgentNames(
-            TreeNode node,
-            Map<String, String> map) {
+    private static void collectTaskContent(TreeNode node, Map<String, String> map) {
         if (node instanceof ContentNode cn) {
-            Object raw = cn.metadata().get("agentName");
-            if (raw instanceof String s && !s.isBlank()) {
-                map.put(node.nodeId(), s);
+            String content = cn.content();
+            if (content != null && !content.isBlank() && node.isLeaf()) {
+                map.put(node.nodeId(), content);
             }
         }
         for (TreeNode child : node.children()) {
-            collectAgentNames(child, map);
+            collectTaskContent(child, map);
         }
     }
 

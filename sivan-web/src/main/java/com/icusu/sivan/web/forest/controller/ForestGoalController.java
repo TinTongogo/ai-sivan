@@ -58,7 +58,7 @@ public class ForestGoalController {
 
         // 先推一个包含 goalId 的元事件，客户端据此查询进度
         ForestEvent goalEvent = ForestEvent.lifecycle(goalId.toString(), goalId.toString(),
-                accountId.toString(), ForestEvent.EventType.LIFECYCLE);
+                accountId.toString(), ForestEvent.EventType.NODE_START);
 
         Forest forest = new Forest(goalId, accountId, null, title, root.nodeId());
 

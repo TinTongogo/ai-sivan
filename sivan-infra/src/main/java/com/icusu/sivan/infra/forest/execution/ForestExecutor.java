@@ -224,7 +224,7 @@ public class ForestExecutor {
             emitStatusChange(node, oldStatus, ctx);
             ForestEvent cancelled = ForestEvent.lifecycleWithStatus(
                     node.nodeId(), forestId(), ctx.accountId().toString(),
-                    ForestEvent.EventType.LIFECYCLE, oldStatus, NodeStatus.CANCELLED);
+                    ForestEvent.EventType.NODE_END, oldStatus, NodeStatus.CANCELLED);
             activeSink().emit(cancelled);
             return Flux.just(cancelled);
         }
@@ -283,7 +283,7 @@ public class ForestExecutor {
         emitStatusChange(node, oldStatus, ctx);
         ForestEvent running = ForestEvent.lifecycleWithStatus(
                 node.nodeId(), forestId(), ctx.accountId().toString(),
-                ForestEvent.EventType.LIFECYCLE, oldStatus, NodeStatus.RUNNING);
+                ForestEvent.EventType.NODE_START, oldStatus, NodeStatus.RUNNING);
         activeSink().emit(running);
 
         // Trace: 创建子 SpanContext，子节点以此 span 为 parent
@@ -330,7 +330,7 @@ public class ForestExecutor {
                     }
                     ForestEvent completed = ForestEvent.lifecycleWithStatus(
                             node.nodeId(), forestId(), ctx.accountId().toString(),
-                            ForestEvent.EventType.LIFECYCLE, NodeStatus.RUNNING, node.status());
+                            ForestEvent.EventType.NODE_END, NodeStatus.RUNNING, node.status());
                     activeSink().emit(completed);
 
                     // Trace: 导出节点 Span（跳过采样时跳过）

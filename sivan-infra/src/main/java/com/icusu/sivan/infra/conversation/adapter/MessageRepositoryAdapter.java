@@ -139,22 +139,10 @@ public class MessageRepositoryAdapter implements IMessageRepository {
 
     @Override
     public List<Message> findByGenerationGroup(UUID generationGroup) {
-        // generationGroup 存储在 metadata JSONB 中，in-memory 过滤（结果集通常 < 10）
-        String groupStr = generationGroup.toString();
-        return forestNodeJpaRepository.findByForestIdAndNodeTypeOrderBySortOrder(null, "message")
+        return forestNodeJpaRepository.findByNodeTypeOrderBySortOrder("message")
                 .stream()
                 .map(this::toDomain)
-                .filter(m -> {
-                    if (m == null) return false;
-                    try {
-                        String raw = forestNodeJpaRepository.findById(m.getMessageId().toString())
-                                .map(e -> extractFromMetadata(e.getMetadata(), "generationGroup"))
-                                .orElse(null);
-                        return groupStr.equals(raw);
-                    } catch (Exception e) {
-                        return false;
-                    }
-                })
+                .filter(m -> m != null && generationGroup.equals(m.getGenerationGroup()))
                 .sorted(Comparator.comparingInt(
                         m -> m.getGenerationIndex() != null ? m.getGenerationIndex() : 0))
                 .toList();

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useI18n } from '../../utils/i18n'
+import { renderMarkdown } from '../../utils/markdown'
 
 defineOptions({ name: 'ForestTree' })
 
@@ -27,6 +28,8 @@ export interface ForestTreeNode {
   toolCalls?: ToolCallInfo[]
   output?: string
   feedback?: 'like' | 'dislike'
+  durationMs?: number
+  tokens?: number
 }
 
 const { t } = useI18n()
@@ -226,11 +229,12 @@ function toggle() {
     <div v-if="hasDetail && !isExpandable" class="forest-tree-detail-row" @click="detailExpanded = !detailExpanded">
       <span class="forest-tree-detail-toggle">{{ detailExpanded ? '▼' : '▶' }}</span>
       <span class="forest-tree-detail-hint">{{ detailExpanded ? '收起详情' : '查看详情' }}</span>
+      <span v-if="node.durationMs != null" class="forest-tree-metric">⏱ {{ (node.durationMs / 1000).toFixed(1) }}s</span>
+      <span v-if="node.tokens != null" class="forest-tree-metric">⚡ {{ node.tokens.toLocaleString() }} tokens</span>
     </div>
     <div v-if="!isExpandable && detailExpanded && hasDetail" class="forest-tree-detail">
-      <div v-if="node.output" class="forest-tree-detail-item">
-        <span class="forest-tree-detail-label">产出</span>
-        <span class="forest-tree-detail-text forest-tree-detail-output">{{ node.output }}</span>
+      <div v-if="node.output" class="forest-tree-detail-output">
+        <div v-html="renderMarkdown(node.output)"></div>
       </div>
       <div v-if="node.reasoning" class="forest-tree-detail-item">
         <span class="forest-tree-detail-label">推理</span>
@@ -457,6 +461,16 @@ function toggle() {
 .forest-tree-detail-hint {
   flex-shrink: 0;
 }
+.forest-tree-metric {
+  font-size: 10px;
+  color: var(--clr-tertiary, #888);
+  font-family: var(--ff-sans);
+  flex-shrink: 0;
+  margin-left: auto;
+}
+.forest-tree-metric + .forest-tree-metric {
+  margin-left: 8px;
+}
 .forest-tree-detail {
   margin: 0 0 2px calc(4px + 1em);
   padding: 4px 8px;
@@ -485,10 +499,39 @@ function toggle() {
   word-break: break-word;
 }
 .forest-tree-detail-output {
-  white-space: pre-wrap;
+  padding: 8px 12px;
   font-size: 12px;
   line-height: 1.6;
   color: var(--clr-label);
+  overflow-x: auto;
+}
+.forest-tree-detail-output :deep(p) { margin: 0 0 6px; }
+.forest-tree-detail-output :deep(p:last-child) { margin-bottom: 0; }
+.forest-tree-detail-output :deep(code) {
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.85em;
+  background: var(--clr-fill);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+.forest-tree-detail-output :deep(pre) {
+  margin: 6px 0;
+  padding: 8px 10px;
+  border-radius: 4px;
+  background: #1e1e2e;
+  overflow-x: auto;
+  font-size: 0.85em;
+}
+.forest-tree-detail-output :deep(pre code) {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  color: #cdd6f4;
+}
+.forest-tree-detail-output :deep(hr) {
+  border: none;
+  border-top: 1px solid var(--clr-hairline);
+  margin: 8px 0;
 }
 .forest-tree-detail-tool {
   display: inline;

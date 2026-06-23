@@ -99,7 +99,7 @@ public class PgRouteEngine {
         // Tier 1/2/3: 异步执行，智能体 + 技能独立匹配后组合
         return Mono.fromCallable(() -> {
             // 1) 独立匹配智能体
-            RouteResult agentResult = resolveAgentOnly(accountId, taskContent, featureHash);
+            RouteResult agentResult = resolveAgentOnly(accountId, taskContent, featureHash, intent);
             if (agentResult == null) return null;
 
             // 2) 独立匹配技能
@@ -117,7 +117,7 @@ public class PgRouteEngine {
     // ============== 智能体匹配管道 ==============
 
     /** 独立智能体匹配：Tier 1 → Tier 2 → Agent 语义匹配 → Tier 3 (createAgent) */
-    private RouteResult resolveAgentOnly(UUID accountId, String taskContent, String featureHash) {
+    private RouteResult resolveAgentOnly(UUID accountId, String taskContent, String featureHash, String intent) {
         RouteResult r1 = tier1(accountId, taskContent);
         if (r1 != null) {
             log.debug("[路由] Tier 1 命中: agent={} confidence={}", r1.agentName(), r1.confidence());
@@ -132,7 +132,7 @@ public class PgRouteEngine {
         // Agent 语义匹配：在 Tier 3 创建前，搜索已有智能体是否可复用 — 防止重复创建
         try {
             float[] taskEmb = embeddingService.embed(taskContent);
-            RouteResult existing = matchExistingAgent(accountId, taskEmb);
+            RouteResult existing = matchExistingAgent(accountId, taskEmb, intent);
             if (existing != null) {
                 log.info("[路由] 复用已有智能体(语义匹配): agent={} confidence={}",
                         existing.agentName(), String.format("%.2f", existing.confidence()));
@@ -504,7 +504,7 @@ public class PgRouteEngine {
      * @param taskEmb   任务 embedding
      * @return 匹配结果（Tier=1 表示语义层匹配），无匹配时返回 null
      */
-    private RouteResult matchExistingAgent(UUID accountId, float[] taskEmb) {
+    private RouteResult matchExistingAgent(UUID accountId, float[] taskEmb, String intent) {
         List<AgentDefinition> agents = agentRepo.findAllByAccount(accountId);
         if (agents.isEmpty()) {
             log.debug("[Agent 语义匹配] 无已有智能体");
@@ -535,14 +535,17 @@ public class PgRouteEngine {
             }
         }
 
-        // 阈值 0.6 — 低于 Tier 1 的 0.7，因为 agent 描述比历史路由记录更简短
-        double AGENT_MATCH_THRESHOLD = 0.6;
-        if (bestScore >= AGENT_MATCH_THRESHOLD && bestAgentName != null) {
+        // 统一阈值，复用必须高度相关，低于阈值则走 Tier 3 创建新 agent
+        double threshold = 0.75;
+        if (bestScore >= threshold && bestAgentName != null) {
             String cat = resolveCategory(accountId, bestAgentName);
+            log.debug("[Agent 语义匹配] 命中: agent={} score={} threshold={}",
+                    bestAgentName, String.format("%.2f", bestScore), threshold);
             return new RouteResult(bestAgentName, cat, 1, bestScore);
         }
 
-        log.debug("[Agent 语义匹配] 无超阈值匹配(最高={})", String.format("%.2f", bestScore));
+        log.debug("[Agent 语义匹配] 无超阈值匹配(最高={}, threshold={})",
+                String.format("%.2f", bestScore), threshold);
         return null;
     }
 
@@ -666,10 +669,5 @@ public class PgRouteEngine {
     private String classifyInputType(String taskDescription, UUID accountId) {
         return intentClassifier.isTask(taskDescription, accountId) ? "task" : "chat";
     }
-
-    private static String truncateStr(String s, int maxLen) {
-        if (s == null) return "";
-        return s.length() <= maxLen ? s : s.substring(0, maxLen) + "...";
-    }
-
+    
 }

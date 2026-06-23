@@ -23,7 +23,7 @@ public class MockContinuation implements Continuation {
         invoked.add(child);
         child.setStatus(NodeStatus.COMPLETED);
         return Flux.just(ForestEvent.lifecycle(child.nodeId(), null,
-                ctx.accountId().toString(), ForestEvent.EventType.LIFECYCLE));
+                ctx.accountId().toString(), ForestEvent.EventType.NODE_START));
     }
 
     /** 返回按执行顺序排列的节点列表。 */

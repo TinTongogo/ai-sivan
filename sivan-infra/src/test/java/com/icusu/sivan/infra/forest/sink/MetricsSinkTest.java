@@ -24,21 +24,21 @@ class MetricsSinkTest {
 
     @Test
     void countsByEventType() {
-        sink.emit(ForestEvent.lifecycle("n1", "f1", "a1", ForestEvent.EventType.LIFECYCLE));
-        sink.emit(ForestEvent.lifecycle("n2", "f1", "a1", ForestEvent.EventType.LIFECYCLE));
+        sink.emit(ForestEvent.lifecycle("n1", "f1", "a1", ForestEvent.EventType.NODE_START));
+        sink.emit(ForestEvent.lifecycle("n2", "f1", "a1", ForestEvent.EventType.NODE_START));
         sink.emit(ForestEvent.error("n3", "f1", "a1", "err"));
 
-        assertEquals(2, collector.count(ForestEvent.EventType.LIFECYCLE));
+        assertEquals(2, collector.count(ForestEvent.EventType.NODE_START));
         assertEquals(1, collector.count(ForestEvent.EventType.ERROR));
     }
 
     @Test
     void totalCountsAllEvents() {
-        sink.emit(ForestEvent.lifecycle("n1", "f1", "a1", ForestEvent.EventType.LIFECYCLE));
+        sink.emit(ForestEvent.lifecycle("n1", "f1", "a1", ForestEvent.EventType.NODE_START));
         sink.emit(ForestEvent.error("n2", "f1", "a1", "err"));
         sink.emit(ForestEvent.pause("n3", "f1", "a1", "wait"));
 
-        assertEquals(3, (long) collector.snapshot().get("event_lifecycle")
+        assertEquals(3, (long) collector.snapshot().get("event_node_start")
                 + (long) collector.snapshot().get("event_error")
                 + (long) collector.snapshot().get("event_pause"));
     }
@@ -50,7 +50,7 @@ class MetricsSinkTest {
 
     @Test
     void passesThroughToNext() {
-        sink.emit(ForestEvent.lifecycle("n1", "f1", "a1", ForestEvent.EventType.LIFECYCLE));
+        sink.emit(ForestEvent.lifecycle("n1", "f1", "a1", ForestEvent.EventType.NODE_START));
         assertEquals(1, passThrough);
     }
 }

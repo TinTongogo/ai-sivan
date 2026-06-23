@@ -90,16 +90,22 @@ public class PromptContextService {
     public List<Msg> buildLlmMessages(UUID conversationId, UUID accountId, List<String> images, List<String> audios,
                                       int contextLength, UUID excludeMessageId, String ragContext,
                                       String compressedContext, Set<UUID> protectMsgIds, UUID providerId) {
+        return buildLlmMessages(conversationId, accountId, images, audios, contextLength,
+                excludeMessageId, ragContext, compressedContext, protectMsgIds, providerId,
+                null, null, null);
+    }
+
+    public List<Msg> buildLlmMessages(UUID conversationId, UUID accountId, List<String> images, List<String> audios,
+                                      int contextLength, UUID excludeMessageId, String ragContext,
+                                      String compressedContext, Set<UUID> protectMsgIds, UUID providerId,
+                                      List<ToolSpec> internalTools, List<ToolSpec> externalTools,
+                                      String userContext) {
         var enriched = messageEnrichmentService.enrichMessages(conversationId, images, audios,
                 contextLength, excludeMessageId, ragContext, protectMsgIds, accountId, providerId);
         var coreBuilder = new CoreMessageBuilder(fileStorageService);
-        var msgs = coreBuilder.build(com.icusu.sivan.agent.prompt.ChatPrompts.CHAT_SYSTEM.content(),
+        return coreBuilder.build(com.icusu.sivan.agent.prompt.ChatPrompts.CHAT_SYSTEM.content(),
+                internalTools, externalTools, userContext, compressedContext,
                 enriched, excludeMessageId, accountId);
-        if (compressedContext != null && !compressedContext.isBlank()) {
-            msgs.add(1, Msg.of(Role.USER,
-                    com.icusu.sivan.agent.prompt.ChatPrompts.contextInjection(compressedContext).content()));
-        }
-        return msgs;
     }
 
     // ===== 委托给 ContextAssemblyService =====
@@ -135,6 +141,10 @@ public class PromptContextService {
     }
 
     // ===== 委托给 ToolResolutionService =====
+
+    public List<ToolSpec> getInternalTools() {
+        return toolResolutionService.getInternalTools();
+    }
 
     public ToolResolutionService.ChatToolResult resolveChatTools(Conversation conversation, String userContent,
                                                                   String toolConvContext, UUID accountId) {

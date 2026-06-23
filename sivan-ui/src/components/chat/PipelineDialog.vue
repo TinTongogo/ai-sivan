@@ -75,6 +75,8 @@ function toForestTreeNode(node: ForestTreeResponseNode): ForestTreeNode {
     routeConfidence: node.routeConfidence,
     output: (node as any).output,
     toolCalls: (node as any).toolCalls?.map((tc: any) => ({ name: tc.name, count: tc.count, status: tc.status })),
+    durationMs: node.durationMs,
+    tokens: node.tokens,
     children: node.children?.map(toForestTreeNode),
   }
 }

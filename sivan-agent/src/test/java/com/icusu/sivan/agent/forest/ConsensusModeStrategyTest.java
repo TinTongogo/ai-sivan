@@ -130,6 +130,7 @@ class ConsensusModeStrategyTest {
         ContinuationMock cont = new ContinuationMock();
 
         Flux<ForestEvent> result = strategy.execute(root, ctx, 0, cont);
+        // flatMapSequential 保持每个节点独立输出，5 个节点产生 5 个事件
         StepVerifier.create(result)
                 .expectNextCount(5)
                 .verifyComplete();
@@ -149,6 +150,7 @@ class ConsensusModeStrategyTest {
         };
 
         Flux<ForestEvent> result = strategy.execute(root, ctx, 0, cont);
+        // 第一个节点失败（ERROR 事件）+ 第二个节点成功（DETAIL 事件）
         StepVerifier.create(result)
                 .expectNextCount(2)
                 .verifyComplete();

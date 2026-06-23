@@ -488,9 +488,12 @@ public class AgentLeafExecutor implements LeafExecutor {
                         String thinking = thinkAcc.toString();
                         if (!thinking.isBlank()) cn.metadata().put("thinking", thinking);
                     }
-                    // 本轮完成，发射 token 用量
+                    // 本轮完成，发射 token 用量并记录到 node metadata
                     int totalTokens = lastTokenUsage[0] != null ? lastTokenUsage[0].totalTokens() : 0;
                     int thinkingTokens = lastTokenUsage[0] != null ? lastTokenUsage[0].thinkingTokens() : 0;
+                    if (totalTokens > 0 && node instanceof com.icusu.sivan.domain.forest.tree.ContentNode cn2) {
+                        cn2.metadata().put("_actualTokens", totalTokens);
+                    }
                     ForestEvent tokenEvent = new ForestEvent(node.nodeId(), null, accountId.toString(), ForestEvent.EventType.MILESTONE, "{\"totalTokens\":" + totalTokens + ",\"thinkingTokens\":" + thinkingTokens + "}");
                     return Flux.just(tokenEvent);
                 }

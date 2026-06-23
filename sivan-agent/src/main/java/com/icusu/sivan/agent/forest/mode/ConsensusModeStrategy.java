@@ -96,8 +96,9 @@ public class ConsensusModeStrategy implements ModeStrategy {
             }
         }
 
+        // flatMapSequential：节点并行执行（LLM 调用不等待），
         Flux<ForestEvent> parallel = Flux.fromIterable(regularNodes)
-                .flatMap(child ->
+                .flatMapSequential(child ->
                         next.execute(child, ctx, depth + 1)
                                 .onErrorResume(e ->
                                         Flux.just(ForestEvent.error(child.nodeId(), null,
@@ -129,7 +130,7 @@ public class ConsensusModeStrategy implements ModeStrategy {
                                         node.setStatus(NodeStatus.CANCELLED);
                                         return Flux.just(ForestEvent.lifecycle(
                                                 node.nodeId(), null, ctx.accountId().toString(),
-                                                ForestEvent.EventType.LIFECYCLE));
+                                                ForestEvent.EventType.NODE_END));
                                     }
                                     return next.execute(synthesisNode, ctx, depth + 1);
                                 });

@@ -92,7 +92,7 @@ public class ConditionalModeStrategy implements ModeStrategy {
                         if (pause.isRejected()) {
                             phase.setStatus(NodeStatus.CANCELLED);
                             return Flux.just(ForestEvent.lifecycle(phase.nodeId(), null,
-                                    ctx.accountId().toString(), ForestEvent.EventType.LIFECYCLE));
+                                    ctx.accountId().toString(), ForestEvent.EventType.NODE_END));
                         }
                         return next.execute(phase, ctx, depth + 1);
                     })

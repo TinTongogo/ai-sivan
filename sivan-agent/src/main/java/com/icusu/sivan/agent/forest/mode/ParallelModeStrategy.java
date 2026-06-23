@@ -76,7 +76,7 @@ public class ParallelModeStrategy implements ModeStrategy {
         }
 
         return Flux.fromIterable(ready)
-                .flatMap(child ->
+                .flatMapSequential(child ->
                         executeChild(child, ctx, depth, next)
                                 .onErrorResume(e ->
                                         Flux.just(ForestEvent.error(child.nodeId(), null,
@@ -95,7 +95,7 @@ public class ParallelModeStrategy implements ModeStrategy {
                     if (pause.isRejected()) {
                         child.setStatus(NodeStatus.CANCELLED);
                         return Flux.just(ForestEvent.lifecycle(child.nodeId(), null,
-                                ctx.accountId().toString(), ForestEvent.EventType.LIFECYCLE));
+                                ctx.accountId().toString(), ForestEvent.EventType.NODE_END));
                     }
                     return next.execute(child, ctx, depth + 1);
                 });

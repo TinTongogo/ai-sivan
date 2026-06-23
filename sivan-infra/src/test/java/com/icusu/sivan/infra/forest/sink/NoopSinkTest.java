@@ -14,7 +14,7 @@ class NoopSinkTest {
 
     @Test
     void emitDoesNotThrow() {
-        var event = ForestEvent.lifecycle("n1", "f1", "a1", ForestEvent.EventType.LIFECYCLE);
+        var event = ForestEvent.lifecycle("n1", "f1", "a1", ForestEvent.EventType.NODE_START);
         assertDoesNotThrow(() -> sink.emit(event));
     }
 

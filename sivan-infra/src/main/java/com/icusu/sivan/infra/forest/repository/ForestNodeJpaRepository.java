@@ -28,6 +28,9 @@ public interface ForestNodeJpaRepository extends JpaRepository<ForestNodeEntity,
 
     List<ForestNodeEntity> findByNodeTypeAndStatusOrderBySortOrder(String nodeType, String status);
 
+    /** 按节点类型列出所有节点，无 forestId 过滤（用于跨对话查询如 generationGroup）。 */
+    List<ForestNodeEntity> findByNodeTypeOrderBySortOrder(String nodeType);
+
     // ===== 对话查询方法（conversation 节点替代 forests 表） =====
 
     /** 按 account_id 列出所有对话节点，按 updated_at 倒序。 */

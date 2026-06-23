@@ -10,7 +10,7 @@ public final class ForestEventTestHelper {
     private ForestEventTestHelper() { }
 
     public static ForestEvent lifecycleEvent() {
-        return ForestEvent.lifecycle("n1", "f1", "a1", ForestEvent.EventType.LIFECYCLE);
+        return ForestEvent.lifecycle("n1", "f1", "a1", ForestEvent.EventType.NODE_START);
     }
 
     public static ForestEvent errorEvent(String message) {

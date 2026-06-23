@@ -168,6 +168,19 @@ public class ForestRepositoryAdapter implements ForestRepository {
             if (totalTokens != null && totalTokens > 0) {
                 entity.setEstimateTokens(totalTokens.longValue());
             }
+            // durationMs 写入 metadata JSONB
+            if (durationMs != null && durationMs > 0) {
+                try {
+                    String metaJson = entity.getMetadata();
+                    Map<String, Object> meta = metaJson != null && !metaJson.isBlank()
+                            ? objectMapper.readValue(metaJson, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {})
+                            : new HashMap<>();
+                    meta.put("durationMs", durationMs);
+                    entity.setMetadata(objectMapper.writeValueAsString(meta));
+                } catch (Exception e) {
+                    log.warn("写入 durationMs 到 metadata 失败: {}", e.getMessage());
+                }
+            }
             forestNodeJpaRepository.save(entity);
             forestNodeJpaRepository.flush();
         });
@@ -262,6 +275,11 @@ public class ForestRepositoryAdapter implements ForestRepository {
                 var node = new InnerGoalNode(nodeId, mode, List.of(), status);
                 if (row.getImportance() != null) node.importance(row.getImportance());
                 if (row.getEstimateTokens() != null) node.estimateSubtreeTokens(row.getEstimateTokens());
+                if (!metadata.isEmpty()) {
+                    for (var entry : metadata.entrySet()) {
+                        node.putMetadata(entry.getKey(), entry.getValue());
+                    }
+                }
                 yield node;
             }
             case "synthesis" -> {
@@ -363,40 +381,44 @@ public class ForestRepositoryAdapter implements ForestRepository {
             builder.role(mn.role());
         }
 
-        // ContentNode → content + contentHash + metadata
+        // ContentNode → content + contentHash + estimateTokens
         if (node instanceof ContentNode contentNode) {
             String content = contentNode.content();
-            builder.content(content);
+            builder.content(content != null ? content : "");
             if (content != null && !content.isEmpty()) {
-                // contentHash 用于增量更新判断：SHA256 前 16 位
                 builder.contentHash(computeContentHash(content));
-                // estimateTokens 基于内容长度估算（每中文字符约 2 token）
                 long estimated = (long) (content.length() * 1.5);
                 if (estimated > 0) builder.estimateTokens(estimated);
             }
-            // 收集 metadata（过滤运行时 key，补充节点特有字段的序列化）
-            Map<String, Object> meta = new HashMap<>();
-            if (contentNode.metadata() != null) {
-                for (var entry : contentNode.metadata().entrySet()) {
-                    if (!RUNTIME_METADATA_KEYS.contains(entry.getKey())) {
-                        meta.put(entry.getKey(), entry.getValue());
-                    }
+        } else if (node instanceof ExecutableNode) {
+            // InnerGoalNode 等非 ContentNode 用 metadata.reasoning 作为显示内容
+            Object reasoning = node.metadata().get("reasoning");
+            String text = reasoning instanceof String s ? s : "";
+            builder.content(text);
+        }
+
+        // 收集 metadata（过滤运行时 key，补充节点特有字段的序列化）
+        Map<String, Object> meta = new HashMap<>();
+        if (node.metadata() != null) {
+            for (var entry : node.metadata().entrySet()) {
+                if (!RUNTIME_METADATA_KEYS.contains(entry.getKey())) {
+                    meta.put(entry.getKey(), entry.getValue());
                 }
             }
-            // FileSnapshotNode.filePath → 补充写入 metadata（字段值优先于已有 meta）
-            if (node instanceof FileSnapshotNode fsn && fsn.filePath() != null && !fsn.filePath().isEmpty()) {
-                meta.put("filePath", fsn.filePath());
-            }
-            // ContextBlockNode.blockType → 补充写入 metadata（防止 persist 后丢失）
-            if (node instanceof ContextBlockNode cbn && cbn.blockType() != null && !cbn.blockType().isEmpty()) {
-                meta.put("blockType", cbn.blockType());
-            }
-            if (!meta.isEmpty()) {
-                try {
-                    builder.metadata(objectMapper.writeValueAsString(meta));
-                } catch (Exception e) {
-                    log.warn("序列化 metadata 失败: {}", e.getMessage());
-                }
+        }
+        // FileSnapshotNode.filePath → 补充写入 metadata（字段值优先于已有 meta）
+        if (node instanceof FileSnapshotNode fsn && fsn.filePath() != null && !fsn.filePath().isEmpty()) {
+            meta.put("filePath", fsn.filePath());
+        }
+        // ContextBlockNode.blockType → 补充写入 metadata（防止 persist 后丢失）
+        if (node instanceof ContextBlockNode cbn && cbn.blockType() != null && !cbn.blockType().isEmpty()) {
+            meta.put("blockType", cbn.blockType());
+        }
+        if (!meta.isEmpty()) {
+            try {
+                builder.metadata(objectMapper.writeValueAsString(meta));
+            } catch (Exception e) {
+                log.warn("序列化 metadata 失败: {}", e.getMessage());
             }
         }
 

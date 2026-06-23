@@ -3,6 +3,7 @@ package com.icusu.sivan.application.conversation.message;
 import com.icusu.sivan.core.message.Content;
 import com.icusu.sivan.core.message.Msg;
 import com.icusu.sivan.core.message.Role;
+import com.icusu.sivan.core.tool.ToolSpec;
 import com.icusu.sivan.domain.file.FileStoragePort;
 
 import java.util.ArrayList;
@@ -12,6 +13,16 @@ import java.util.UUID;
 
 /**
  * 将富化后的消息列表组装为核心 {@link Msg} 列表。
+ * <p>
+ * 消息按缓存稳定性排列（越稳定的越靠前），提升 vLLM RadixAttention 命中率：
+ * <pre>
+ * [0] System Prompt               → cache ① 跨对话
+ * [1] Internal Tools              → cache ① 永远不变
+ * [2] External Tools (MCP)        → cache ② 同对话
+ * [3] 用户画像 + 项目上下文        → cache ② 同会话
+ * [4] 上下文压缩摘要 + 记忆注入    → cache ③ 同轮
+ * [5..] 对话历史消息              → 无缓存
+ * </pre>
  */
 public class CoreMessageBuilder {
 
@@ -22,20 +33,49 @@ public class CoreMessageBuilder {
     }
 
     /**
-     * 构建 LLM 消息列表。
+     * 构建 LLM 消息列表（缓存优化版本）。
      *
      * @param systemPrompt      system prompt
-     * @param enriched          富化后的消息列表
-     * @param excludeMessageId  需要排除的消息 ID（重新生成时跳过旧的 AI 消息）
-     * @return 核心 Message 列表
+     * @param internalTools     内部工具列表（file/bash 等），放在缓存层 ①
+     * @param externalTools     外部工具列表（MCP Server 工具），放在缓存层 ②
+     * @param userContext       用户画像/项目上下文 markdown，放在缓存层 ②
+     * @param compressedContext 上下文压缩摘要（含记忆注入），放在缓存层 ③
+     * @param enriched          富化后的对话历史消息
+     * @param excludeMessageId  需要排除的消息 ID
+     * @param accountId         当前用户 ID
+     * @return 缓存优化排列的 Msg 列表
      */
     public List<Msg> build(String systemPrompt,
+                           List<ToolSpec> internalTools,
+                           List<ToolSpec> externalTools,
+                           String userContext,
+                           String compressedContext,
                            List<EnrichedMessage> enriched,
                            UUID excludeMessageId,
                            UUID accountId) {
         List<Msg> msgs = new ArrayList<>();
-        msgs.add(Msg.of(Role.SYSTEM, systemPrompt));
 
+        // 缓存层 ①：永不变
+        msgs.add(Msg.of(Role.SYSTEM, systemPrompt));
+        if (internalTools != null && !internalTools.isEmpty()) {
+            msgs.add(Msg.of(Role.SYSTEM, buildToolsSchema("内部工具", internalTools)));
+        }
+
+        // 缓存层 ②：同对话/同会话
+        if (externalTools != null && !externalTools.isEmpty()) {
+            msgs.add(Msg.of(Role.SYSTEM, buildToolsSchema("外部工具", externalTools)));
+        }
+        if (userContext != null && !userContext.isBlank()) {
+            msgs.add(Msg.of(Role.USER, userContext));
+        }
+
+        // 缓存层 ③：上下文压缩 + 记忆注入（同轮对话内命中）
+        if (compressedContext != null && !compressedContext.isBlank()) {
+            msgs.add(Msg.of(Role.USER,
+                    com.icusu.sivan.agent.prompt.ChatPrompts.contextInjection(compressedContext).content()));
+        }
+
+        // 无缓存层：对话历史 + 当前输入
         for (EnrichedMessage em : enriched) {
             com.icusu.sivan.domain.conversation.Message original = em.getOriginal();
             if (excludeMessageId != null && excludeMessageId.equals(original.getMessageId())) continue;
@@ -62,6 +102,25 @@ public class CoreMessageBuilder {
         }
 
         return msgs;
+    }
+
+    /**
+     * 构建 LLM 消息列表（向后兼容，无缓存优化）。
+     */
+    public List<Msg> build(String systemPrompt,
+                           List<EnrichedMessage> enriched,
+                           UUID excludeMessageId,
+                           UUID accountId) {
+        return build(systemPrompt, null, null, null, null, enriched, excludeMessageId, accountId);
+    }
+
+    /** 将工具列表转为 tools schema markdown 文本。 */
+    private static String buildToolsSchema(String label, List<ToolSpec> tools) {
+        StringBuilder sb = new StringBuilder("## ").append(label).append("\n\n");
+        for (ToolSpec t : tools) {
+            sb.append("- **").append(t.name()).append("**: ").append(t.description()).append("\n");
+        }
+        return sb.toString();
     }
 
     private byte[] resolveBytes(String ref, UUID accountId) {

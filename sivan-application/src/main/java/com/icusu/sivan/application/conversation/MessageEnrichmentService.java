@@ -158,7 +158,12 @@ public class MessageEnrichmentService {
     public static void insertContextMessages(List<Msg> msgs,
                                              com.icusu.sivan.application.conversation.tree.ContextResult epochResult,
                                              String fallbackContext, UUID accountId) {
-        int insertIdx = 1;
+        // 在所有 SYSTEM 消息（system prompt / tools schema）之后插入，
+        // 确保上下文在对话消息之前、tools 之后
+        int insertIdx = 0;
+        for (int i = 0; i < msgs.size(); i++) {
+            if (msgs.get(i).role() == Role.SYSTEM) insertIdx = i + 1;
+        }
         if (epochResult != null && !epochResult.isEmpty()) {
             for (var seg : epochResult.getSegments()) {
                 if (seg.hasContent()) {

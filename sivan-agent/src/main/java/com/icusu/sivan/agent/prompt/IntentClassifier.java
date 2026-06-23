@@ -6,6 +6,7 @@ import com.icusu.sivan.infra.forest.entity.IntentPrototypeEntity;
 import com.icusu.sivan.infra.forest.repository.IntentFeedbackLogJpaRepository;
 import com.icusu.sivan.infra.forest.repository.IntentPrototypeJpaRepository;
 import jakarta.annotation.PostConstruct;
+import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
@@ -54,7 +55,9 @@ public class IntentClassifier {
     private final IEmbeddingService embeddingService;
 
     /** 当前使用的原型文本 */
+    @Getter
     private volatile String chatPrototype = DEFAULT_CHAT;
+    @Getter
     private volatile String taskPrototype = DEFAULT_TASK;
 
     /** 原型 embedding 缓存 */
@@ -99,11 +102,6 @@ public class IntentClassifier {
             log.warn("[IntentClassifier] 从 DB 加载原型失败，使用默认值: {}", e.getMessage());
         }
     }
-
-    // ========== 原型访问 ==========
-
-    public String getChatPrototype() { return chatPrototype; }
-    public String getTaskPrototype() { return taskPrototype; }
 
     // ========== 分类决策 ==========
 

@@ -145,8 +145,10 @@ public final class ForestEvent {
     // ===== 事件类型枚举 =====
 
     public enum EventType {
-        /** 节点生命周期：开始、结束 */
-        LIFECYCLE,
+        /** 节点开始执行 */
+        NODE_START,
+        /** 节点执行结束 */
+        NODE_END,
         /** 详细日志：token 消耗、中间结果 */
         DETAIL,
         /** 模型推理过程（thinking） */

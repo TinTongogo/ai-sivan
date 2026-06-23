@@ -3,8 +3,6 @@ import { ref, computed, watch, onUnmounted } from 'vue'
 import { renderMarkdown } from '../../utils/markdown'
 import { useI18n } from '../../utils/i18n'
 import { fetchAuthBlob, downloadAuthFile, blobCache } from '../../utils/auth-fetch'
-import { fetchMessageForest, type ForestTreeResponse, type ForestTreeResponseNode } from '../../api/goals'
-import TreeNodeRender from '../orchestration/TreeNodeRender.vue'
 const { t } = useI18n()
 
 const props = defineProps<{
@@ -88,85 +86,6 @@ async function handleFileClick(f: { fileId: string; fileName: string; url?: stri
     window.open(fileUrl, '_blank')
   }
 }
-interface LocalForestTreeNode {
-  name: string
-  status: string
-  mode?: string
-  agent?: string
-  reasoning?: string
-  output?: string
-  isLeaf?: boolean
-  routeTier?: number
-  routeConfidence?: number
-  toolCalls?: { name: string; count: number; status: string }[]
-  children?: LocalForestTreeNode[]
-}
-
-// 执行树展示（替代扁平内容）
-const forestTree = ref<LocalForestTreeNode | null>(null)
-const treeLoading = ref(false)
-
-watch(() => props.message.messageId, async (msgId) => {
-  forestTree.value = null
-  if (!msgId || props.message.role !== 'assistant') return
-  // 等待流式完成后才加载执行树
-  if (props.streaming) return
-  treeLoading.value = true
-  try {
-    const convId = props.message.chain
-    if (!convId) return
-    const resp: ForestTreeResponse | null = await fetchMessageForest(convId, msgId)
-    if (resp?.root) {
-      forestTree.value = toForestTreeNode(resp.root)
-    }
-  } catch {
-    // 无执行树是正常的（简单对话）
-  } finally {
-    treeLoading.value = false
-  }
-})
-
-watch(() => props.streaming, (val) => {
-  if (!val && props.message.messageId && props.message.role === 'assistant') {
-    // 流式完成后加载执行树
-    loadTreeDelayed()
-  }
-})
-
-function loadTreeDelayed(retries = 3) {
-  const msgId = props.message.messageId
-  const convId = props.message.chain
-  if (!msgId || !convId) {
-    if (retries > 0) {
-      // chain（conversationId）可能还没从 SSE meta 事件到达，延迟重试
-      setTimeout(() => loadTreeDelayed(retries - 1), 1000)
-    }
-    return
-  }
-  treeLoading.value = true
-  fetchMessageForest(convId, msgId)
-    .then(resp => {
-      if (resp?.root) forestTree.value = toForestTreeNode(resp.root)
-    })
-    .catch(() => {})
-    .finally(() => { treeLoading.value = false })
-}
-
-function toForestTreeNode(node: ForestTreeResponseNode): LocalForestTreeNode {
-  return {
-    name: node.output || node.name,
-    status: node.status,
-    mode: node.mode,
-    agent: node.agent,
-    reasoning: node.reasoning,
-    output: node.output,
-    isLeaf: node.leaf,
-    routeTier: (node as any).routeTier,
-    routeConfidence: node.routeConfidence,
-    toolCalls: (node as any).toolCalls?.map((tc: any) => ({ name: tc.name, count: tc.count, status: tc.status })),
-    children: node.children?.map(toForestTreeNode),
-  }
-}
 
 
 // 首次内容到达时自动折叠思考区（仅一次），之后由用户控制
@@ -210,16 +129,6 @@ function handleCodeCopy(e: MouseEvent) {
   })
 }
 
-const renderedContent = computed(() => {
-  let html = renderMarkdown(props.message.content)
-  // 20-编排产出展示方案: (§Agent) → 可点击 badge
-  html = html.replace(/\(§([^)]+)\)/g, (_, agent) =>
-    `<span class="agent-badge" onclick="event.stopPropagation()" title="${agent} 的产出">🔍 ${agent}</span>`
-  )
-  return html
-})
-const renderedThinking = computed(() => renderMarkdown(props.message.thinking || ''))
-
 // 检测音频内容：格式为 [audio:data:audio/mp3;base64,xxxxx]
 const audioSrc = computed(() => {
   const c = props.message.content
@@ -227,7 +136,7 @@ const audioSrc = computed(() => {
   const match = c.match(/^\[audio:(data:.+)\]$/)
   return match ? match[1] : null
 })
-const renderedClassify = computed(() => props.message.classifyText ? renderMarkdown(props.message.classifyText) : '')
+const renderedClassify = computed(() => props.message.classifyText ? renderContent(props.message.classifyText) : '')
 
 const thinkingDurationLabel = computed(() => {
   let label = ''
@@ -258,6 +167,16 @@ function formatFileSize(bytes: number): string {
   while (size >= 1024 && i < units.length - 1) { size /= 1024; i++ }
   return size.toFixed(i === 0 ? 0 : 1) + ' ' + units[i]
 }
+
+/** 将消息内容渲染为 HTML（markdown → HTML + agent badge 替换）。 */
+function renderContent(text: string): string {
+  if (!text) return ''
+  let html = renderMarkdown(text)
+  html = html.replace(/\(§([^)]+)\)/g, (_, agent) =>
+    `<span class="agent-badge" onclick="event.stopPropagation()" title="${agent} 的产出">🔍 ${agent}</span>`
+  )
+  return html
+}
 </script>
 
 <template>
@@ -276,7 +195,7 @@ function formatFileSize(bytes: number): string {
 
       <!-- 思考内容（可折叠） -->
       <div v-if="message.role === 'assistant' && message.thinking" class="bubble__thinking">
-        <div v-show="thinkingOpen" class="thinking__content" v-html="renderedThinking"></div>
+        <div v-show="thinkingOpen" class="thinking__content" v-html="renderContent(props.message.thinking || '')"></div>
       </div>
 
       <!-- 引用回复块 -->
@@ -315,11 +234,8 @@ function formatFileSize(bytes: number): string {
               {{ t('audioNotSupported') }}
             </audio>
           </template>
-          <template v-else-if="forestTree">
-            <TreeNodeRender :node="forestTree" :depth="0" />
-          </template>
           <template v-else>
-            <div v-html="renderedContent"></div>
+            <div v-html="renderContent(props.message.content)"></div>
           </template>
         </div>
         <div v-show="streaming && !props.message.content" class="bubble__streaming">
@@ -1165,7 +1081,7 @@ function formatFileSize(bytes: number): string {
 }
 
 /* ── Agent 内联标注（20-编排产出展示方案） ── */
-:deep(.agent-badge) {
+.agent-badge {
   display: inline;
   padding: 0 4px;
   font-size: var(--fs-caption, 11px);
@@ -1175,7 +1091,7 @@ function formatFileSize(bytes: number): string {
   cursor: default;
   white-space: nowrap;
 }
-:deep(.agent-badge:hover) {
+.agent-badge:hover {
   background: var(--clr-accent, #409eff);
   color: #fff;
 }

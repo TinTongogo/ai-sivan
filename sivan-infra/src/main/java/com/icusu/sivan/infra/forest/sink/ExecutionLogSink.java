@@ -30,7 +30,8 @@ public class ExecutionLogSink implements EventSink {
     public void emit(ForestEvent event) {
         wrapped.emit(event);
 
-        if ((event.type() == ForestEvent.EventType.LIFECYCLE
+        if ((event.type() == ForestEvent.EventType.NODE_START
+                || event.type() == ForestEvent.EventType.NODE_END
                 || event.type() == ForestEvent.EventType.ERROR
                 || event.type() == ForestEvent.EventType.MILESTONE)
                 && event.forestId() != null) {

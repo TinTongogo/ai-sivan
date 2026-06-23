@@ -54,7 +54,7 @@ class DefaultModeDispatcherTest {
 
         Continuation cont = (n, c, d) -> Flux.just(
                 ForestEvent.lifecycle(n.nodeId(), null, c.accountId().toString(),
-                        ForestEvent.EventType.LIFECYCLE)
+                        ForestEvent.EventType.NODE_START)
         );
 
         Flux<ForestEvent> result = dispatcher.dispatch(root, ctx, 0, cont);
@@ -96,7 +96,7 @@ class DefaultModeDispatcherTest {
 
         Continuation cont = (n, c, d) -> Flux.just(
                 ForestEvent.lifecycle(n.nodeId(), null, c.accountId().toString(),
-                        ForestEvent.EventType.LIFECYCLE)
+                        ForestEvent.EventType.NODE_START)
         );
 
         Flux<ForestEvent> result = multiDispatcher.dispatch(root, ctx, 0, cont);

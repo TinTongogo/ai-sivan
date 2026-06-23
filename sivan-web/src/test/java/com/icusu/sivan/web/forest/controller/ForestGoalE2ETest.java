@@ -63,17 +63,16 @@ class ForestGoalE2ETest extends AbstractWebIntegrationTest {
 
         // 验证第一个是 LIFECYCLE 事件（goalEvent）
         ForestEvent first = eventList.getFirst();
-        assertEquals(ForestEvent.EventType.LIFECYCLE, first.type(), "首个事件应为 LIFECYCLE");
+        assertEquals(ForestEvent.EventType.NODE_START, first.type(), "首个事件应为 NODE_START");
 
         // 验证有 DETAIL 事件（来自 AgentLeafExecutor 的流式输出）
         boolean hasDetail = eventList.stream().anyMatch(e -> e.type() == ForestEvent.EventType.DETAIL);
         assertTrue(hasDetail, "应有 DETAIL 事件包含 Agent 输出");
 
-        // 验证最后有 LIFECYCLE 完成事件
-        boolean hasLifecycle = eventList.stream()
-                .filter(e -> e.type() == ForestEvent.EventType.LIFECYCLE)
-                .count() >= 2;
-        assertTrue(hasLifecycle, "应有至少 2 个 LIFECYCLE 事件（开始 + 完成）");
+        // 验证有 NODE_START 和 NODE_END 事件
+        boolean hasStart = eventList.stream().anyMatch(e -> e.type() == ForestEvent.EventType.NODE_START);
+        boolean hasEnd = eventList.stream().anyMatch(e -> e.type() == ForestEvent.EventType.NODE_END);
+        assertTrue(hasStart && hasEnd, "应有 NODE_START 和 NODE_END 事件");
     }
 
     @Test
