@@ -21,7 +21,7 @@ import java.util.List;
  *   <li>路径穿越防护：{@code ../} 解析后必须在项目目录内</li>
  *   <li>符号链接解析：防止 symlink 逃逸</li>
  *   <li>禁止列表：{@code .env}、{@code .ssh}、{@code config/keys} 等禁止读写</li>
- *   <li>写目录限制：{@code file_write} 只允许写入 {@code data/}、{@code output/}、{@code uploads/}</li>
+ *   <li>写目录限制：项目目录下均可写入（禁止列表除外）</li>
  * </ul>
  */
 @Slf4j
@@ -35,11 +35,6 @@ public class FileSecurityManager {
     private static final List<String> FORBIDDEN_NAMES = List.of(
             ".env", ".ssh", ".git", ".gitignore",
             "config/keys", "config/secrets", ".secret", ".token"
-    );
-
-    /** 写操作允许的子目录（07-工具动态感知 §4.7.1）。 */
-    private static final List<String> ALLOWED_WRITE_DIRS = List.of(
-            "data", "output", "uploads"
     );
 
     public enum FileOperation { READ, WRITE, DELETE }
@@ -68,15 +63,10 @@ public class FileSecurityManager {
             path = projectRoot;
         }
 
-        // 1. 禁止列表检查
+        // 1. 禁止列表检查（.env / .ssh / .git 等）
         checkForbidden(path, projectRoot);
 
-        // 2. 写目录限制检查
-        if (operation == FileOperation.WRITE) {
-            checkAllowedWriteDir(path, projectRoot);
-        }
-
-        // 3. 检查是否在项目目录内
+        // 2. 检查是否在项目目录内
         if (path.startsWith(projectRoot)) {
             if (operation != FileOperation.READ && archived) {
                 throw new DomainException("项目已归档，文件为只读状态");
@@ -84,7 +74,7 @@ public class FileSecurityManager {
             return path;
         }
 
-        // 4. 检查是否在共享目录（只读放行）
+        // 3. 检查是否在共享目录（只读放行）
         Path sharedRoot = resolveRealPath(Paths.get(rootPath).resolve("shared"));
         if (operation == FileOperation.READ && path.startsWith(sharedRoot)) {
             return path;
@@ -109,23 +99,6 @@ public class FileSecurityManager {
             }
         } catch (IllegalArgumentException e) {
             // relativize 失败说明不在项目内，后续检查会处理
-        }
-    }
-
-    /**
-     * 检查写操作的目标是否在允许的子目录内。
-     */
-    private void checkAllowedWriteDir(Path path, Path projectRoot) {
-        try {
-            String relative = projectRoot.relativize(path).normalize().toString();
-            boolean allowed = ALLOWED_WRITE_DIRS.stream()
-                    .anyMatch(dir -> relative.equals(dir) || relative.startsWith(dir + "/"));
-            if (!allowed) {
-                log.warn("写操作目标不在允许的目录内: path={} relative={}", path, relative);
-                throw new DomainException("文件写入只允许在 data/、output/、uploads/ 目录下进行");
-            }
-        } catch (IllegalArgumentException e) {
-            // 不在项目内，后续检查会处理
         }
     }
 

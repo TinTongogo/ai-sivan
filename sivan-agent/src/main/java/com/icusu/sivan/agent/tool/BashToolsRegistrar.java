@@ -36,7 +36,7 @@ public class BashToolsRegistrar {
         schema.put("required", List.of("command"));
 
         toolRegistry.register(
-                new ToolSpec("bash", "在项目目录中执行 shell 命令和脚本。运行 Python/shell 脚本用此工具。查看文件内容请用 file_read（支持 PDF/DOCX 文本提取），目录列表用 file_list，搜索用 file_search。工作目录已锁定为项目根目录。",
+                new ToolSpec("bash", "在项目目录中执行 shell 命令和脚本。运行 Python/shell 脚本用此工具。查看文件内容请用 file_read（支持 PDF/DOCX 文本提取），目录列表用 file_list，搜索用 file_search。对于 file_* 工具不支持的操作（删除文件/目录、移动/重命名、创建目录、压缩解压、git 操作等），使用 bash 执行。工作目录已锁定为项目根目录。",
                         schema),
                 (call, ctx) -> Mono.fromCallable(() -> {
                     Map<String, Object> args = call.args();

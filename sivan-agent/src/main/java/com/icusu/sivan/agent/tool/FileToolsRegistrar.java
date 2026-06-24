@@ -34,7 +34,8 @@ public class FileToolsRegistrar {
         registerFileList();
         registerFileSearch();
         registerFileEdit();
-        log.info("文件工具注册完成（file_read/write/list/search/edit）");
+        registerFileDelete();
+        log.info("文件工具注册完成（file_read/write/list/search/edit/delete）");
     }
 
     private void registerFileRead() {
@@ -84,7 +85,7 @@ public class FileToolsRegistrar {
         schema.put("required", List.of("rawPath", "content"));
 
         toolRegistry.register(
-                new ToolSpec("file_write", "写入文件，支持覆盖（overwrite）和追加（append）模式。自动创建父目录。替代 bash heredoc/cat/echo 写入。",
+                new ToolSpec("file_write", "写入文件，支持覆盖（overwrite）和追加（append）模式。自动创建父目录。用于创建新文件或完全重写整个文件。如需小范围修改代码（修 bug、改单行等），优先用 file_edit 而非 file_write。替代 bash heredoc/cat/echo 写入。",
                         schema),
                 (call, ctx) -> Mono.fromCallable(() -> {
                     Map<String, Object> args = call.args();
@@ -203,6 +204,38 @@ public class FileToolsRegistrar {
                 }));
     }
 
+    private void registerFileDelete() {
+        Map<String, Object> schema = new LinkedHashMap<>();
+        schema.put("type", "object");
+        Map<String, Object> props = new LinkedHashMap<>();
+        props.put("rawPath", Map.of("type", "string", "description", "要删除的文件或空目录路径（相对项目根目录）"));
+        schema.put("properties", props);
+        schema.put("required", List.of("rawPath"));
+
+        toolRegistry.register(
+                new ToolSpec("file_delete", "删除文件或空目录。非空目录无法删除，请先手动清空或使用 bash rm -rf。替代 bash rm 命令。",
+                        schema),
+                (call, ctx) -> Mono.fromCallable(() -> {
+                    Map<String, Object> args = call.args();
+                    String rawPath = (String) args.get("rawPath");
+                    if (rawPath == null || rawPath.isBlank()) {
+                        return ToolResult.failure("file_delete", "rawPath 参数缺失");
+                    }
+                    String fileRootPath = (String) args.get("_fileRootPath");
+                    if (fileRootPath == null || fileRootPath.isBlank()) {
+                        return ToolResult.failure("file_delete", "未配置项目工作目录，文件工具不可用");
+                    }
+                    boolean archived = Boolean.TRUE.equals(args.get("_archived"));
+                    try {
+                        String output = fileOperationService.fileDelete(rawPath, fileRootPath, archived);
+                        return ToolResult.success("file_delete", output);
+                    } catch (Exception e) {
+                        log.warn("file_delete 异常: {}", e.getMessage());
+                        return ToolResult.failure("file_delete", e.getMessage());
+                    }
+                }));
+    }
+
     private void registerFileEdit() {
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("type", "object");
@@ -214,7 +247,7 @@ public class FileToolsRegistrar {
         schema.put("required", List.of("rawPath", "oldText", "newText"));
 
         toolRegistry.register(
-                new ToolSpec("file_edit", "精确查找并替换文件内容。适用于修改文件中的特定部分而不影响其他内容。oldText 必须与文件中待替换的文本完全一致且唯一。替代手动读取→写入的繁琐操作。",
+                new ToolSpec("file_edit", "精确查找并替换文件内容。修改代码的首选工具：修 bug、改单行、小幅调整都用此工具，避免覆盖整个文件。oldText 必须与文件中待替换的文本完全一致且唯一。替代手动 file_read + file_write。",
                         schema),
                 (call, ctx) -> Mono.fromCallable(() -> {
                     Map<String, Object> args = call.args();

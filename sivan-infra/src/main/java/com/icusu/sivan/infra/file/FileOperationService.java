@@ -9,7 +9,9 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.PathMatcher;
 import java.util.*;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
@@ -170,9 +172,6 @@ public class FileOperationService {
         return entries;
     }
 
-    /**
-     * 创建或覆写文件，自动创建父目录。
-     */
     /** 禁止写入的可执行文件扩展名（小写）。 */
     private static final Set<String> BLOCKED_WRITE_EXTENSIONS = Set.of(
             "exe", "bin", "so", "dylib", "dll", "o", "class", "jar",
@@ -210,6 +209,33 @@ public class FileOperationService {
         }
     }
 
+
+    /**
+     * 删除文件或空目录。目录非空时抛出异常。
+     */
+    public String fileDelete(String rawPath, String fileRootPath, boolean archived) {
+        Path path = securityManager.validate(rawPath, fileRootPath, archived, FileOperation.DELETE);
+        if (!Files.exists(path)) throw new DomainException("路径不存在: " + rawPath);
+        try {
+            if (Files.isDirectory(path)) {
+                try (var files = Files.list(path)) {
+                    if (files.findAny().isPresent()) {
+                        throw new DomainException("目录非空，无法删除: " + rawPath
+                                + "。如需删除非空目录请先清空或使用 bash rm -rf");
+                    }
+                }
+                Files.delete(path);
+                log.info("目录删除成功: {}", rawPath);
+                return "目录已删除: " + rawPath;
+            } else {
+                Files.delete(path);
+                log.info("文件删除成功: {}", rawPath);
+                return "文件已删除: " + rawPath;
+            }
+        } catch (IOException e) {
+            throw new DomainException("删除失败: " + e.getMessage());
+        }
+    }
 
     public String fileEdit(String rawPath, String oldText, String newText, String fileRootPath, boolean archived) {
         java.nio.file.Path path = securityManager.validate(rawPath, fileRootPath, archived, FileOperation.WRITE);

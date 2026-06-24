@@ -2,7 +2,6 @@ package com.icusu.sivan.agent.routing;
 
 import com.icusu.sivan.core.tool.ToolRegistry;
 import com.icusu.sivan.core.tool.ToolSpec;
-import com.icusu.sivan.domain.agent.IAgentRepository;
 import com.icusu.sivan.domain.agent.ISkillRepository;
 import com.icusu.sivan.domain.agent.Skill;
 import com.icusu.sivan.domain.forest.context.ExecutionContext;
@@ -25,16 +24,18 @@ public class AgentToolStrategy implements ToolRoutingStrategy {
 
     private static final Logger log = LoggerFactory.getLogger(AgentToolStrategy.class);
 
-    /** 内部工具名（始终可用，不依赖 MCP 服务器选择）。 */
+    /**
+     * 内部工具名（始终可用，不依赖 MCP 服务器选择）。
+     */
     private static final java.util.Set<String> INTERNAL_TOOL_NAMES = java.util.Set.of(
-            "bash", "file_read", "file_write", "file_list", "file_search",
+            "bash", "file_read", "file_write", "file_list", "file_search", "file_delete",
             "send_agent_message");
 
     private final ISkillRepository skillRepository;
     private final IToolUsageRepository toolUsageRepository;
 
     public AgentToolStrategy(ISkillRepository skillRepository,
-                              IToolUsageRepository toolUsageRepository) {
+                             IToolUsageRepository toolUsageRepository) {
         this.skillRepository = skillRepository;
         this.toolUsageRepository = toolUsageRepository;
     }
@@ -46,7 +47,7 @@ public class AgentToolStrategy implements ToolRoutingStrategy {
 
     @Override
     public List<ToolSpec> resolve(ForestNodeAdapter node, String taskDescription,
-                                   ToolRegistry registry, ExecutionContext ctx) {
+                                  ToolRegistry registry, ExecutionContext ctx) {
         // 使用 task-matched skills（组合式路由：技能与智能体独立匹配）
         List<String> taskSkillIds = extractMatchedSkillIds(node);
         if (!taskSkillIds.isEmpty()) {
@@ -67,14 +68,18 @@ public class AgentToolStrategy implements ToolRoutingStrategy {
         return registry.allSpecs();
     }
 
-    /** 从 node metadata 中提取 task-matched skill IDs（组合式路由注入）。 */
+    /**
+     * 从 node metadata 中提取 task-matched skill IDs（组合式路由注入）。
+     */
     private List<String> extractMatchedSkillIds(ForestNodeAdapter node) {
         Object raw = node.metadata().get("_matchedSkillIds");
         if (!(raw instanceof String s) || s.isBlank()) return List.of();
         return List.of(s.split(","));
     }
 
-    /** 按 skill ID 列表解析技能名 → 过滤工具 → 排序 → Top 10。 */
+    /**
+     * 按 skill ID 列表解析技能名 → 过滤工具 → 排序 → Top 10。
+     */
     private List<ToolSpec> resolveToolsBySkillIds(List<String> skillIds, ToolRegistry registry, UUID accountId) {
         // 1) 将 skillId 字符串解析为 UUID 并查询技能
         List<String> skillNames = skillIds.stream()
@@ -101,17 +106,29 @@ public class AgentToolStrategy implements ToolRoutingStrategy {
                 .filter(t -> skillNames.contains(t.name()))
                 .collect(Collectors.toList());
 
-        // 3) 按使用频率排序
+        // 3) 始终注入内部工具（file_read/bash 等基础能力不依赖技能匹配）
+        Set<String> matchedNames = matched.stream().map(ToolSpec::name).collect(Collectors.toSet());
+        for (ToolSpec t : registry.allSpecs()) {
+            if (INTERNAL_TOOL_NAMES.contains(t.name()) && !matchedNames.contains(t.name())) {
+                matched.add(t);
+            }
+        }
+
+        // 4) 按使用频率排序
         if (accountId != null) {
             matched = sortByUsage(matched, accountId);
         }
 
-        log.info("AgentToolStrategy: task-matched 技能 {} 个，匹配工具 {} 个", skillNames.size(), matched.size());
+        log.info("AgentToolStrategy: task-matched 技能 {} 个，匹配工具 {} 个（+{} 个内部工具）",
+                skillNames.size(), matched.stream().filter(t -> skillNames.contains(t.name())).count(),
+                matched.size() - (int) matched.stream().filter(t -> skillNames.contains(t.name())).count());
         return matched.stream().limit(10).toList();
     }
 
 
-    /** 按历史使用频率降序排列。 */
+    /**
+     * 按历史使用频率降序排列。
+     */
     private List<ToolSpec> sortByUsage(List<ToolSpec> tools, UUID accountId) {
         try {
             List<Object[]> usageData = toolUsageRepository.countByToolName(accountId);
@@ -123,7 +140,7 @@ public class AgentToolStrategy implements ToolRoutingStrategy {
                             row -> ((Number) row[1]).longValue()
                     ));
             return tools.stream()
-                    .sorted(Comparator.<ToolSpec, Long>comparing(
+                    .sorted(Comparator.comparing(
                             t -> freqMap.getOrDefault(t.name(), 0L),
                             Comparator.reverseOrder()
                     ))

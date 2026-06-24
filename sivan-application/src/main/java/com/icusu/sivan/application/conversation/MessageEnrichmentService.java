@@ -3,13 +3,11 @@ package com.icusu.sivan.application.conversation;
 import com.icusu.sivan.agent.model.ModelCapabilityRegistry;
 import com.icusu.sivan.agent.model.ModelRouter;
 import com.icusu.sivan.agent.prompt.ChatPrompts;
-import com.icusu.sivan.core.message.Msg;
-import com.icusu.sivan.core.message.Role;
+import com.icusu.sivan.application.conversation.message.*;
 import com.icusu.sivan.domain.conversation.Message;
 import com.icusu.sivan.domain.model.LlmProvider;
 import com.icusu.sivan.domain.model.ModelCapability;
 import com.icusu.sivan.infra.file.DocumentTextExtractor;
-import com.icusu.sivan.application.conversation.message.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -34,7 +32,7 @@ public class MessageEnrichmentService {
 
     public static final int MAX_MESSAGES_LOAD = 500;
 
-    public List<com.icusu.sivan.application.conversation.message.EnrichedMessage> enrichMessages(
+    public List<EnrichedMessage> enrichMessages(
             UUID conversationId, List<String> images, List<String> audios,
             int contextLength, UUID excludeMessageId, String ragContext,
             Set<UUID> protectMsgIds, UUID accountId, UUID providerId) {
@@ -149,36 +147,6 @@ public class MessageEnrichmentService {
         return result;
     }
 
-    public static void insertContextMessages(List<Msg> msgs,
-                                             com.icusu.sivan.application.conversation.tree.ContextResult epochResult,
-                                             String fallbackContext) {
-        insertContextMessages(msgs, epochResult, fallbackContext, null);
-    }
-
-    public static void insertContextMessages(List<Msg> msgs,
-                                             com.icusu.sivan.application.conversation.tree.ContextResult epochResult,
-                                             String fallbackContext, UUID accountId) {
-        // 在所有 SYSTEM 消息（system prompt / tools schema）之后插入，
-        // 确保上下文在对话消息之前、tools 之后
-        int insertIdx = 0;
-        for (int i = 0; i < msgs.size(); i++) {
-            if (msgs.get(i).role() == Role.SYSTEM) insertIdx = i + 1;
-        }
-        if (epochResult != null && !epochResult.isEmpty()) {
-            for (var seg : epochResult.getSegments()) {
-                if (seg.hasContent()) {
-                    msgs.add(insertIdx++, Msg.builder()
-                            .role(Role.USER)
-                            .text(seg.getContent())
-                            .build());
-                }
-            }
-        } else if (fallbackContext != null && !fallbackContext.isBlank()) {
-            msgs.add(insertIdx, Msg.of(Role.USER,
-                    ChatPrompts.contextInjection(fallbackContext).content()));
-        }
-    }
-
     public int resolveContextLength(UUID providerId, UUID accountId) {
         try {
             LlmProvider provider = providerId != null
@@ -205,10 +173,6 @@ public class MessageEnrichmentService {
         } catch (Exception e) {
             return 0.5;
         }
-    }
-
-    public double resolveBudgetRatio(UUID accountId) {
-        return resolveBudgetRatio(null, accountId);
     }
 
     // ====== Token 估算 ======

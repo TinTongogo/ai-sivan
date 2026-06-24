@@ -46,7 +46,7 @@ public class LlmHttpClient {
             ResponseEntity<String> response = restTemplate.exchange(req.url, HttpMethod.GET, req.entity, String.class);
             String body = response.getBody();
             if (body == null || body.isBlank()) return TestResult.failure("服务端返回空响应");
-            return TestResult.success(body, parseContextLengths(body));
+            return TestResult.success(parseContextLengths(body));
         } catch (Exception e) {
             log.warn("LLM 连接测试失败: {}", e.getMessage());
             return TestResult.failure("连接失败: " + e.getMessage());
@@ -121,7 +121,9 @@ public class LlmHttpClient {
         return new ProviderRequest(url, new HttpEntity<>(headers));
     }
 
-    /** 规范化 URL 路径，确保以 /v1/ 结尾。 */
+    /**
+     * 规范化 URL 路径，确保以 /v1/ 结尾。
+     */
     private static String normalizeV1Url(String baseUrl) {
         if (baseUrl == null || baseUrl.isBlank()) return baseUrl;
         String url = baseUrl.strip();
@@ -147,14 +149,17 @@ public class LlmHttpClient {
                     result.add(new ModelInfo(id.asText(), ctxLen));
                 }
             }
-        } catch (Exception e) { log.debug("解析模型列表失败: {}", e.getMessage()); }
+        } catch (Exception e) {
+            log.debug("解析模型列表失败: {}", e.getMessage());
+        }
         return result;
     }
 
-    private record ProviderRequest(String url, HttpEntity<String> entity) {}
+    private record ProviderRequest(String url, HttpEntity<String> entity) {
+    }
 
     public record TestResult(boolean success, String message, List<ModelInfo> models) {
-        public static TestResult success(String body, List<ModelInfo> models) {
+        public static TestResult success( List<ModelInfo> models) {
             return new TestResult(true, "连接成功", models);
         }
         public static TestResult failure(String message) {
@@ -162,5 +167,6 @@ public class LlmHttpClient {
         }
     }
 
-    public record ModelInfo(String name, Integer contextLength) {}
+    public record ModelInfo(String name, Integer contextLength) {
+    }
 }

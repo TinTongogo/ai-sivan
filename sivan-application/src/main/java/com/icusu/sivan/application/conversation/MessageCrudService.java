@@ -1,19 +1,17 @@
 package com.icusu.sivan.application.conversation;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.icusu.sivan.common.enums.MessageStatus;
-import com.icusu.sivan.common.exception.DomainException;
-import com.icusu.sivan.common.exception.ResourceNotFoundException;
-import com.icusu.sivan.core.message.Msg;
-import com.icusu.sivan.domain.conversation.Conversation;
-import com.icusu.sivan.domain.conversation.IConversationRepository;
-import com.icusu.sivan.domain.conversation.IMessageRepository;
-import com.icusu.sivan.domain.conversation.Message;
 import com.icusu.sivan.agent.prompt.IntentClassifier;
 import com.icusu.sivan.application.conversation.dto.MessagePageResponse;
 import com.icusu.sivan.application.conversation.dto.MessageResponse;
 import com.icusu.sivan.application.conversation.dto.SendMessageRequest;
 import com.icusu.sivan.application.conversation.message.MessageAttachmentsSerializer;
+import com.icusu.sivan.common.enums.MessageStatus;
+import com.icusu.sivan.common.exception.ResourceNotFoundException;
+import com.icusu.sivan.domain.conversation.Conversation;
+import com.icusu.sivan.domain.conversation.IConversationRepository;
+import com.icusu.sivan.domain.conversation.IMessageRepository;
+import com.icusu.sivan.domain.conversation.Message;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -223,7 +221,15 @@ public class MessageCrudService {
         for (Message msg : messages) {
             if (msg.getGenerationGroup() != null) {
                 Message existing = latestPerGroup.get(msg.getGenerationGroup());
-                if (existing == null || msg.getGenerationIndex() > existing.getGenerationIndex()) {
+                if (existing == null) {
+                    latestPerGroup.put(msg.getGenerationGroup(), msg);
+                } else if (msg.getGenerationIndex() > existing.getGenerationIndex()
+                        && msg.getStatus() == com.icusu.sivan.common.enums.MessageStatus.COMPLETED) {
+                    // 新版本 COMPLETED 才替换，FAILED 版本不覆盖已有成功版本
+                    latestPerGroup.put(msg.getGenerationGroup(), msg);
+                } else if (msg.getGenerationIndex() > existing.getGenerationIndex()
+                        && existing.getStatus() != com.icusu.sivan.common.enums.MessageStatus.COMPLETED) {
+                    // 新旧都未完成，保留新版本（至少 index 更大）
                     latestPerGroup.put(msg.getGenerationGroup(), msg);
                 }
             } else {
@@ -251,40 +257,12 @@ public class MessageCrudService {
                 .build();
     }
 
-    /**
-     * 构建用户消息实体。
-     */
-    public static Message buildUserMessage(UUID conversationId, UUID accountId, Conversation conversation, SendMessageRequest request) {
-        return Message.builder()
-                .conversationId(conversationId)
-                .accountId(accountId)
-                .projectId(conversation.getProjectId())
-                .role(Message.ROLE_USER)
-                .content(request.getContent())
-                .contentType(request.getContentType() != null ? request.getContentType() : "text")
-                .targetAgent(request.getTargetAgent())
-                .replyToId(request.getReplyToId())
-                .status(MessageStatus.COMPLETED)
-                .images(MessageAttachmentsSerializer.serializeImages(request.getImages()))
-                .audios(MessageAttachmentsSerializer.serializeAudios(request.getAudios()))
-                .attachments(MessageAttachmentsSerializer.serializeAttachments(request.getAttachments()))
-                .build();
-    }
-
     // ============ 响应映射 ============
-
     /**
      * 消息实体转为响应对象。
      */
     public MessageResponse toMessageResponse(Message message) {
         return toMessageResponse(message, null, java.util.Collections.emptyMap());
-    }
-
-    /**
-     * 消息实体转为响应对象（含预查的 generationTotal）。
-     */
-    public MessageResponse toMessageResponse(Message message, Integer preloadedGenTotal) {
-        return toMessageResponse(message, preloadedGenTotal, java.util.Collections.emptyMap());
     }
 
     /**

@@ -15,26 +15,21 @@ import com.icusu.sivan.core.model.ModelChunk;
 import com.icusu.sivan.core.model.TokenUsage;
 import com.icusu.sivan.core.tool.ToolSpec;
 import com.icusu.sivan.domain.model.ModelCapability;
+import io.netty.channel.ChannelOption;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import io.netty.channel.ChannelOption;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import reactor.util.retry.Retry;
 import reactor.netty.http.client.HttpClient;
 import reactor.netty.resources.ConnectionProvider;
+import reactor.util.retry.Retry;
 
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Base64;
-import java.util.EnumSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -50,14 +45,6 @@ public class OpenAiModel implements Model {
     private final ObjectMapper objectMapper;
     private final Duration timeout;
     private final Set<ModelCapability> capabilities;
-
-    public OpenAiModel(String baseUrl, String apiKey, String modelName) {
-        this(baseUrl, apiKey, modelName, Duration.ofSeconds(120), EnumSet.noneOf(ModelCapability.class));
-    }
-
-    public OpenAiModel(String baseUrl, String apiKey, String modelName, Duration timeout) {
-        this(baseUrl, apiKey, modelName, timeout, EnumSet.noneOf(ModelCapability.class));
-    }
 
     public OpenAiModel(String baseUrl, String apiKey, String modelName, Duration timeout, Set<ModelCapability> capabilities) {
         this.modelName = modelName;
@@ -86,7 +73,7 @@ public class OpenAiModel implements Model {
                 .option(ChannelOption.TCP_NODELAY, true);
         this.webClient = WebClient.builder()
                 .clientConnector(new ReactorClientHttpConnector(httpClient))
-                .baseUrl(normalizeV1Url(safeUrl))
+                .baseUrl(Objects.requireNonNull(normalizeV1Url(safeUrl)))
                 .defaultHeader("Authorization", "Bearer " + apiKey)
                 .defaultHeader("Content-Type", "application/json")
                 .build();
@@ -130,7 +117,7 @@ public class OpenAiModel implements Model {
                 .uri("chat/completions")
                 .bodyValue(body)
                 .retrieve()
-                .onStatus(s -> s.isError(), resp -> resp.bodyToMono(String.class)
+                .onStatus(HttpStatusCode::isError, resp -> resp.bodyToMono(String.class)
                         .flatMap(errBody -> Mono.error(new RuntimeException(
                                 resp.statusCode() + " from " + modelName + ": " + errBody))))
                 .bodyToMono(String.class)
@@ -295,7 +282,7 @@ public class OpenAiModel implements Model {
             node.set("tool_calls", toJsonToolCalls(toolCalls));
         }
         if (!toolResults.isEmpty()) {
-            node.put("tool_call_id", toolResults.get(0).id());
+            node.put("tool_call_id", toolResults.getFirst().id());
         }
 
         return node;
@@ -372,7 +359,7 @@ public class OpenAiModel implements Model {
             Msg message = Msg.of(Role.ASSISTANT, List.of());
             TokenUsage usage = TokenUsage.EMPTY;
 
-            if (choices != null && choices.isArray() && choices.size() > 0) {
+            if (choices != null && choices.isArray() && !choices.isEmpty()) {
                 JsonNode msgNode = choices.get(0).get("message");
                 if (msgNode != null) {
                     message = parseAssistantMessage(msgNode);
@@ -425,7 +412,8 @@ public class OpenAiModel implements Model {
         try {
             String text = argsNode.asText();
             if (text.isBlank()) return Map.of();
-            return objectMapper.readValue(text, new TypeReference<Map<String, Object>>() {});
+            return objectMapper.readValue(text, new TypeReference<>() {
+            });
         } catch (Exception e) {
             return Map.of();
         }
@@ -451,7 +439,7 @@ public class OpenAiModel implements Model {
                     usage = new TokenUsage(pt, ct, tt, thinkingTk);
                 }
             }
-            if (choices != null && choices.isArray() && choices.size() > 0) {
+            if (choices != null && choices.isArray() && !choices.isEmpty()) {
                 JsonNode delta = choices.get(0).get("delta");
                 if (delta != null) {
                     String content = delta.has("content") && !delta.get("content").isNull()
@@ -473,7 +461,7 @@ public class OpenAiModel implements Model {
 
     private List<ModelChunk.ToolCallDelta> parseToolCallDeltas(JsonNode delta) {
         JsonNode tcs = delta.get("tool_calls");
-        if (tcs == null || !tcs.isArray() || tcs.size() == 0) return List.of();
+        if (tcs == null || !tcs.isArray() || tcs.isEmpty()) return List.of();
         List<ModelChunk.ToolCallDelta> result = new ArrayList<>();
         for (JsonNode tc : tcs) {
             int idx = tc.has("index") ? tc.get("index").asInt() : 0;
@@ -493,7 +481,7 @@ public class OpenAiModel implements Model {
         try {
             JsonNode root = objectMapper.readTree(raw);
             JsonNode data = root.get("data");
-            if (data != null && data.isArray() && data.size() > 0) {
+            if (data != null && data.isArray() && !data.isEmpty()) {
                 JsonNode values = data.get(0).get("embedding");
                 if (values != null && values.isArray()) {
                     List<Float> result = new ArrayList<>();

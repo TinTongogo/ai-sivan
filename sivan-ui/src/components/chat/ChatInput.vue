@@ -324,6 +324,8 @@ function handleSend() {
 
   // cleanup
   selectedAttachments.value = []
+  // 发送后重置输入框高度
+  nextTick(() => autoGrow())
 }
 
 // ====== File Preview ======
@@ -1497,7 +1499,7 @@ function cancelPolish() {
 
 /* File Preview Modal */
 .file-preview-modal {
-  background: var(--clr-bg-primary);
+  background: var(--clr-bg-primary, var(--clr-bg, #fff));
   border-radius: var(--rad-lg);
   max-width: 680px;
   width: 90vw;
@@ -1510,7 +1512,7 @@ function cancelPolish() {
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  border-bottom: 1px solid var(--clr-border);
+  border-bottom: 1px solid var(--clr-border, var(--clr-hairline, #e8e8e8));
   font-weight: 600;
 }
 .file-preview-modal__close {
@@ -1529,7 +1531,7 @@ function cancelPolish() {
   white-space: pre-wrap;
   word-break: break-all;
   font-size: var(--fs-callout);
-  color: var(--clr-primary);
+  color: var(--clr-primary, var(--clr-label, #333));
   margin: 0;
   line-height: 1.5;
 }

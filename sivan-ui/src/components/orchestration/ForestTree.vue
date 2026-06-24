@@ -198,8 +198,8 @@ function toggle() {
       <!-- Route label -->
       <span v-if="routeLabel" class="forest-tree-route" :title="routeTitle">{{ routeLabel }}</span>
 
-      <!-- Reasoning (inner_goal 节点的 LLM 推理解释) — 非叶子节点直接显示 -->
-      <span v-if="node.reasoning && isExpandable" class="forest-tree-reasoning-text" :title="node.reasoning">{{ node.reasoning }}</span>
+      <!-- Reasoning (inner_goal 节点的 LLM 推理解释) — name 已包含 reasoning 时不重复显示 -->
+      <span v-if="node.reasoning && isExpandable && node.name !== node.reasoning" class="forest-tree-reasoning-text" :title="node.reasoning">{{ node.reasoning }}</span>
       <!-- Reasoning (叶子节点) — 作为图标，点击查看详情展开 -->
       <span v-if="node.reasoning && !isExpandable" class="forest-tree-reasoning" :title="node.reasoning">💡</span>
 

@@ -5,19 +5,18 @@ import com.icusu.sivan.agent.tool.MatchedTools;
 import com.icusu.sivan.agent.tool.ToolEnricher;
 import com.icusu.sivan.agent.tool.ToolRegistryImpl;
 import com.icusu.sivan.agent.tool.ToolResolver;
+import com.icusu.sivan.application.conversation.dto.SendMessageRequest;
+import com.icusu.sivan.application.service.GroupService;
 import com.icusu.sivan.core.message.Msg;
 import com.icusu.sivan.core.message.Role;
 import com.icusu.sivan.core.tool.ToolSpec;
 import com.icusu.sivan.domain.conversation.Conversation;
 import com.icusu.sivan.domain.conversation.IConversationRepository;
 import com.icusu.sivan.domain.file.FileStoragePort;
-import com.icusu.sivan.application.conversation.dto.SendMessageRequest;
-import com.icusu.sivan.application.service.GroupService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -98,9 +97,10 @@ public class ToolResolutionService {
     }
 
     public List<ToolSpec> getInternalTools() {
-        Set<String> allowed = Set.of("bash", "file_read", "file_write", "file_list", "file_search");
+        Set<String> allowed = Set.of("bash", "file_read", "file_write", "file_list", "file_search", "file_delete");
         return toolRegistry.allSpecs().stream()
                 .filter(s -> allowed.contains(s.name()))
+                .sorted(java.util.Comparator.comparing(ToolSpec::name))
                 .toList();
     }
 
@@ -210,7 +210,7 @@ public class ToolResolutionService {
     public static String sanitizeFileName(String fileName) {
         if (fileName == null || fileName.isBlank()) return null;
         String safe = Path.of(fileName).getFileName().toString();
-        if (safe.isEmpty() || safe.equals(".") || safe.equals("..") || safe.startsWith(".")) return null;
+        if (safe.isEmpty() || safe.equals("..") || safe.startsWith(".")) return null;
         return safe;
     }
 }

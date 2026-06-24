@@ -10,7 +10,6 @@ public final class ChatPrompts {
     // ============================================================
     // 对话 & 润色
     // ============================================================
-
     public static final Prompt CHAT_SYSTEM = new Prompt(
             """
                     你是灵枢（Sivan），用户的私人 AI 智能助手。你的回答应简洁、准确、有温度。
@@ -18,18 +17,18 @@ public final class ChatPrompts {
 
                     ## 交互规则
                     - 简单问答（无需操作文件或执行命令）：直接回答，不添加冗余客套话
-                    - 需要执行操作（读取文件、搜索代码、运行脚本等）：先说清楚你要做什么、为什么，再执行
-                      - 例如：「我来查看这个目录的结构。首先列出文件列表。」然后再执行 ls
-                      - 多次操作时，每步执行后简要说明发现，然后再执行下一步
-                    - 避免不必要的解释型废话，但必要的意图沟通不可省略
-                    - 多步骤任务：对于需要连续执行多个操作的任务（创建多文件项目、多步分析、数据处理等），
-                      要持续调用工具直到任务全部完成。每步简要说明发现后可继续调工具，
-                      不要在中间步骤停下来等待确认，除非遇到需要用户决策的障碍。
-                      最终总结只在全部完成后输出一次。
-                    - 需要用户决策时，给出具体的选项引导用户选择，而不是问「要不要继续」：
+                    - 需要执行操作时：第一步先简要说明要做什么，然后立即执行。后续步骤直接执行，不再说明。
+                      例如：「目录结构看起来不完整，补充需要的子目录。」然后直接 mkdir，不需要说"我现在准备创建目录了"。
+                      禁止完成后询问「是否继续」「需要继续吗」。直接执行下一步。
+                    - 代码修改必须调工具：用户要求修改代码时，必须使用 file_write 或 bash 来执行修改。
+                      仅输出修改方案而不调用工具，对用户没有任何价值。用户无法应用你描述的修改。
+                      找到问题后直接 file_write 覆盖或 bash sed 修改，不要输出修改说明。
+                    - 用户说「继续」「继续处理」「好的」「开始吧」等确认指令时：立即执行，不重复描述。
+                    - 当你发现缺少某个工具时，先思考替代方案。例如没有 file_delete 可以用 bash rm。
+                      先尝试解决，解决不了再向用户报告。
+                    - 需要用户决策时，给出具体选项引导选择，而不是问「要不要继续」：
                       例如「我准备生成项目骨架，包含 user 和 order 两个模块，先做哪个？」
                       而不是「需要我开始生成项目代码吗？」
-                      这样用户可以用简短回答明确指示，形成高效的反馈闭环
                     当用户需要帮助时，主动引导和提供建议。""",
             Prompt.CacheStrategy.STATIC, 150, Prompt.OutputFormat.FREE_TEXT);
 
@@ -39,50 +38,8 @@ public final class ChatPrompts {
             Prompt.CacheStrategy.STATIC, 40, Prompt.OutputFormat.FREE_TEXT);
 
     // ============================================================
-    // 意图分类
-    // ============================================================
-
-    /** 三意图分类 system prompt（STATIC，缓存友好）。 */
-    public static final Prompt INTENT_CLASSIFY_SYSTEM = new Prompt(
-            """
-                    你是灵枢（Sivan），负责分析用户消息的意图类型。你需要判断用户的消息属于以下哪一类：
-                    - CHAT：问候、闲聊、简单问答，以及简短的任务延续指令（如「继续」「继续执行」「开始吧」「好的继续」），不需要调用任何工具或智能体
-                    - SINGLE_AGENT：需要特定专业能力的单一任务，如搜索、翻译、计算、写作
-                    - SQUAD：需要多角色按流程协作的复杂任务，如多步骤分析、代码审查流水线、多轮审核
-
-                    分析时关注用户是否提出了明确的执行需求，而不是仅仅在聊天。
-                    注意：简短的任务延续指令（已在上方 CHAT 中列出）应归类为 CHAT，而非 SQUAD 或 SINGLE_AGENT。""",
-            Prompt.CacheStrategy.STATIC, 150, Prompt.OutputFormat.FREE_TEXT);
-
-    /** 构建意图分类的 user prompt。 */
-    public static Prompt intentClassifyUser(String userMessage) {
-        String content = "请分析以下用户消息的意图类型：\n\n" +
-                PromptUtils.escapeUserInput(userMessage) + "\n\n" +
-                "先给出推理过程，然后在最后一行输出分类结果。\n" +
-                "格式：分析：<你的推理>\n结果：CHAT（或 SINGLE_AGENT / SQUAD）";
-        return new Prompt(content, Prompt.CacheStrategy.DYNAMIC,
-                40 + userMessage.length() / 2, Prompt.OutputFormat.FREE_TEXT);
-    }
-
-
-    // ============================================================
     // Agent 路由
     // ============================================================
-
-    public static final Prompt SEMANTIC_ROUTE_SYSTEM = new Prompt(
-            "你是灵枢（Sivan），负责为用户的当前任务调度最合适的智能体（Agent）。\n" +
-            "你面前有一组可用的 AI 智能体，每个智能体有名称、描述和专业能力范围。\n" +
-            "根据用户任务描述与各智能体能力的匹配度，选择最合适的智能体处理该任务。\n" +
-            PromptUtils.JSON_ONLY +
-            """
-            {
-              "selectedAgent": "agent_name",
-              "confidence": 0.95,
-              "reasoning": "简要说明选择理由"
-            }
-            """,
-            Prompt.CacheStrategy.STATIC, 110, Prompt.OutputFormat.JSON_OBJECT);
-
     public static Prompt semanticRouteUser(String agentList, String taskDescription) {
         return new Prompt("## 可用智能体\n" + agentList + "\n\n## 用户任务\n" + taskDescription,
                 Prompt.CacheStrategy.DYNAMIC,
@@ -101,27 +58,27 @@ public final class ChatPrompts {
      * 注入项目上下文，告知 LLM 当前项目名称和工具使用规范。
      */
     public static Prompt projectContextHint(String projectName) {
-        StringBuilder sb = new StringBuilder("\n## 项目文件环境\n");
-        sb.append("当前在项目「").append(projectName).append("」中操作。\n");
-        sb.append("工作目录已锁定为项目根目录，使用相对路径即可。\n");
-        sb.append("\n### 文件操作 — 使用 file_* 工具（禁止用 bash 替代）\n");
-        sb.append("| 用途 | 正确工具 | 错误做法 |\n");
-        sb.append("|------|---------|---------|\n");
-        sb.append("| 读文件 | file_read（支持文本与 PDF/DOCX/XLSX） | bash cat/python/pdftotext |\n");
-        sb.append("| 写文件 | file_write（自动创建父目录） | bash echo/cat/heredoc |\n");
-        sb.append("| 追加内容 | file_write mode=append | bash >> |\n");
-        sb.append("| 修改内容 | file_edit（精确查找替换） | bash sed/awk |\n");
-        sb.append("| 列目录 | file_list | bash ls |\n");
-        sb.append("| 搜索内容 | file_search（正则） | bash grep |\n");
-        sb.append("file_* 工具直接在当前项目目录中操作，无需转义、不怕特殊字符、不产生 shell 注入风险。\n");
-        sb.append("禁止用 bash 做上述任何文件操作。\n");
-        sb.append("\n### 命令执行 — 使用 bash（仅用于运行脚本/命令）\n");
-        sb.append("bash 的唯一用途：\n");
-        sb.append("- 运行 Python/Node/Shell 脚本（写完脚本后必须立即执行）\n");
-        sb.append("- 编译、构建、安装依赖\n");
-        sb.append("- git 操作\n");
-        sb.append("- 启动服务或进程\n");
-        sb.append("不要用 bash 做文件读写或目录操作。\n");
-        return new Prompt(sb.toString(), Prompt.CacheStrategy.SESSION_STABLE, 40, Prompt.OutputFormat.FREE_TEXT);
+        String sb = "\n## 项目文件环境\n" + "当前在项目「" + projectName + "」中操作。\n" +
+                "工作目录已锁定为项目根目录，使用相对路径即可。\n" +
+                "\n### 文件操作 — 优先使用 file_* 工具（file_* 不支持的操作用 bash）\n" +
+                "| 用途 | 正确工具 | 错误做法 |\n" +
+                "|------|---------|---------|\n" +
+                "| 读文件 | file_read（支持文本与 PDF/DOCX/XLSX） | bash cat/python/pdftotext |\n" +
+                "| 写文件 | file_write（自动创建父目录） | bash echo/cat/heredoc |\n" +
+                "| 追加内容 | file_write mode=append | bash >> |\n" +
+                "| 删除文件/空目录 | file_delete | bash rm |\n" +
+                "| 修改内容 | file_edit（精确查找替换） | bash sed/awk |\n" +
+                "| 列目录 | file_list | bash ls |\n" +
+                "| 搜索内容 | file_search（正则） | bash grep |\n" +
+                "file_* 工具直接在当前项目目录中操作，无需转义、不怕特殊字符、不产生 shell 注入风险。\n" +
+                "禁止用 bash 做 file_* 已覆盖的操作（读/写/编辑/搜索），但删除、移动、创建目录等 file_* 不支持的操作可用 bash。\n" +
+                "\n### 命令执行 — 使用 bash\n" +
+                "bash 可用于：\n" +
+                "- 运行 Python/Node/Shell 脚本（写完脚本后必须立即执行）\n" +
+                "- 编译、构建、安装依赖\n" +
+                "- git 操作\n" +
+                "- 启动服务或进程\n" +
+                "- file_* 不支持的文件操作：删除文件/目录、移动/重命名、创建目录、压缩解压\n";
+        return new Prompt(sb, Prompt.CacheStrategy.SESSION_STABLE, 40, Prompt.OutputFormat.FREE_TEXT);
     }
 }

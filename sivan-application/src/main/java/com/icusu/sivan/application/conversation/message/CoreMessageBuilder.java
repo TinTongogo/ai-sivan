@@ -38,44 +38,35 @@ public class CoreMessageBuilder {
      * @param systemPrompt      system prompt
      * @param internalTools     内部工具列表（file/bash 等），放在缓存层 ①
      * @param externalTools     外部工具列表（MCP Server 工具），放在缓存层 ②
-     * @param userContext       用户画像/项目上下文 markdown，放在缓存层 ②
-     * @param compressedContext 上下文压缩摘要（含记忆注入），放在缓存层 ③
+     * @param contextMsgs       动态上下文消息（用户画像、flashback、项目提示等），追加在对话之后
+     * @param compressedContext 上下文压缩摘要（含记忆注入），追加在对话之后
      * @param enriched          富化后的对话历史消息
      * @param excludeMessageId  需要排除的消息 ID
      * @param accountId         当前用户 ID
-     * @return 缓存优化排列的 Msg 列表
+     * @return 缓存优化排列的 Msg 列表（sys→tools→history→context→question）
      */
     public List<Msg> build(String systemPrompt,
                            List<ToolSpec> internalTools,
                            List<ToolSpec> externalTools,
-                           String userContext,
+                           List<Msg> contextMsgs,
                            String compressedContext,
                            List<EnrichedMessage> enriched,
                            UUID excludeMessageId,
                            UUID accountId) {
         List<Msg> msgs = new ArrayList<>();
 
-        // 缓存层 ①：永不变
+        // 缓存层 ①：永不变 — 全账号共享
         msgs.add(Msg.of(Role.SYSTEM, systemPrompt));
         if (internalTools != null && !internalTools.isEmpty()) {
             msgs.add(Msg.of(Role.SYSTEM, buildToolsSchema("内部工具", internalTools)));
         }
 
-        // 缓存层 ②：同对话/同会话
+        // 缓存层 ②：同配置共享
         if (externalTools != null && !externalTools.isEmpty()) {
             msgs.add(Msg.of(Role.SYSTEM, buildToolsSchema("外部工具", externalTools)));
         }
-        if (userContext != null && !userContext.isBlank()) {
-            msgs.add(Msg.of(Role.USER, userContext));
-        }
 
-        // 缓存层 ③：上下文压缩 + 记忆注入（同轮对话内命中）
-        if (compressedContext != null && !compressedContext.isBlank()) {
-            msgs.add(Msg.of(Role.USER,
-                    com.icusu.sivan.agent.prompt.ChatPrompts.contextInjection(compressedContext).content()));
-        }
-
-        // 无缓存层：对话历史 + 当前输入
+        // 缓存层 ③：对话历史 — 同对话共享前缀不断增长
         for (EnrichedMessage em : enriched) {
             com.icusu.sivan.domain.conversation.Message original = em.getOriginal();
             if (excludeMessageId != null && excludeMessageId.equals(original.getMessageId())) continue;
@@ -99,6 +90,15 @@ public class CoreMessageBuilder {
                 }
                 msgs.add(builder.build());
             }
+        }
+
+        // 动态上下文（用户画像、flashback、项目提示等）放在对话之后，不影响 cache prefix
+        if (contextMsgs != null) {
+            msgs.addAll(contextMsgs);
+        }
+        if (compressedContext != null && !compressedContext.isBlank()) {
+            msgs.add(Msg.of(Role.USER,
+                    com.icusu.sivan.agent.prompt.ChatPrompts.contextInjection(compressedContext).content()));
         }
 
         return msgs;
